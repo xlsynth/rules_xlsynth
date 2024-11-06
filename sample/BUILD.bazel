@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Sample BUILD file
+# This example shows how to use the dslx_library and dslx_test rules
+
+load("//:rules.bzl", "dslx_library", "dslx_test")
+
+dslx_library(
+    name = "imported",
+    srcs = ["imported.x"],
+)
+
+dslx_test(
+    name = "imported_test",
+    deps = [":imported"],
+)
+
+dslx_library(
+    name = "sample",
+    srcs = ["sample.x"],
+    deps = [":imported"],
+)
+
+dslx_test(
+    name = "sample_test",
+    deps = [":sample"],
+)
