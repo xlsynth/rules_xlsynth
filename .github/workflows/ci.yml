@@ -16,10 +16,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up Bazel
-      uses: bazelbuild/setup-bazel@v5
-      with:
-        version: 7.4.0
+    - name: Set up Bazelisk
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y curl gnupg
+        curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
+        chmod +x /usr/local/bin/bazel
+        bazel version
 
     - name: Download latest xlsynth release
       id: download-release
