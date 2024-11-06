@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  dslx_ci:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Bazel
+      uses: bazelbuild/setup-bazel@v5
+      with:
+        version: 7.4.0
+
+    - name: Download latest xlsynth release
+      id: download-release
+      run: |
+        RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+          | grep "browser_download_url.*dslx_interpreter_main-ubuntu2204" \
+          | cut -d '"' -f 4)
+        curl -L -o dslx_interpreter_main "$RELEASE_URL"
+        chmod +x dslx_interpreter_main
+
+    - name: Download and unpack DSLX standard library
+      run: |
+        STD_LIB_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+          | grep "browser_download_url.*dslx_stdlib.tar.gz" \
+          | cut -d '"' -f 4)
+        curl -L -o dslx_stdlib.tar.gz "$STD_LIB_URL"
+        mkdir -p dependencies/dslx_stdlib
+        tar -xzf dslx_stdlib.tar.gz -C dependencies/dslx_stdlib
+
+    - name: Run Bazel tests
+      run: |
+        XLSYNTH_TOOLS=$(pwd)/dependencies/dslx_stdlib
+        export XLSYNTH_TOOLS
+        bazel test --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS -c opt //...
