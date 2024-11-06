@@ -32,6 +32,8 @@ jobs:
           | cut -d '"' -f 4)
         curl -L -o dslx_interpreter_main "$RELEASE_URL"
         chmod +x dslx_interpreter_main
+        mkdir dependencies
+        mv dslx_interpreter_main dependencies/
 
     - name: Download and unpack DSLX standard library
       run: |
@@ -39,11 +41,10 @@ jobs:
           | grep "browser_download_url.*dslx_stdlib.tar.gz" \
           | cut -d '"' -f 4)
         curl -L -o dslx_stdlib.tar.gz "$STD_LIB_URL"
-        mkdir -p dependencies/dslx_stdlib
-        tar -xzf dslx_stdlib.tar.gz -C dependencies/dslx_stdlib
+        tar -xzf dslx_stdlib.tar.gz -C dependencies/
 
     - name: Run Bazel tests
       run: |
-        XLSYNTH_TOOLS=$(pwd)/dependencies/dslx_stdlib
+        XLSYNTH_TOOLS=$(pwd)/dependencies
         export XLSYNTH_TOOLS
         bazel test --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS -c opt //... --test_output=errors
