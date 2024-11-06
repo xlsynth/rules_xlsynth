@@ -46,4 +46,4 @@ jobs:
       run: |
         XLSYNTH_TOOLS=$(pwd)/dependencies/dslx_stdlib
         export XLSYNTH_TOOLS
-        bazel test --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS -c opt //...
+        bazel test --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS -c opt //... --test_output=errors
