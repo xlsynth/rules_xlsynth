@@ -47,4 +47,10 @@ jobs:
       run: |
         XLSYNTH_TOOLS=$(pwd)/dependencies
         export XLSYNTH_TOOLS
-        bazel test --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS -c opt //... --test_output=errors
+        bazel test --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS -c opt --test_output=errors -- //...
+
+    - name: Run Bazel tests
+      run: |
+        XLSYNTH_TOOLS=$(pwd)/dependencies
+        export XLSYNTH_TOOLS
+        bazel test --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS --action_env=XLSYNTH_DSLX_PATH=sample_expecting_dslx_path -c opt //sample_expecting_dslx_path:main_test --test_output=errors

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Sample BUILD file
+# This example shows how to use the dslx_library and dslx_test rules
+#
+# This particular sample shows how things work when we give a XLSYNTH_DSLX_PATH
+# environment variable.
+
+load("//:rules.bzl", "dslx_library", "dslx_test")
+
+dslx_library(
+    name = "imported",
+    srcs = ["imported.x"],
+)
+
+dslx_library(
+    name = "main",
+    srcs = ["main.x"],
+    deps = [":imported"],
+)
+
+dslx_test(
+    name = "main_test",
+    deps = [":main"],
+    tags = ["manual"],
+)

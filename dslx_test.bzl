@@ -52,6 +52,10 @@ def _dslx_test_impl(ctx):
 
     flags_str = '--dslx_stdlib_path=' + xlsynth_tool_dir + '/xls/dslx/stdlib'
 
+    additional_dslx_paths = env.get("XLSYNTH_DSLX_PATH")
+    if additional_dslx_paths:
+        flags_str += ' --dslx_path=' + additional_dslx_paths
+
     cmd = dslx_interpreter_file + ' ' + flags_str + ' ' + ' '.join([src.path for src in srcs])
 
     runfiles = ctx.runfiles(srcs)
