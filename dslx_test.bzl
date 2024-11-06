@@ -50,7 +50,9 @@ def _dslx_test_impl(ctx):
 
     #print('srcs:', srcs)
 
-    cmd = dslx_interpreter_file + ' ' + ' '.join([src.path for src in srcs])
+    flags_str = '--dslx_stdlib_path=' + xlsynth_tool_dir + '/xls/dslx/stdlib'
+
+    cmd = dslx_interpreter_file + ' ' + flags_str + ' ' + ' '.join([src.path for src in srcs])
 
     runfiles = ctx.runfiles(srcs)
     executable_file = _write_executable_shell_script(
