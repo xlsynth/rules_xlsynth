@@ -7,7 +7,12 @@ load(
     ":dslx_test.bzl",
     _dslx_test = "dslx_test",
 )
+load(
+    ":dslx_fmt.bzl",
+    _dslx_fmt_test = "dslx_fmt_test",
+)
 
 DslxInfo = _DslxInfo
 dslx_library = _dslx_library
 dslx_test = _dslx_test
+dslx_fmt_test = _dslx_fmt_test

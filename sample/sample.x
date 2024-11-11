@@ -6,6 +6,4 @@ import sample.imported;
 fn main() -> u32 { imported::MOL }
 
 #[test]
-fn test_main() {
-    assert_eq(main(), u32:42)
-}
+fn test_main() { assert_eq(main(), u32:42) }

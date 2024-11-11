@@ -3,7 +3,7 @@
 # Sample BUILD file
 # This example shows how to use the dslx_library and dslx_test rules
 
-load("//:rules.bzl", "dslx_library", "dslx_test")
+load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test")
 
 dslx_library(
     name = "imported",
@@ -24,4 +24,9 @@ dslx_library(
 dslx_test(
     name = "sample_test",
     deps = [":sample"],
+)
+
+dslx_fmt_test(
+    name = "sample_fmt_test",
+    src = "sample.x",
 )
