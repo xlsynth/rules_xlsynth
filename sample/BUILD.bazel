@@ -27,6 +27,6 @@ dslx_test(
 )
 
 dslx_fmt_test(
-    name = "sample_fmt_test",
-    src = "sample.x",
+    name = "dslx_fmt_test",
+    srcs = glob(["*.x"]),
 )

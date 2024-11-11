@@ -9,47 +9,52 @@ def _dslx_format_impl(ctx):
     # Ensure the interpreter binary exists
     dslx_fmt_file = xlsynth_tool_dir + "/dslx_fmt"
 
-    src_depset_files = ctx.attr.src[DefaultInfo].files.to_list()
-    if len(src_depset_files) != 1:
-        fail("dslx_fmt_test requires a single source")
-    src = src_depset_files[0]
+    src_depset_files = ctx.attr.srcs
 
-    input_file = src
-    formatted_file = ctx.actions.declare_file(src.basename + ".fmt")
+    input_files = []
+    formatted_files = []
 
-    # Command to run the formatter and redirect stdout to the output file
-    format_cmd = "{} {} > {}".format(dslx_fmt_file, input_file.path, formatted_file.path)
+    for src in src_depset_files:
+        input_file = src[DefaultInfo].files.to_list()[0]
+        input_files.append(input_file)
+        formatted_file = ctx.actions.declare_file(input_file.basename + ".fmt")
+        formatted_files.append(formatted_file)
 
-    # Create an action to run the formatter
-    ctx.actions.run(
-        inputs=[input_file],
-        outputs=[formatted_file],
-        executable="/bin/sh",
-        arguments=["-c", format_cmd],
-        use_default_shell_env=True,
-    )
+        # Command to run the formatter and redirect stdout to the output file
+        format_cmd = "{} {} > {}".format(dslx_fmt_file, input_file.path, formatted_file.path)
 
-    # Create an executable shell script to run the diff check using absolute paths
-    diff_cmd = "diff -u {} {} || (echo 'Formatting differs. Run: `{}/dslx_fmt -i {}` to fix formatting in place' && exit 1)".format(input_file.short_path, formatted_file.short_path, xlsynth_tool_dir, input_file.short_path)
+        # Create an action to run the formatter
+        ctx.actions.run(
+            inputs=[input_file],
+            outputs=[formatted_file],
+            executable="/bin/sh",
+            arguments=["-c", format_cmd],
+            use_default_shell_env=True,
+        )
 
-    # Generate a shell script to perform the diff action, ensuring it runs after formatting
+    # Create an executable shell script to run the diff check for all files
+    diff_commands = []
+    for input_file, formatted_file in zip(input_files, formatted_files):
+        diff_cmd = "diff -u {} {} || (echo 'Formatting differs. Run: `{}/dslx_fmt -i {}` to fix formatting in place' && exit 1)".format(input_file.short_path, formatted_file.short_path, xlsynth_tool_dir, input_file.short_path)
+        diff_commands.append(diff_cmd)
+
     diff_script_file = write_executable_shell_script(
         ctx = ctx,
-	filename = ctx.label.name + "-diff-script.sh",
-	cmd = diff_cmd,
+        filename = ctx.label.name + "-diff.sh",
+        cmd = '\n'.join(diff_commands),
     )
 
     return DefaultInfo(
-        runfiles=ctx.runfiles(files=[input_file, formatted_file, diff_script_file]),
-        files=depset(direct=[diff_script_file, formatted_file]),
+        runfiles=ctx.runfiles(files=input_files + formatted_files + [diff_script_file]),
+        files=depset(direct=[diff_script_file] + formatted_files),
         executable=diff_script_file,
     )
 
 dslx_fmt_test = rule(
     implementation=_dslx_format_impl,
     attrs={
-        "src": attr.label(allow_single_file=True, doc="Source file to check formatting"),
+        "srcs": attr.label_list(allow_files=[".x"], allow_empty=False, doc="Source files to check formatting"),
     },
-    doc="A rule that checks if the given DSLX file is properly formatted.",
+    doc="A rule that checks if the given DSLX files are properly formatted.",
     test=True,
 )
