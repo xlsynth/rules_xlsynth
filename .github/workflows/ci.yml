@@ -31,7 +31,7 @@ jobs:
           | cut -d '"' -f 4)
         curl -L -o dslx_interpreter_main "$RELEASE_URL"
         chmod +x dslx_interpreter_main
-        mkdir dependencies
+        mkdir -p dependencies
         mv dslx_interpreter_main dependencies/
 
     - name: Download latest xlsynth release - dslx_fmt
@@ -41,7 +41,7 @@ jobs:
           | cut -d '"' -f 4)
         curl -L -o dslx_fmt "$RELEASE_URL"
         chmod +x dslx_fmt
-        mkdir dependencies
+        mkdir -p dependencies
         mv dslx_fmt dependencies/
 
     - name: Download and unpack DSLX standard library
