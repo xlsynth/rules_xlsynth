@@ -24,16 +24,25 @@ jobs:
         sudo chmod +x /usr/local/bin/bazel
         bazel version
 
-    - name: Download latest xlsynth release
-      id: download-release
+    - name: Download latest xlsynth release - dslx_interpreter_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
           | grep "browser_download_url.*dslx_interpreter_main-ubuntu2204" \
           | cut -d '"' -f 4)
         curl -L -o dslx_interpreter_main "$RELEASE_URL"
         chmod +x dslx_interpreter_main
-        mkdir dependencies
+        mkdir -p dependencies
         mv dslx_interpreter_main dependencies/
+
+    - name: Download latest xlsynth release - dslx_fmt
+      run: |
+        RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+          | grep "browser_download_url.*dslx_fmt-ubuntu2204" \
+          | cut -d '"' -f 4)
+        curl -L -o dslx_fmt "$RELEASE_URL"
+        chmod +x dslx_fmt
+        mkdir -p dependencies
+        mv dslx_fmt dependencies/
 
     - name: Download and unpack DSLX standard library
       run: |
