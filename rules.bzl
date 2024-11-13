@@ -15,9 +15,14 @@ load(
     ":dslx_to_sv_types.bzl",
     _dslx_to_sv_types = "dslx_to_sv_types",
 )
+load(
+    ":dslx_to_pipeline.bzl",
+    _dslx_to_pipeline = "dslx_to_pipeline",
+)
 
 DslxInfo = _DslxInfo
 dslx_library = _dslx_library
 dslx_test = _dslx_test
 dslx_fmt_test = _dslx_fmt_test
 dslx_to_sv_types = _dslx_to_sv_types
+dslx_to_pipeline = _dslx_to_pipeline

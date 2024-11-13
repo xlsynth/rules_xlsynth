@@ -3,7 +3,7 @@
 # Sample BUILD file
 # This example shows how to use the dslx_library and dslx_test rules
 
-load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test", "dslx_to_sv_types")
+load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test", "dslx_to_sv_types", "dslx_to_pipeline")
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 
 dslx_library(
@@ -36,6 +36,20 @@ dslx_library(
 dslx_test(
     name = "sample_test",
     deps = [":sample"],
+)
+
+dslx_to_pipeline(
+    name = "sample_main_sv",
+    deps = [":sample"],
+    delay_model = "asap7",
+    pipeline_stages = 1,
+    top = "main",
+)
+
+diff_test(
+    name = "sample_main_sv_test",
+    file1 = ":sample_main_sv",
+    file2 = ":sample_main_sv.golden.sv",
 )
 
 dslx_fmt_test(
