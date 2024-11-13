@@ -11,8 +11,13 @@ load(
     ":dslx_fmt.bzl",
     _dslx_fmt_test = "dslx_fmt_test",
 )
+load(
+    ":dslx_to_sv_types.bzl",
+    _dslx_to_sv_types = "dslx_to_sv_types",
+)
 
 DslxInfo = _DslxInfo
 dslx_library = _dslx_library
 dslx_test = _dslx_test
 dslx_fmt_test = _dslx_fmt_test
+dslx_to_sv_types = _dslx_to_sv_types

@@ -3,7 +3,8 @@
 # Sample BUILD file
 # This example shows how to use the dslx_library and dslx_test rules
 
-load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test")
+load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test", "dslx_to_sv_types")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 
 dslx_library(
     name = "imported",
@@ -13,6 +14,17 @@ dslx_library(
 dslx_test(
     name = "imported_test",
     deps = [":imported"],
+)
+
+dslx_to_sv_types(
+    name = "imported_pkg",
+    deps = [":imported"],
+)
+
+diff_test(
+    name = "imported_pkg_test",
+    file1 = ":imported_pkg",
+    file2 = ":imported_pkg.golden.sv",
 )
 
 dslx_library(
