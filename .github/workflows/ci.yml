@@ -26,8 +26,26 @@ jobs:
       run: |
         cargo install xlsynth-driver
 
+    - name: Download and rename libxls
+      run: |
+        RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+          | grep "browser_download_url.*libxls-ubuntu2004.so" \
+          | cut -d '"' -f 4)
+        VERSION=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+          | grep "tag_name" \
+          | cut -d '"' -f 4)
+        echo "version: ${VERSION}"
+        curl -L -o libxls-ubuntu2004.so "$RELEASE_URL"
+        mv libxls-ubuntu2004.so "libxls-$VERSION-ubuntu2004.so"
+        ls *.so
+        file *.so
+        export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
+        sudo ln -s ${PWD}/"libxls-$VERSION-ubuntu2004.so" /usr/lib/
+
     - name: Note xlsynth-driver version
       run: |
+        #ldd $(which xlsynth-driver)
+        #LD_DEBUG=libs xlsynth-driver version
         xlsynth-driver version
 
     - name: Set up Bazelisk
@@ -69,11 +87,22 @@ jobs:
     - name: Run Bazel tests
       run: |
         XLSYNTH_TOOLS=$(pwd)/dependencies
+        XLSYNTH_DRIVER_DIR=$(dirname "$(which xlsynth-driver)")
         export XLSYNTH_TOOLS
-        bazel test --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS -c opt --test_output=errors -- //...
+        bazel test \
+            --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS \
+            --action_env=XLSYNTH_DRIVER_DIR=$XLSYNTH_DRIVER_DIR \
+            -c opt --test_output=errors \
+            -- //...
 
-    - name: Run Bazel tests
+    - name: Run Bazel tests (expecting DSLX path)
       run: |
         XLSYNTH_TOOLS=$(pwd)/dependencies
+        XLSYNTH_DRIVER_DIR=$(dirname "$(which xlsynth-driver)")
         export XLSYNTH_TOOLS
-        bazel test --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS --action_env=XLSYNTH_DSLX_PATH=sample_expecting_dslx_path -c opt //sample_expecting_dslx_path:main_test --test_output=errors
+        bazel test \
+            --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS \
+            --action_env=XLSYNTH_DRIVER_DIR=$XLSYNTH_DRIVER_DIR \
+            --action_env=XLSYNTH_DSLX_PATH=sample_expecting_dslx_path \
+            -c opt //sample_expecting_dslx_path:main_test \
+            --test_output=errors
