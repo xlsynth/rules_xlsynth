@@ -29,12 +29,14 @@ def _dslx_to_pipeline_impl(ctx):
     dslx_stdlib_path = xlsynth_tool_dir + "/xls/dslx/stdlib"
     tool_path = xlsynth_tool_dir
     additional_dslx_paths = env.get("XLSYNTH_DSLX_PATH", "")
+    additional_dslx_paths_list = additional_dslx_paths.split(":")
+    additional_dslx_paths_toml = ", ".join([repr(s) for s in additional_dslx_paths_list])
 
     config_file_content = """[toolchain]
 dslx_stdlib_path = "{}"
 tool_path = "{}"
 dslx_path = [{}]
-""".format(dslx_stdlib_path, tool_path, additional_dslx_paths)
+""".format(dslx_stdlib_path, tool_path, additional_dslx_paths_toml)
 
     # Write the configuration file
     config_file = ctx.actions.declare_file(ctx.label.name + "_config.toml")
