@@ -4,7 +4,7 @@
 
 ### `dslx_library`, `dslx_test` — libraries/tests for DSLX files
 
-```
+```starlark
 load("@rules_xlsynth//:rules.bzl", "dslx_library", "dslx_test")
 
 dslx_library(
