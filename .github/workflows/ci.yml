@@ -133,7 +133,7 @@ jobs:
         bazel test \
             --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS \
             --action_env=XLSYNTH_DRIVER_DIR=$XLSYNTH_DRIVER_DIR \
-            --action_env=XLSYNTH_DSLX_PATH=sample_expecting_dslx_path \
+            --action_env=XLSYNTH_DSLX_PATH=sample_expecting_dslx_path:sample_expecting_dslx_path/subdir \
             -c opt \
             --test_output=errors \
             //sample_expecting_dslx_path:main_test \
