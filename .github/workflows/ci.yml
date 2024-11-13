@@ -123,7 +123,9 @@ jobs:
             --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS \
             --action_env=XLSYNTH_DRIVER_DIR=$XLSYNTH_DRIVER_DIR \
             -c opt --test_output=errors \
-            -- //...
+            -- \
+            //sample/... \
+            -//sample_expecting_dslx_path/...
 
     - name: Run Bazel tests (expecting DSLX path)
       run: |
