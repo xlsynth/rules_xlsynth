@@ -6,7 +6,8 @@
 # This particular sample shows how things work when we give a XLSYNTH_DSLX_PATH
 # environment variable.
 
-load("//:rules.bzl", "dslx_library", "dslx_test")
+load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_to_pipeline")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 
 dslx_library(
     name = "imported",
@@ -22,5 +23,20 @@ dslx_library(
 dslx_test(
     name = "main_test",
     deps = [":main"],
+    tags = ["manual"],
+)
+
+dslx_to_pipeline(
+    name = "add_mol_pipeline",
+    deps = [":main"],
+    top = "add_mol",
+    delay_model = "asap7",
+    pipeline_stages = 1,
+)
+
+diff_test(
+    name = "add_mol_pipeline_sv_test",
+    file1 = ":add_mol_pipeline",
+    file2 = ":add_mol_pipeline.golden.sv",
     tags = ["manual"],
 )

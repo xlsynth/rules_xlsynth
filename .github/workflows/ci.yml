@@ -134,5 +134,7 @@ jobs:
             --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS \
             --action_env=XLSYNTH_DRIVER_DIR=$XLSYNTH_DRIVER_DIR \
             --action_env=XLSYNTH_DSLX_PATH=sample_expecting_dslx_path \
-            -c opt //sample_expecting_dslx_path:main_test \
-            --test_output=errors
+            -c opt \
+            --test_output=errors \
+            //sample_expecting_dslx_path:main_test \
+            //sample_expecting_dslx_path:add_mol_pipeline_sv_test
