@@ -43,6 +43,8 @@ dslx_to_pipeline(
     deps = [":sample"],
     delay_model = "asap7",
     pipeline_stages = 1,
+    input_valid_signal = "input_valid",
+    output_valid_signal = "output_valid",
     top = "main",
 )
 

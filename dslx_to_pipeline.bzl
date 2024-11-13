@@ -50,9 +50,11 @@ dslx_path = [{}]
     if ctx.attr.delay_model:
         flags_str += ' --delay_model=' + ctx.attr.delay_model
 
-    # Pipeline stages flag
-    if ctx.attr.pipeline_stages:
-        flags_str += ' --pipeline_stages=' + str(ctx.attr.pipeline_stages)
+    string_flags = ['pipeline_stages', 'input_valid_signal', 'output_valid_signal']
+    for flag in string_flags:
+        value = getattr(ctx.attr, flag)
+        if value:
+            flags_str += ' --{}={}'.format(flag, value)
 
     # Top entry function flag
     if ctx.attr.top:
@@ -98,6 +100,12 @@ dslx_to_pipeline = rule(
         "delay_model": attr.string(
             doc = "The delay model to be used (e.g., 'asap7').",
             default = "",
+        ),
+        "input_valid_signal": attr.string(
+            doc = "The pipeline load enable signal to use for input data",
+        ),
+        "output_valid_signal": attr.string(
+            doc = "The pipeline load enable signal for output data",
         ),
         "pipeline_stages": attr.int(
             doc = "The number of pipeline stages.",
