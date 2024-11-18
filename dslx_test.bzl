@@ -17,10 +17,10 @@ def _dslx_test_impl(ctx):
     xlsynth_tool_dir = env.get("XLSYNTH_TOOLS")
     if not xlsynth_tool_dir:
         fail("Please set XLSYNTH_TOOLS environment variable")
-    
+
     # Ensure the interpreter binary exists
     dslx_interpreter_file = xlsynth_tool_dir + "/dslx_interpreter_main"
-    
+
     # Get DAG entries from DslxInfo
     dag_entries = []
     for dep in ctx.attr.deps:

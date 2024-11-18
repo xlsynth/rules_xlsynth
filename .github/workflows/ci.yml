@@ -86,6 +86,16 @@ jobs:
         mkdir -p dependencies
         mv opt_main dependencies/
 
+    - name: Download latest xlsynth release - typecheck_main
+      run: |
+        RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+          | grep "browser_download_url.*typecheck_main-ubuntu2204" \
+          | cut -d '"' -f 4)
+        curl -L -o typecheck_main "$RELEASE_URL"
+        chmod +x typecheck_main
+        mkdir -p dependencies
+        mv typecheck_main dependencies/
+
     - name: Download latest xlsynth release - codegen_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
