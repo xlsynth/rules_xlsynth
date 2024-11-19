@@ -38,6 +38,8 @@ dslx_test(
     deps = [":sample"],
 )
 
+# -- one-stage pipeline w/valid signals
+
 dslx_to_pipeline(
     name = "sample_main_sv",
     deps = [":sample"],
@@ -53,6 +55,27 @@ diff_test(
     file1 = ":sample_main_sv",
     file2 = ":sample_main_sv.golden.sv",
 )
+
+# -- no flops on input/output
+
+dslx_to_pipeline(
+    name = "sample_main_sv_noflops",
+    deps = [":sample"],
+    delay_model = "asap7",
+    pipeline_stages = 1,
+    flop_inputs = False,
+    flop_outputs = False,
+    module_name = "noflops",
+    top = "main",
+)
+
+diff_test(
+    name = "sample_main_sv_noflops_test",
+    file1 = ":sample_main_sv_noflops",
+    file2 = ":sample_main_sv_noflops.golden.sv",
+)
+
+# -- formatting test
 
 dslx_fmt_test(
     name = "dslx_fmt_test",

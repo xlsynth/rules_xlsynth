@@ -52,11 +52,16 @@ dslx_path = [{}]
     if ctx.attr.delay_model:
         flags_str += ' --delay_model=' + ctx.attr.delay_model
 
-    string_flags = ['pipeline_stages', 'input_valid_signal', 'output_valid_signal']
+    string_flags = ['pipeline_stages', 'input_valid_signal', 'output_valid_signal', 'module_name']
     for flag in string_flags:
         value = getattr(ctx.attr, flag)
         if value:
             flags_str += ' --{}={}'.format(flag, value)
+    
+    bool_flags = ['flop_inputs', 'flop_outputs']
+    for flag in bool_flags:
+        value = getattr(ctx.attr, flag)
+        flags_str += ' --{}={}'.format(flag, str(value).lower())
 
     # Top entry function flag
     if ctx.attr.top:
@@ -112,6 +117,18 @@ dslx_to_pipeline = rule(
         "pipeline_stages": attr.int(
             doc = "The number of pipeline stages.",
             default = 0,
+        ),
+        "flop_inputs": attr.bool(
+            doc = "Whether to flop the input ports.",
+            default = True,
+        ),
+        "flop_outputs": attr.bool(
+            doc = "Whether to flop the output ports.",
+            default = True,
+        ),
+        "module_name": attr.string(
+            doc = "The module name to use in generation.",
+            default = "",
         ),
         "top": attr.string(
             doc = "The top entry function within the dependency module.",
