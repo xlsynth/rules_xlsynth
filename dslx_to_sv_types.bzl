@@ -37,8 +37,8 @@ def _dslx_to_sv_types_impl(ctx):
 
     cmd = "{} dslx2sv-types {} {} > {}".format(
         xlsynth_driver_file,
+	srcs[0].path,
         flags_str,
-        ' '.join([src.path for src in srcs]),
         output_sv_path,
     )
 
