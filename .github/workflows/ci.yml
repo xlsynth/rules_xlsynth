@@ -54,8 +54,8 @@ jobs:
 
     - name: Note xlsynth-driver version
       run: |
-        #ldd $(which xlsynth-driver)
-        #LD_DEBUG=libs xlsynth-driver version
+        ldd $(which xlsynth-driver)
+        LD_DEBUG=libs xlsynth-driver version
         xlsynth-driver version
 
     - name: Set up Bazelisk
