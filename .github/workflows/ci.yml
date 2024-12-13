@@ -10,11 +10,21 @@ on:
 
 jobs:
   dslx_ci:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+
+    - name: Print OS and environment versions
+      run: |
+        cat /etc/issue
+        # Print out the GLIBC version via `ldd`.
+        ldd --version
+        # More version information from invoking the libraries directly.
+        echo "glibc version: $(ldd --version | head -n1 | awk '{print $NF}')" && \
+        echo "Available GLIBCXX versions:" && \
+        strings $(ldconfig -p | grep 'libstdc++.so.6' | awk '{print $NF}' | head -n1) | grep GLIBCXX
 
     - name: Install Rust and Cargo
       uses: actions-rs/toolchain@v1
@@ -24,7 +34,7 @@ jobs:
 
     - name: Install xlsynth-driver using Cargo
       run: |
-        cargo install xlsynth-driver
+        cargo install -vv xlsynth-driver
 
     - name: Download and rename libxls
       run: |
@@ -44,9 +54,9 @@ jobs:
 
     - name: Note xlsynth-driver version
       run: |
-        #ldd $(which xlsynth-driver)
-        #LD_DEBUG=libs xlsynth-driver version
-        xlsynth-driver version
+        ldd $(which xlsynth-driver)
+        LD_DEBUG=libs xlsynth-driver version
+        #xlsynth-driver version
 
     - name: Set up Bazelisk
       run: |
@@ -59,7 +69,7 @@ jobs:
     - name: Download latest xlsynth release - dslx_interpreter_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*dslx_interpreter_main-ubuntu2204" \
+          | grep "browser_download_url.*dslx_interpreter_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o dslx_interpreter_main "$RELEASE_URL"
         chmod +x dslx_interpreter_main
@@ -69,7 +79,7 @@ jobs:
     - name: Download latest xlsynth release - ir_converter_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*ir_converter_main-ubuntu2204" \
+          | grep "browser_download_url.*ir_converter_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o ir_converter_main "$RELEASE_URL"
         chmod +x ir_converter_main
@@ -79,7 +89,7 @@ jobs:
     - name: Download latest xlsynth release - opt_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*opt_main-ubuntu2204" \
+          | grep "browser_download_url.*opt_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o opt_main "$RELEASE_URL"
         chmod +x opt_main
@@ -89,7 +99,7 @@ jobs:
     - name: Download latest xlsynth release - typecheck_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*typecheck_main-ubuntu2204" \
+          | grep "browser_download_url.*typecheck_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o typecheck_main "$RELEASE_URL"
         chmod +x typecheck_main
@@ -99,7 +109,7 @@ jobs:
     - name: Download latest xlsynth release - codegen_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*codegen_main-ubuntu2204" \
+          | grep "browser_download_url.*codegen_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o codegen_main "$RELEASE_URL"
         chmod +x codegen_main
@@ -109,7 +119,7 @@ jobs:
     - name: Download latest xlsynth release - dslx_fmt
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*dslx_fmt-ubuntu2204" \
+          | grep "browser_download_url.*dslx_fmt-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o dslx_fmt "$RELEASE_URL"
         chmod +x dslx_fmt
