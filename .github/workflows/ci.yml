@@ -34,7 +34,7 @@ jobs:
 
     - name: Install xlsynth-driver using Cargo
       run: |
-        cargo install xlsynth-driver
+        cargo install -vv xlsynth-driver
 
     - name: Download and rename libxls
       run: |
@@ -56,7 +56,7 @@ jobs:
       run: |
         ldd $(which xlsynth-driver)
         LD_DEBUG=libs xlsynth-driver version
-        xlsynth-driver version
+        #xlsynth-driver version
 
     - name: Set up Bazelisk
       run: |
