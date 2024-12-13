@@ -40,3 +40,18 @@ dslx_to_sv_types(
     deps = [":foo"],
 )
 ```
+
+### `dslx_to_ir` — convert DSLX to optimized IR
+
+Given a DSLX library target as a dependency, this rule will generate an optimized IR file
+for a given `top` entry point.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "dslx_to_ir")
+
+dslx_to_ir(
+    name = "my_dslx_library_ir",
+    deps = [":my_dslx_library"],
+    top = "main",
+)
+```

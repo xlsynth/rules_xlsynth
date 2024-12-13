@@ -3,8 +3,10 @@
 # Sample BUILD file
 # This example shows how to use the dslx_library and dslx_test rules
 
-load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test", "dslx_to_sv_types", "dslx_to_pipeline")
+load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test", "dslx_to_sv_types",
+     "dslx_to_pipeline", "dslx_to_ir")
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 dslx_library(
     name = "imported",
@@ -31,6 +33,17 @@ dslx_library(
     name = "sample",
     srcs = ["sample.x"],
     deps = [":imported"],
+)
+
+dslx_to_ir(
+    name = "sample_ir",
+    deps = [":sample"],
+    top = "main",
+)
+
+build_test(
+    name = "sample_ir_test",
+    targets = [":sample_ir"],
 )
 
 dslx_test(

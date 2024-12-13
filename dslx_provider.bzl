@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
-load(":helpers.bzl", "write_executable_shell_script")
-
 DslxInfo = provider(
     doc = "Contains DAG info per node in a struct.",
     fields = {

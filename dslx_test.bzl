@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "write_executable_shell_script")
+load(":helpers.bzl", "write_executable_shell_script", "get_driver_path", "get_srcs_from_deps")
 
 def _dslx_test_impl(ctx):
     """
@@ -19,18 +19,10 @@ def _dslx_test_impl(ctx):
         fail("Please set XLSYNTH_TOOLS environment variable")
 
     # Ensure the interpreter binary exists
+    xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
     dslx_interpreter_file = xlsynth_tool_dir + "/dslx_interpreter_main"
 
-    # Get DAG entries from DslxInfo
-    dag_entries = []
-    for dep in ctx.attr.deps:
-        dag_entries.extend(dep[DslxInfo].dag.to_list())
-    
-    srcs = []
-    for entry in dag_entries:
-        srcs += [src for src in list(entry.srcs)]
-
-    srcs = list(reversed(srcs))
+    srcs = get_srcs_from_deps(ctx)
 
     #print('srcs:', srcs)
 

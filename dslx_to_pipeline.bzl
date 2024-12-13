@@ -1,49 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
+load(":helpers.bzl", "get_driver_path", "get_srcs_from_deps", "write_config_toml")
 
 def _dslx_to_pipeline_impl(ctx):
     env = ctx.configuration.default_shell_env
-    xlsynth_tool_dir = env.get("XLSYNTH_TOOLS")
-    if not xlsynth_tool_dir:
-        fail("Please set XLSYNTH_TOOLS environment variable")
-    xlsynth_driver_dir = env.get("XLSYNTH_DRIVER_DIR")
-    if not xlsynth_driver_dir:
-        fail("Please set XLSYNTH_DRIVER_DIR environment variable")
+    xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
 
-    # Ensure the interpreter binary exists
-    xlsynth_driver_file = xlsynth_driver_dir + "/xlsynth-driver"
+    srcs = get_srcs_from_deps(ctx)
 
-    # Get DAG entries from DslxInfo
-    dag_entries = []
-    for dep in ctx.attr.deps:
-        dag_entries.extend(dep[DslxInfo].dag.to_list())
-
-    srcs = []
-    for entry in dag_entries:
-        srcs += [src for src in list(entry.srcs)]
-
-    srcs = list(reversed(srcs))
-
-    # Define the configuration file contents
-    dslx_stdlib_path = xlsynth_tool_dir + "/xls/dslx/stdlib"
-    tool_path = xlsynth_tool_dir
-    additional_dslx_paths = env.get("XLSYNTH_DSLX_PATH", "")
-    additional_dslx_paths_list = additional_dslx_paths.split(":")
-    additional_dslx_paths_toml = ", ".join([repr(s) for s in additional_dslx_paths_list])
-
-    config_file_content = """[toolchain]
-dslx_stdlib_path = "{}"
-tool_path = "{}"
-dslx_path = [{}]
-""".format(dslx_stdlib_path, tool_path, additional_dslx_paths_toml)
-
-    # Write the configuration file
-    config_file = ctx.actions.declare_file(ctx.label.name + "_config.toml")
-    ctx.actions.write(
-        output=config_file,
-        content=config_file_content,
-    )
+    config_file = write_config_toml(ctx, xlsynth_tool_dir)
 
     # Flags for stdlib path
     flags_str = ''

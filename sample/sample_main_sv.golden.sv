@@ -13,17 +13,17 @@ module __sample__main(
   end
 
   // ===== Pipe stage 1:
-  wire [31:0] p1_MOL_comb;
-  assign p1_MOL_comb = 32'h0000_002a;
+  wire [31:0] p1_literal_8_comb;
+  assign p1_literal_8_comb = 32'h0000_002a;
 
   // Registers for pipe stage 1:
   reg p1_valid;
-  reg [31:0] p1_MOL;
+  reg [31:0] p1_literal_8;
   always_ff @ (posedge clk) begin
     p1_valid <= p0_valid;
-    p1_MOL <= p0_valid ? p1_MOL_comb : p1_MOL;
+    p1_literal_8 <= p0_valid ? p1_literal_8_comb : p1_literal_8;
   end
   assign output_valid = p1_valid;
-  assign out = p1_MOL;
+  assign out = p1_literal_8;
 endmodule
 

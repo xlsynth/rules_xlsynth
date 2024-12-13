@@ -1,4 +1,4 @@
-load(":helpers.bzl", "write_executable_shell_script")
+load(":helpers.bzl", "write_executable_shell_script", "get_driver_path")
 
 def _dslx_format_impl(ctx):
     env = ctx.configuration.default_shell_env
