@@ -71,7 +71,7 @@ jobs:
     - name: Download latest xlsynth release - dslx_interpreter_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*dslx_interpreter_main-ubuntu2204" \
+          | grep "browser_download_url.*dslx_interpreter_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o dslx_interpreter_main "$RELEASE_URL"
         chmod +x dslx_interpreter_main
@@ -81,7 +81,7 @@ jobs:
     - name: Download latest xlsynth release - ir_converter_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*ir_converter_main-ubuntu2204" \
+          | grep "browser_download_url.*ir_converter_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o ir_converter_main "$RELEASE_URL"
         chmod +x ir_converter_main
@@ -91,7 +91,7 @@ jobs:
     - name: Download latest xlsynth release - opt_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*opt_main-ubuntu2204" \
+          | grep "browser_download_url.*opt_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o opt_main "$RELEASE_URL"
         chmod +x opt_main
@@ -101,7 +101,7 @@ jobs:
     - name: Download latest xlsynth release - typecheck_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*typecheck_main-ubuntu2204" \
+          | grep "browser_download_url.*typecheck_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o typecheck_main "$RELEASE_URL"
         chmod +x typecheck_main
@@ -111,7 +111,7 @@ jobs:
     - name: Download latest xlsynth release - codegen_main
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*codegen_main-ubuntu2204" \
+          | grep "browser_download_url.*codegen_main-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o codegen_main "$RELEASE_URL"
         chmod +x codegen_main
@@ -121,7 +121,7 @@ jobs:
     - name: Download latest xlsynth release - dslx_fmt
       run: |
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*dslx_fmt-ubuntu2204" \
+          | grep "browser_download_url.*dslx_fmt-ubuntu2004" \
           | cut -d '"' -f 4)
         curl -L -o dslx_fmt "$RELEASE_URL"
         chmod +x dslx_fmt
