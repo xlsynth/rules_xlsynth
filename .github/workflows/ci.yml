@@ -19,8 +19,12 @@ jobs:
     - name: Print OS and environment versions
       run: |
         cat /etc/issue
-        # Print out the GLIBC version.
+        # Print out the GLIBC version via `ldd`.
         ldd --version
+        # More version information from invoking the libraries directly.
+        echo "glibc version: $(ldd --version | head -n1 | awk '{print $NF}')" && \
+        echo "Available GLIBCXX versions:" && \
+        strings $(ldconfig -p | grep 'libstdc++.so.6' | awk '{print $NF}' | head -n1) | grep GLIBCXX
 
     - name: Install Rust and Cargo
       uses: actions-rs/toolchain@v1
