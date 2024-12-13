@@ -43,7 +43,11 @@ dslx_to_sv_types(
 
 ### `dslx_to_ir` — convert DSLX to optimized IR
 
-Given a DSLX library target as a dependency, this rule will generate an optimized IR file
+Given a DSLX library target as a dependency, this rule will generate:
+
+- an unoptimized IR file (simply IR converted DSLX); i.e. `my_dslx_library_ir.ir`
+- an optimized IR file (optimized IR from the previous step); i.e. `my_dslx_library_ir.opt.ir`
+
 for a given `top` entry point.
 
 ```starlark
