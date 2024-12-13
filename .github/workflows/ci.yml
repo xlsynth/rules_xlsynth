@@ -38,19 +38,21 @@ jobs:
 
     - name: Download and rename libxls
       run: |
+        # Note: even though we're running on Ubuntu 22.04, we need to download the
+        # Ubuntu 20.04 version of libxls since that's what the xlsynth-sys crate links against.
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "browser_download_url.*libxls-ubuntu2204.so" \
+          | grep "browser_download_url.*libxls-ubuntu2004.so" \
           | cut -d '"' -f 4)
         VERSION=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
           | grep "tag_name" \
           | cut -d '"' -f 4)
         echo "version: ${VERSION}"
-        curl -L -o libxls-ubuntu2204.so "$RELEASE_URL"
-        mv libxls-ubuntu2204.so "libxls-$VERSION-ubuntu2204.so"
+        curl -L -o libxls-ubuntu2004.so "$RELEASE_URL"
+        mv libxls-ubuntu2004.so "libxls-$VERSION-ubuntu2004.so"
         ls *.so
         file *.so
         export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
-        sudo ln -s ${PWD}/"libxls-$VERSION-ubuntu2204.so" /usr/lib/
+        sudo ln -s ${PWD}/"libxls-$VERSION-ubuntu2004.so" /usr/lib/
 
     - name: Note xlsynth-driver version
       run: |
