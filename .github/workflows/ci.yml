@@ -10,7 +10,7 @@ on:
 
 jobs:
   dslx_ci:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
 
     steps:
     - name: Checkout code
@@ -38,8 +38,6 @@ jobs:
 
     - name: Download and rename libxls
       run: |
-        # Note: even though we're running on Ubuntu 22.04, we need to download the
-        # Ubuntu 20.04 version of libxls since that's what the xlsynth-sys crate links against.
         RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
           | grep "browser_download_url.*libxls-ubuntu2004.so" \
           | cut -d '"' -f 4)
