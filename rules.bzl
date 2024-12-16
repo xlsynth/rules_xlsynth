@@ -23,6 +23,11 @@ load(
     ":dslx_to_ir.bzl",
     _dslx_to_ir = "dslx_to_ir",
 )
+load(
+    ":ir_to_delay_info.bzl",
+    _ir_to_delay_info = "ir_to_delay_info",
+)
+load(":helpers.bzl", _mangle_dslx_name = "mangle_dslx_name")
 
 DslxInfo = _DslxInfo
 dslx_library = _dslx_library
@@ -31,3 +36,5 @@ dslx_fmt_test = _dslx_fmt_test
 dslx_to_sv_types = _dslx_to_sv_types
 dslx_to_pipeline = _dslx_to_pipeline
 dslx_to_ir = _dslx_to_ir
+ir_to_delay_info = _ir_to_delay_info
+mangle_dslx_name = _mangle_dslx_name

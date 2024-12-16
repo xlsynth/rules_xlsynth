@@ -2,6 +2,7 @@
 
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_driver_path", "get_srcs_from_deps", "write_config_toml", "mangle_dslx_name")
+load(":ir_provider.bzl", "IrInfo")
 
 def _dslx_to_ir_impl(ctx):
     env = ctx.configuration.default_shell_env
@@ -49,6 +50,11 @@ def _dslx_to_ir_impl(ctx):
         use_default_shell_env = True,
         progress_message = "Optimizing IR",
         mnemonic = "IR2OPT",
+    )
+
+    return IrInfo(
+        ir_file = ctx.outputs.ir_file,
+        opt_ir_file = ctx.outputs.opt_ir_file,
     )
 
 dslx_to_ir = rule(

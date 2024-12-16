@@ -126,6 +126,16 @@ jobs:
         mkdir -p dependencies
         mv dslx_fmt dependencies/
 
+    - name: Download latest xlsynth release - delay_info_main
+      run: |
+        RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+          | grep "browser_download_url.*delay_info_main-ubuntu2004" \
+          | cut -d '"' -f 4)
+        curl -L -o delay_info_main "$RELEASE_URL"
+        chmod +x delay_info_main
+        mkdir -p dependencies
+        mv delay_info_main dependencies/
+
     - name: Download and unpack DSLX standard library
       run: |
         STD_LIB_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \

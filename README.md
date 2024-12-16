@@ -59,3 +59,15 @@ dslx_to_ir(
     top = "main",
 )
 ```
+
+### `ir_to_delay_info` — convert IR to delay info
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "ir_to_delay_info")
+
+ir_to_delay_info(
+    name = "my_dslx_library_delay_info",
+    ir = ":my_dslx_library_ir",
+    delay_model = "asap7",
+)
+```
