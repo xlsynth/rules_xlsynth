@@ -4,7 +4,7 @@
 # This example shows how to use the dslx_library and dslx_test rules
 
 load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test", "dslx_to_sv_types",
-     "dslx_to_pipeline", "dslx_to_ir")
+     "dslx_to_pipeline", "dslx_to_ir", "ir_to_delay_info", "mangle_dslx_name")
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
@@ -44,6 +44,20 @@ dslx_to_ir(
 build_test(
     name = "sample_ir_test",
     targets = [":sample_ir"],
+)
+
+ir_to_delay_info(
+    name = "sample_delay_info",
+    ir = ":sample_ir",
+    delay_model = "asap7",
+    top = mangle_dslx_name("sample", "main"),
+    # Use the unoptimized IR file just to show a non-trivial path.
+    use_unopt_ir = True,
+)
+
+build_test(
+    name = "sample_delay_info_test",
+    targets = [":sample_delay_info"],
 )
 
 dslx_test(

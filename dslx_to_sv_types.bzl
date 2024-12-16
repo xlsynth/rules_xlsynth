@@ -2,6 +2,7 @@
 
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_driver_path", "get_srcs_from_deps", "write_config_toml")
+
 def _dslx_to_sv_types_impl(ctx):
     env = ctx.configuration.default_shell_env
     xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
