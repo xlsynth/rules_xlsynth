@@ -6,4 +6,8 @@ import sample.imported;
 fn main() -> u32 { (imported::MOL << 1) >> 1 }
 
 #[test]
-fn test_main() { assert_eq(main(), u32:42) }
+fn test_main() {
+    let got = main();
+    trace_fmt!("got: {}", got);
+    assert_eq(got, u32:42);
+}

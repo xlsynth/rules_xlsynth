@@ -24,9 +24,7 @@ def _dslx_test_impl(ctx):
 
     srcs = get_srcs_from_deps(ctx)
 
-    #print('srcs:', srcs)
-
-    flags_str = '--dslx_stdlib_path=' + xlsynth_tool_dir + '/xls/dslx/stdlib'
+    flags_str = '--alsologtostderr --dslx_stdlib_path=' + xlsynth_tool_dir + '/xls/dslx/stdlib'
 
     additional_dslx_paths = env.get("XLSYNTH_DSLX_PATH")
     if additional_dslx_paths:
