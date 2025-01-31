@@ -18,3 +18,10 @@ repos:
         language: system
         pass_filenames: false
         additional_dependencies: []
+      - id: mypy-check
+        name: Run mypy type checker
+        entry: mypy run_presubmit.py
+        language: python
+        pass_filenames: false
+        additional_dependencies:
+          - mypy

@@ -2,11 +2,12 @@ import dataclasses
 import subprocess
 import optparse
 import os
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Callable
 
-TO_RUN = []
+Runnable = Callable[['PathData'], None]
+TO_RUN: List[Runnable] = []
 
-def register(f):
+def register(f: Runnable):
     TO_RUN.append(f)
     return f
 
@@ -27,9 +28,12 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, capture_output
         flags += [
             '--action_env=XLSYNTH_DSLX_PATH=' + ':'.join(path_data.dslx_path),
         ]
-    cmdline = ['bazel', 'test', '--test_output=errors'] + flags + ['--', *targets]
-    kwargs = dict(stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8') if capture_output else {}
-    subprocess.run(cmdline, check=True, **kwargs)
+    cmdline_args = ['bazel', 'test', '--test_output=errors'] + flags + ['--', *targets]
+    cmdline = subprocess.list2cmdline(cmdline_args)
+    if capture_output:
+        subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
+    else:
+        subprocess.run(cmdline, check=True)
 
 @register
 def run_sample(path_data: PathData):
