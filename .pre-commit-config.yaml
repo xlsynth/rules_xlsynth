@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: no-commit-to-branch
+        args: ['--branch', 'main']
+  - repo: local
+    hooks:
+      - id: run-presubmit
+        name: Run presubmit script
+        entry: >-
+          bash -c 'python3 run_presubmit.py \
+            --xlsynth-tools "$XLSYNTH_TOOLS" \
+            --xlsynth-driver-dir "$XLSYNTH_DRIVER_DIR" \
+            --dslx-path "$XLSYNTH_STDLIB_DIR"'
+        language: system
+        pass_filenames: false
+        additional_dependencies: []

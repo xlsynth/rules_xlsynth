@@ -1,6 +1,7 @@
 import dataclasses
 import subprocess
 import optparse
+import os
 from typing import Optional
 
 TO_RUN = []
@@ -15,7 +16,7 @@ class PathData:
     xlsynth_driver_dir: str
     dslx_path: Optional[tuple[str, ...]]
 
-def bazel_test_opt(targets: tuple[str, ...], path_data: PathData):
+def bazel_test_opt(targets: tuple[str, ...], path_data: PathData, capture_output: bool = False):
     assert isinstance(targets, tuple), targets
     flags = ['-c', 'opt', '--test_output=errors']
     flags += [
@@ -27,7 +28,8 @@ def bazel_test_opt(targets: tuple[str, ...], path_data: PathData):
             '--action_env=XLSYNTH_DSLX_PATH=' + ':'.join(path_data.dslx_path),
         ]
     cmdline = ['bazel', 'test', '--test_output=errors'] + flags + ['--', *targets]
-    subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
+    kwargs = dict(stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8') if capture_output else {}
+    subprocess.run(cmdline, check=True, **kwargs)
 
 @register
 def run_sample(path_data: PathData):
@@ -41,7 +43,7 @@ def run_sample_expecting_dslx_path(path_data: PathData):
 @register
 def run_sample_failing_quickcheck(path_data: PathData):
     try:
-        bazel_test_opt(('//sample_failing_quickcheck/...',), path_data)
+        bazel_test_opt(('//sample_failing_quickcheck/...',), path_data, capture_output=True)
     except subprocess.CalledProcessError as e:
         if 'Found falsifying example after 1 tests' in e.stdout:
             return
@@ -64,6 +66,9 @@ def main():
                          xlsynth_driver_dir=options.xlsynth_driver_dir,
                          dslx_path=dslx_path)
     
+    assert os.path.exists(os.path.join(path_data.xlsynth_tools, 'dslx_interpreter_main')), 'dslx_interpreter_main not found in XLSYNTH_TOOLS=' + path_data.xlsynth_tools
+    assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found in XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir
+
     for f in TO_RUN:
         print('Executing', f.__name__)
         f(path_data)
