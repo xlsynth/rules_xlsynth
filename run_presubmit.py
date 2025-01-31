@@ -2,7 +2,7 @@ import dataclasses
 import subprocess
 import optparse
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 TO_RUN = []
 
@@ -14,9 +14,9 @@ def register(f):
 class PathData:
     xlsynth_tools: str
     xlsynth_driver_dir: str
-    dslx_path: Optional[tuple[str, ...]]
+    dslx_path: Optional[Tuple[str, ...]]
 
-def bazel_test_opt(targets: tuple[str, ...], path_data: PathData, capture_output: bool = False):
+def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, capture_output: bool = False):
     assert isinstance(targets, tuple), targets
     flags = ['-c', 'opt', '--test_output=errors']
     flags += [
