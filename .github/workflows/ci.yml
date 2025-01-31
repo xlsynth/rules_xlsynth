@@ -144,29 +144,9 @@ jobs:
         curl -L -o dslx_stdlib.tar.gz "$STD_LIB_URL"
         tar -xzf dslx_stdlib.tar.gz -C dependencies/
 
-    - name: Run Bazel tests
+    - name: Run presubmit script
       run: |
-        XLSYNTH_TOOLS=$(pwd)/dependencies
-        XLSYNTH_DRIVER_DIR=$(dirname "$(which xlsynth-driver)")
-        export XLSYNTH_TOOLS
-        bazel test \
-            --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS \
-            --action_env=XLSYNTH_DRIVER_DIR=$XLSYNTH_DRIVER_DIR \
-            -c opt --test_output=errors \
-            -- \
-            //sample/... \
-            -//sample_expecting_dslx_path/...
-
-    - name: Run Bazel tests (expecting DSLX path)
-      run: |
-        XLSYNTH_TOOLS=$(pwd)/dependencies
-        XLSYNTH_DRIVER_DIR=$(dirname "$(which xlsynth-driver)")
-        export XLSYNTH_TOOLS
-        bazel test \
-            --action_env=XLSYNTH_TOOLS=$XLSYNTH_TOOLS \
-            --action_env=XLSYNTH_DRIVER_DIR=$XLSYNTH_DRIVER_DIR \
-            --action_env=XLSYNTH_DSLX_PATH=sample_expecting_dslx_path:sample_expecting_dslx_path/subdir \
-            -c opt \
-            --test_output=errors \
-            //sample_expecting_dslx_path:main_test \
-            //sample_expecting_dslx_path:add_mol_pipeline_sv_test
+        python3 run_presubmit.py \
+          --xlsynth-tools $(pwd)/dependencies \
+          --xlsynth-driver-dir $(dirname "$(which xlsynth-driver)") \
+          --dslx-path dependencies/dslx_stdlib

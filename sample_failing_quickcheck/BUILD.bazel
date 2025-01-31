@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "dslx_library", "dslx_test")
+
+dslx_library(
+    name = "failing_quickcheck",
+    srcs = ["failing_quickcheck.x"],
+)
+
+dslx_test(
+    name = "failing_quickcheck_test",
+    deps = [":failing_quickcheck"],
+)
