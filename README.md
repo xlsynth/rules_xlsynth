@@ -69,5 +69,6 @@ ir_to_delay_info(
     name = "my_dslx_library_delay_info",
     ir = ":my_dslx_library_ir",
     delay_model = "asap7",
+    top = "main",
 )
 ```
