@@ -13,7 +13,7 @@ def _dslx_to_sv_types_impl(ctx):
     output_sv_file = ctx.outputs.sv_file
     output_sv_path = output_sv_file.path
 
-    cmd = "{driver} --toolchain={toolchain} dslx2sv-types {src} > {output}".format(
+    cmd = "{driver} --toolchain={toolchain} dslx2sv-types --dslx_input_file {src} > {output}".format(
         driver = xlsynth_driver_file,
         toolchain = config_file.path,
         src = srcs[0].path,
