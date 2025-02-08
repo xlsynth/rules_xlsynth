@@ -40,11 +40,10 @@ def _dslx_to_pipeline_impl(ctx):
     output_sv_path = output_sv_file.path
 
     # Construct the command
-    cmd = "{} --toolchain={} dslx2pipeline {} {} {} > {}".format(
+    cmd = "{} --toolchain={} dslx2pipeline --dslx_input_file {} --dslx_top {} {} > {}".format(
         xlsynth_driver_file,
         config_file.path,
         srcs[0].path,
-        #' '.join([src.path for src in srcs]),
         top_entry,
         flags_str,
         output_sv_path,
