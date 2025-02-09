@@ -4,7 +4,7 @@ import dataclasses
 import subprocess
 import optparse
 import os
-from typing import Optional, Tuple, List, Callable
+from typing import Optional, Tuple, List, Callable, Dict
 
 Runnable = Callable[['PathData'], None]
 TO_RUN: List[Runnable] = []
@@ -19,7 +19,7 @@ class PathData:
     xlsynth_driver_dir: str
     dslx_path: Optional[Tuple[str, ...]]
 
-def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, capture_output: bool = False):
+def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
     assert isinstance(targets, tuple), targets
     flags = ['-c', 'opt', '--test_output=errors']
     flags += [
@@ -30,7 +30,11 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, capture_output
         flags += [
             '--action_env=XLSYNTH_DSLX_PATH=' + ':'.join(path_data.dslx_path),
         ]
+    if more_action_env:
+        for k, v in more_action_env.items():
+            flags += ['--action_env=' + k + '=' + v]
     cmdline = ['bazel', 'test', '--test_output=errors'] + flags + ['--', *targets]
+    print('Running command: ' + subprocess.list2cmdline(cmdline))
     if capture_output:
         subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
     else:
@@ -57,6 +61,21 @@ def run_sample_failing_quickcheck(path_data: PathData):
     else:
         raise ValueError('Expected quickcheck to fail')
 
+@register
+def run_sample_disabling_warning(path_data: PathData):
+    try:
+        print('Running with warnings as default...')
+        bazel_test_opt(('//sample_disabling_warning/...',), path_data, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        if 'is not used in function' in e.stderr:
+            pass
+        else:
+            raise ValueError('Unexpected error running disabling warning: ' + e.stdout)
+
+    # Now we disable the warning and it should be ok.
+    print('Now running with warnings disabled...')
+    bazel_test_opt(('//sample_disabling_warning/...',), path_data, more_action_env={'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition,empty_range_literal'})
+
 def main():
     parser = optparse.OptionParser()
     parser.add_option('--xlsynth-tools', type='string', help='Path to xlsynth tools')
@@ -75,6 +94,7 @@ def main():
     assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found in XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir
 
     for f in TO_RUN:
+        print('-' * 80)
         print('Executing', f.__name__)
         f(path_data)
 

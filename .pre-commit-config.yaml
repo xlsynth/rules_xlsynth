@@ -14,7 +14,7 @@ repos:
           bash -c 'python3 run_presubmit.py \
             --xlsynth-tools "$XLSYNTH_TOOLS" \
             --xlsynth-driver-dir "$XLSYNTH_DRIVER_DIR" \
-            --dslx-path "$XLSYNTH_STDLIB_DIR"'
+            --dslx-path "$XLSYNTH_DSLX_STDLIB_PATH"'
         language: system
         pass_filenames: false
         additional_dependencies: []

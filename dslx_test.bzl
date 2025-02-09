@@ -30,6 +30,14 @@ def _dslx_test_impl(ctx):
     if additional_dslx_paths:
         flags_str += ' --dslx_path=' + additional_dslx_paths
 
+    enable_warnings = env.get("XLSYNTH_DSLX_ENABLE_WARNINGS")
+    if enable_warnings:
+        flags_str += ' --enable_warnings=' + enable_warnings
+
+    disable_warnings = env.get("XLSYNTH_DSLX_DISABLE_WARNINGS")
+    if disable_warnings:
+        flags_str += ' --disable_warnings=' + disable_warnings
+
     cmd = dslx_interpreter_file + ' ' + flags_str + ' ' + ' '.join([src.path for src in srcs])
 
     runfiles = ctx.runfiles(srcs)

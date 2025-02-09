@@ -50,15 +50,27 @@ def write_config_toml(ctx, xlsynth_tool_dir):
     # Define the configuration file contents
     dslx_stdlib_path = xlsynth_tool_dir + "/xls/dslx/stdlib"
     tool_path = xlsynth_tool_dir
-    additional_dslx_paths = env.get("XLSYNTH_DSLX_PATH", "")
-    additional_dslx_paths_list = additional_dslx_paths.split(":")
-    additional_dslx_paths_toml = ", ".join([repr(s) for s in additional_dslx_paths_list])
+    additional_dslx_paths = env.get("XLSYNTH_DSLX_PATH", "").strip()
+    additional_dslx_paths_list = additional_dslx_paths.split(":") if additional_dslx_paths else []
+    additional_dslx_paths_toml = repr(additional_dslx_paths_list)
+
+    # Enabled warnings vs the default.
+    enable_warnings = env.get("XLSYNTH_DSLX_ENABLE_WARNINGS", "").strip()
+    enable_warnings_list = enable_warnings.split(",") if enable_warnings else []
+    enable_warnings_toml = repr(enable_warnings_list)
+
+    # Disabled warnings vs the default.
+    disable_warnings = env.get("XLSYNTH_DSLX_DISABLE_WARNINGS", "").strip()
+    disable_warnings_list = disable_warnings.split(",") if disable_warnings else []
+    disable_warnings_toml = repr(disable_warnings_list)
 
     config_file_content = """[toolchain]
 dslx_stdlib_path = "{}"
 tool_path = "{}"
-dslx_path = [{}]
-""".format(dslx_stdlib_path, tool_path, additional_dslx_paths_toml)
+dslx_path = {}
+enable_warnings = {}
+disable_warnings = {}
+""".format(dslx_stdlib_path, tool_path, additional_dslx_paths_toml, enable_warnings_toml, disable_warnings_toml)
 
     # Write the configuration file
     config_file = ctx.actions.declare_file(ctx.label.name + "_config.toml")

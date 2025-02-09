@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_to_pipeline")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+
+# This particular sample shows how things work when we give a "disable warnings"
+# environment variable.
+
+dslx_library(
+    name = "main",
+    srcs = ["main.x"],
+)
+
+dslx_test(
+    name = "main_test",
+    deps = [":main"],
+)
+
+dslx_to_pipeline(
+    name = "main_pipeline",
+    deps = [":main"],
+    top = "main",
+    delay_model = "asap7",
+    pipeline_stages = 1,
+)
+
+diff_test(
+    name = "main_pipeline_sv_test",
+    file1 = ":main_pipeline",
+    file2 = ":main_pipeline.golden.sv",
+)
