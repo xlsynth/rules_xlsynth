@@ -7,11 +7,13 @@
 These environment variables can act as a repository-level configuration for the `rules_xlsynth` rules:
 
 - `XLSYNTH_DRIVER_DIR`: the path to the `xlsynth-driver` directory, i.e. containing the
-   `xlsynth-driver` binary (which can be installed via `cargo` from its Rust crate).
+  `xlsynth-driver` binary (which can be installed via `cargo` from its Rust crate). Note that this
+  is named with a `_DIR` suffix because that differentiates it from a direct path to the binary.
 - `XLSYNTH_TOOL_PATH`: the path to the xlsynth tool directory, i.e. containing tools from releases
   such as `dslx_interpreter_main`, `ir_converter_main`, `codegen_main`, etc. (This can be used
   by the `xlsynth-driver` program instead of it directly calling `libxls` runtime APIs.)
-- `XLSYNTH_DSLX_STDLIB_PATH`: the path to the DSLX stdlib to use.
+- `XLSYNTH_DSLX_STDLIB_PATH`: the path to the DSLX stdlib to use. (Note that this refers to a
+  directory that holds all the standard library files.)
 - `XLSYNTH_DSLX_PATH`: a colon-separated list of additional DSLX paths to search for imported files.
 - `XLSYNTH_DSLX_ENABLE_WARNINGS`: a comma-separated list of warnings to enable.
 - `XLSYNTH_DSLX_DISABLE_WARNINGS`: a comma-separated list of warnings to disable.
