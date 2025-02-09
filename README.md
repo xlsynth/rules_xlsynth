@@ -27,6 +27,8 @@ build --action_env XLSYNTH_DSLX_ENABLE_WARNINGS="warning1,warning2"
 build --action_env XLSYNTH_DSLX_DISABLE_WARNINGS="warning3,warning4"
 ```
 
+Or by passing `--action_env=` on the bazel command line.
+
 ### `dslx_library`, `dslx_test` — libraries/tests for DSLX files
 
 ```starlark

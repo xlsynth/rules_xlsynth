@@ -14,7 +14,6 @@ dslx_library(
 dslx_test(
     name = "main_test",
     deps = [":main"],
-    tags = ["manual"],
 )
 
 dslx_to_pipeline(
@@ -29,5 +28,4 @@ diff_test(
     name = "main_pipeline_sv_test",
     file1 = ":main_pipeline",
     file2 = ":main_pipeline.golden.sv",
-    tags = ["manual"],
 )
