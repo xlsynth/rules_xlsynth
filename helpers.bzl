@@ -55,12 +55,12 @@ def write_config_toml(ctx, xlsynth_tool_dir):
     additional_dslx_paths_toml = repr(additional_dslx_paths_list)
 
     # Enabled warnings vs the default.
-    enable_warnings = env.get("XLSYNTH_ENABLE_WARNINGS", "").strip()
+    enable_warnings = env.get("XLSYNTH_DSLX_ENABLE_WARNINGS", "").strip()
     enable_warnings_list = enable_warnings.split(",") if enable_warnings else []
     enable_warnings_toml = repr(enable_warnings_list)
 
     # Disabled warnings vs the default.
-    disable_warnings = env.get("XLSYNTH_DISABLE_WARNINGS", "").strip()
+    disable_warnings = env.get("XLSYNTH_DSLX_DISABLE_WARNINGS", "").strip()
     disable_warnings_list = disable_warnings.split(",") if disable_warnings else []
     disable_warnings_toml = repr(disable_warnings_list)
 

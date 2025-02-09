@@ -3,7 +3,7 @@
 load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_to_pipeline")
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 
-# This particular sample shows how things work when we give a XLSYNTH_DISABLE_WARNINGS
+# This particular sample shows how things work when we give a "disable warnings"
 # environment variable.
 
 dslx_library(

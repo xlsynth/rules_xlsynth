@@ -2,6 +2,29 @@
 
 [![CI](https://github.com/xlsynth/rules_xlsynth/actions/workflows/ci.yml/badge.svg)](https://github.com/xlsynth/rules_xlsynth/actions/workflows/ci.yml)
 
+### `.bazelrc`-settable configuration
+
+These environment variables can act as a repository-level configuration for the `rules_xlsynth` rules:
+
+- `XLSYNTH_DRIVER_DIR`: the path to the `xlsynth-driver` directory, i.e. containing the
+   `xlsynth-driver` binary (which can be installed via `cargo` from its Rust crate).
+- `XLSYNTH_TOOL_PATH`: the path to the xlsynth tool directory, i.e. containing tools from releases
+  such as `dslx_interpreter_main`, `ir_converter_main`, `codegen_main`, etc. (This can be used
+  by the `xlsynth-driver` program instead of it directly calling `libxls` runtime APIs.)
+- `XLSYNTH_DSLX_STDLIB_PATH`: the path to the DSLX stdlib to use.
+- `XLSYNTH_DSLX_PATH`: a colon-separated list of additional DSLX paths to search for imported files.
+- `XLSYNTH_DSLX_ENABLE_WARNINGS`: a comma-separated list of warnings to enable.
+- `XLSYNTH_DSLX_DISABLE_WARNINGS`: a comma-separated list of warnings to disable.
+
+These can be set in your `.bazelrc` file like this:
+
+```
+...
+build --action_env XLSYNTH_DSLX_PATH="path/to/additional/dslx/files:another/path"
+build --action_env XLSYNTH_DSLX_ENABLE_WARNINGS="warning1,warning2"
+build --action_env XLSYNTH_DSLX_DISABLE_WARNINGS="warning3,warning4"
+```
+
 ### `dslx_library`, `dslx_test` — libraries/tests for DSLX files
 
 ```starlark
