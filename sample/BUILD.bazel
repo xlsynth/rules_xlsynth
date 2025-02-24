@@ -4,7 +4,7 @@
 # This example shows how to use the dslx_library and dslx_test rules
 
 load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test", "dslx_to_sv_types",
-     "dslx_to_pipeline", "dslx_to_ir", "ir_to_delay_info", "mangle_dslx_name")
+     "dslx_to_pipeline", "dslx_to_ir", "ir_to_delay_info", "mangle_dslx_name", "dslx_prove_quickcheck_test")
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
@@ -107,4 +107,12 @@ diff_test(
 dslx_fmt_test(
     name = "dslx_fmt_test",
     srcs = glob(["*.x"]),
+)
+
+# -- prove quickcheck test
+
+dslx_prove_quickcheck_test(
+    name = "sample_prove_quickcheck_test",
+    lib = ":sample",
+    top = "main",
 )
