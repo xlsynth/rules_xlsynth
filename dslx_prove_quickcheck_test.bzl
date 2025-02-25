@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "write_executable_shell_script", "get_driver_path", "get_srcs_from_deps")
+load(":helpers.bzl", "write_executable_shell_script", "get_driver_path", "get_srcs_from_lib")
 
 def _dslx_prove_quickcheck_test_impl(ctx):
     """
@@ -23,12 +23,12 @@ def _dslx_prove_quickcheck_test_impl(ctx):
     prove_quickcheck_main_file = xlsynth_tool_dir + "/prove_quickcheck_main"
 
     lib = ctx.attr.lib[DslxInfo]
-    lib_srcs = lib.dag.to_list()[0].srcs
+    lib_srcs = lib.dag.to_list()[-1].srcs
     if len(lib_srcs) != 1:
         fail("Expected exactly one source file for the library; got: " + str(lib_srcs))
     lib_src = lib_srcs[0]
 
-    srcs = get_srcs_from_deps(ctx) + [lib_src]
+    srcs = get_srcs_from_lib(ctx)
 
     flags_str = '--alsologtostderr --dslx_stdlib_path=' + xlsynth_tool_dir + '/xls/dslx/stdlib'
 
@@ -37,6 +37,8 @@ def _dslx_prove_quickcheck_test_impl(ctx):
         flags_str += ' --dslx_path=' + additional_dslx_paths
 
     cmd = prove_quickcheck_main_file + ' ' + flags_str + ' ' + lib_src.path
+    if ctx.attr.top:
+        cmd += ' --test_filter=' + ctx.attr.top
 
     runfiles = ctx.runfiles(srcs)
     executable_file = write_executable_shell_script(
@@ -57,13 +59,10 @@ dslx_prove_quickcheck_test = rule(
         "lib": attr.label(
             doc = "The DSLX library to be tested.",
             providers = [DslxInfo],
-        ),
-        "deps": attr.label_list(
-            doc = "The list of DSLX libraries to be tested.",
-            providers = [DslxInfo],
+            mandatory = True,
         ),
         "top": attr.string(
-            doc = "The quickcheck function to be tested.",
+            doc = "The quickcheck function to be tested. If none is provided, all quickcheck functions in the library will be tested.",
         ),
     },
     test = True,

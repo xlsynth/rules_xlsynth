@@ -32,12 +32,11 @@ def get_driver_path(ctx):
     xlsynth_driver_file = xlsynth_driver_dir + "/xlsynth-driver"
     return xlsynth_tool_dir, xlsynth_driver_file
 
-def _get_srcs_from_attr(ctx, attr_name):
-    deps = getattr(ctx.attr, attr_name)
+def _get_srcs_from(dslx_info_providers):
     # Get DAG entries from DslxInfo
     dag_entries = []
-    for dep in deps:
-        dag_entries.extend(dep[DslxInfo].dag.to_list())
+    for item in dslx_info_providers:
+        dag_entries.extend(item[DslxInfo].dag.to_list())
 
     srcs = []
     for entry in dag_entries:
@@ -47,10 +46,12 @@ def _get_srcs_from_attr(ctx, attr_name):
     return srcs
 
 def get_srcs_from_deps(ctx):
-    return _get_srcs_from_attr(ctx, "deps")
+    """Helper for the case where there's a deps attr that is a sequence of DSLX info providers."""
+    return _get_srcs_from(ctx.attr.deps)
 
 def get_srcs_from_lib(ctx):
-    return _get_srcs_from_attr(ctx, "lib")
+    """Helper for the case where there's a lib attr that is a DSLX info provider."""
+    return _get_srcs_from([ctx.attr.lib])
 
 def write_config_toml(ctx, xlsynth_tool_dir):
     env = ctx.configuration.default_shell_env

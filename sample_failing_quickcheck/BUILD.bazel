@@ -2,9 +2,30 @@
 
 load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_prove_quickcheck_test")
 
+# Note: we create a fairly useless diamond sequence of dependencies here
+# just to test the ability to extract the correct source file to run the
+# quickcheck tool on.
+dslx_library(
+    name = "simple_dependency_common",
+    srcs = ["simple_dependency_common.x"],
+)
+
+dslx_library(
+    name = "simple_dependency_a",
+    srcs = ["simple_dependency_a.x"],
+    deps = [":simple_dependency_common"],
+)
+
+dslx_library(
+    name = "simple_dependency_b",
+    srcs = ["simple_dependency_b.x"],
+    deps = [":simple_dependency_common"],
+)
+
 dslx_library(
     name = "failing_quickcheck",
     srcs = ["failing_quickcheck.x"],
+    deps = [":simple_dependency_a", ":simple_dependency_b"],
 )
 
 dslx_test(
