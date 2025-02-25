@@ -11,3 +11,6 @@ fn test_main() {
     trace_fmt!("got: {}", got);
     assert_eq(got, u32:42);
 }
+
+#[quickcheck]
+fn quickcheck_main(x: u32) -> bool { main() == imported::MOL }

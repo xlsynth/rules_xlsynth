@@ -27,6 +27,10 @@ load(
     ":ir_to_delay_info.bzl",
     _ir_to_delay_info = "ir_to_delay_info",
 )
+load(
+    ":dslx_prove_quickcheck_test.bzl",
+    _dslx_prove_quickcheck_test = "dslx_prove_quickcheck_test",
+)
 load(":helpers.bzl", _mangle_dslx_name = "mangle_dslx_name")
 
 DslxInfo = _DslxInfo
@@ -38,3 +42,4 @@ dslx_to_pipeline = _dslx_to_pipeline
 dslx_to_ir = _dslx_to_ir
 ir_to_delay_info = _ir_to_delay_info
 mangle_dslx_name = _mangle_dslx_name
+dslx_prove_quickcheck_test = _dslx_prove_quickcheck_test

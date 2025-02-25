@@ -12,7 +12,7 @@ def _dslx_to_ir_impl(ctx):
 
     config_file = write_config_toml(ctx, xlsynth_tool_dir)
 
-    cmd = "{driver} --toolchain={toolchain} dslx2ir --dslx_input_file {src} --dslx_top {top} > {output}".format(
+    cmd = "{driver} --toolchain={toolchain} dslx2ir --dslx_input_file={src} --dslx_top={top} > {output}".format(
         driver = xlsynth_driver_file,
         toolchain = config_file.path,
         src = srcs[0].path,

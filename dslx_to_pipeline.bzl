@@ -12,22 +12,22 @@ def _dslx_to_pipeline_impl(ctx):
     config_file = write_config_toml(ctx, xlsynth_tool_dir)
 
     # Flags for stdlib path
-    flags_str = ''
+    flags_str = ""
 
     # Delay model flag
     if ctx.attr.delay_model:
-        flags_str += ' --delay_model=' + ctx.attr.delay_model
+        flags_str += " --delay_model=" + ctx.attr.delay_model
 
-    string_flags = ['pipeline_stages', 'input_valid_signal', 'output_valid_signal', 'module_name']
+    string_flags = ["pipeline_stages", "input_valid_signal", "output_valid_signal", "module_name"]
     for flag in string_flags:
         value = getattr(ctx.attr, flag)
         if value:
-            flags_str += ' --{}={}'.format(flag, value)
-    
-    bool_flags = ['flop_inputs', 'flop_outputs']
+            flags_str += " --{}={}".format(flag, value)
+
+    bool_flags = ["flop_inputs", "flop_outputs"]
     for flag in bool_flags:
         value = getattr(ctx.attr, flag)
-        flags_str += ' --{}={}'.format(flag, str(value).lower())
+        flags_str += " --{}={}".format(flag, str(value).lower())
 
     # Top entry function flag
     if ctx.attr.top:
@@ -40,7 +40,7 @@ def _dslx_to_pipeline_impl(ctx):
     output_sv_path = output_sv_file.path
 
     # Construct the command
-    cmd = "{} --toolchain={} dslx2pipeline --dslx_input_file {} --dslx_top {} {} > {}".format(
+    cmd = "{} --toolchain={} dslx2pipeline --dslx_input_file={} --dslx_top={} {} > {}".format(
         xlsynth_driver_file,
         config_file.path,
         srcs[0].path,
@@ -104,4 +104,3 @@ dslx_to_pipeline = rule(
         "sv_file": "%{name}.sv",
     },
 )
-
