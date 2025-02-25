@@ -114,5 +114,5 @@ dslx_fmt_test(
 dslx_prove_quickcheck_test(
     name = "sample_prove_quickcheck_test",
     lib = ":sample",
-    top = "main",
+    top = "quickcheck_main",
 )
