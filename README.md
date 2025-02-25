@@ -99,3 +99,16 @@ ir_to_delay_info(
     top = "main",
 )
 ```
+
+### `dslx_prove_quickcheck_test` — prove quickcheck holds for entire input domain
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "dslx_prove_quickcheck_test")
+
+# Tests that we can prove the quickcheck holds for its entire input domain.
+dslx_prove_quickcheck_test(
+    name = "quickcheck_various_things_proof_test",
+    lib = ":my_dslx_library",
+    top = "quickcheck_various_things",
+)
+```
