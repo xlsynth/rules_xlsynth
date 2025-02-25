@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-load("//:rules.bzl", "dslx_library", "dslx_test")
+load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_prove_quickcheck_test")
 
 dslx_library(
     name = "failing_quickcheck",
@@ -10,4 +10,10 @@ dslx_library(
 dslx_test(
     name = "failing_quickcheck_test",
     deps = [":failing_quickcheck"],
+)
+
+dslx_prove_quickcheck_test(
+    name = "failing_quickcheck_proof_test",
+    lib = ":failing_quickcheck",
+    top = "always_fail",
 )

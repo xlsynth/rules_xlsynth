@@ -19,7 +19,7 @@ def _dslx_prove_quickcheck_test_impl(ctx):
         fail("Please set XLSYNTH_TOOLS environment variable")
 
     # Ensure the interpreter binary exists
-    xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
+    xlsynth_tool_dir, _xlsynth_driver_file = get_driver_path(ctx)
     prove_quickcheck_main_file = xlsynth_tool_dir + "/prove_quickcheck_main"
 
     lib = ctx.attr.lib[DslxInfo]
