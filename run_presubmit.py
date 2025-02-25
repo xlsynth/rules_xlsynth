@@ -4,6 +4,7 @@ import dataclasses
 import subprocess
 import optparse
 import os
+import re
 from typing import Optional, Tuple, List, Callable, Dict
 
 Runnable = Callable[['PathData'], None]
@@ -52,14 +53,24 @@ def run_sample_expecting_dslx_path(path_data: PathData):
 @register
 def run_sample_failing_quickcheck(path_data: PathData):
     try:
-        bazel_test_opt(('//sample_failing_quickcheck/...',), path_data, capture_output=True)
+        bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_test',), path_data, capture_output=True)
     except subprocess.CalledProcessError as e:
         if 'Found falsifying example after 1 tests' in e.stdout:
-            return
+            pass
         else:
             raise ValueError('Unexpected error running quickcheck: ' + e.stdout)
     else:
         raise ValueError('Expected quickcheck to fail')
+    
+    try:
+        bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_proof_test',), path_data, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        m = re.search(r'ProofError: Failed to prove the property! counterexample: \(bits\[1\]:\d+, bits\[2\]:\d+\)', e.stdout)
+        if m:
+            print('Found proof error as expected: ' + m.group(0))
+            pass
+        else:
+            raise ValueError('Unexpected error proving quickcheck: stdout: ' + e.stdout + ' stderr: ' + e.stderr)
 
 @register
 def run_sample_disabling_warning(path_data: PathData):
