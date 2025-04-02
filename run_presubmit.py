@@ -78,14 +78,39 @@ def run_sample_disabling_warning(path_data: PathData):
         print('Running with warnings as default...')
         bazel_test_opt(('//sample_disabling_warning/...',), path_data, capture_output=True)
     except subprocess.CalledProcessError as e:
-        if 'is not used in function' in e.stderr:
-            pass
-        else:
-            raise ValueError('Unexpected error running disabling warning: ' + e.stdout)
+        want_warnings = [
+            'is an empty range',
+            'is not used in function `main`',
+            'is not used',
+        ]
+        for want_warning in want_warnings:
+            if want_warning in e.stderr:
+                print('Found warning as expected: ' + want_warning)
+                pass
+            else:
+                raise ValueError('Expected warning: ' + want_warning + ' not found in: ' + e.stderr)
 
     # Now we disable the warning and it should be ok.
-    print('Now running with warnings disabled...')
-    bazel_test_opt(('//sample_disabling_warning/...',), path_data, more_action_env={'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition,empty_range_literal'})
+    print('== Now running with warnings disabled...')
+    bazel_test_opt(('//sample_disabling_warning/...',), path_data, more_action_env={
+        'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition,empty_range_literal'
+    })
+
+@register
+def run_sample_nonequiv_ir(path_data: PathData):
+    print('== Running yes-equivalent IR test...')
+    bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_test',), path_data, capture_output=True)
+    print('== Running no-not-equivalent IR test...')
+    try:
+        bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_expect_failure_test',), path_data, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        if 'Verified NOT equivalent' in e.stdout:
+            print('IRs are not equivalent as expected; bazel stdout: ' + repr(e.stdout) + ' bazel stderr: ' + repr(e.stderr))
+            pass
+        else:
+            raise ValueError('Unexpected error running nonequiv IR; bazel stdout: ' + repr(e.stdout) + ' bazel stderr: ' + repr(e.stderr))
+    else:
+        raise ValueError('Expected nonequiv IR to fail')
 
 def main():
     parser = optparse.OptionParser()

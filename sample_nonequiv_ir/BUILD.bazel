@@ -1,0 +1,17 @@
+load("//:rules.bzl", "ir_prove_equiv_test")
+
+# We expect this to pass because the IRs are equivalent.
+ir_prove_equiv_test(
+    name = "add_one_ir_prove_equiv_test",
+    lhs = ":add_one.ir",
+    rhs = ":add_one_and_zero.ir",
+    top = "main",
+)
+
+# We expect this to fail because the IRs are not equivalent.
+ir_prove_equiv_test(
+    name = "add_one_ir_prove_equiv_expect_failure_test",
+    lhs = ":add_one.ir",
+    rhs = ":add_two.ir",
+    top = "main",
+)

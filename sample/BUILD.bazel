@@ -3,10 +3,21 @@
 # Sample BUILD file
 # This example shows how to use the dslx_library and dslx_test rules
 
-load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_fmt_test", "dslx_to_sv_types",
-     "dslx_to_pipeline", "dslx_to_ir", "ir_to_delay_info", "mangle_dslx_name", "dslx_prove_quickcheck_test")
-load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load(
+    "//:rules.bzl",
+    "dslx_fmt_test",
+    "dslx_library",
+    "dslx_prove_quickcheck_test",
+    "dslx_test",
+    "dslx_to_ir",
+    "dslx_to_pipeline",
+    "dslx_to_sv_types",
+    "ir_prove_equiv_test",
+    "ir_to_delay_info",
+    "mangle_dslx_name",
+)
 
 dslx_library(
     name = "imported",
@@ -37,8 +48,8 @@ dslx_library(
 
 dslx_to_ir(
     name = "sample_ir",
-    deps = [":sample"],
     top = "main",
+    deps = [":sample"],
 )
 
 build_test(
@@ -46,10 +57,18 @@ build_test(
     targets = [":sample_ir"],
 )
 
+# Prove the unoptimized and optimized IRs are equivalent.
+ir_prove_equiv_test(
+    name = "sample_ir_prove_equiv_test",
+    lhs = ":sample_ir.ir",
+    rhs = ":sample_ir.opt.ir",
+    top = mangle_dslx_name("sample", "main"),
+)
+
 ir_to_delay_info(
     name = "sample_delay_info",
-    ir = ":sample_ir",
     delay_model = "asap7",
+    ir = ":sample_ir",
     top = mangle_dslx_name("sample", "main"),
     # Use the unoptimized IR file just to show a non-trivial path.
     use_unopt_ir = True,
@@ -69,12 +88,13 @@ dslx_test(
 
 dslx_to_pipeline(
     name = "sample_main_sv",
-    deps = [":sample"],
     delay_model = "asap7",
-    pipeline_stages = 1,
     input_valid_signal = "input_valid",
     output_valid_signal = "output_valid",
+    pipeline_stages = 1,
+    reset = "rst",
     top = "main",
+    deps = [":sample"],
 )
 
 diff_test(
@@ -87,13 +107,13 @@ diff_test(
 
 dslx_to_pipeline(
     name = "sample_main_sv_noflops",
-    deps = [":sample"],
     delay_model = "asap7",
-    pipeline_stages = 1,
     flop_inputs = False,
     flop_outputs = False,
     module_name = "noflops",
+    pipeline_stages = 1,
     top = "main",
+    deps = [":sample"],
 )
 
 diff_test(

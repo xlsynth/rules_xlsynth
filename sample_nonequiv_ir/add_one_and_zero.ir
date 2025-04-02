@@ -1,0 +1,8 @@
+package add_one_and_zero
+
+fn main(x: bits[32]) -> bits[32] {
+    literal.2: bits[32] = literal(value=0)
+    literal.3: bits[32] = literal(value=1)
+    add.4: bits[32] = add(x, literal.2)
+    ret add.5: bits[32] = add(add.4, literal.3)
+}

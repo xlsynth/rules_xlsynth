@@ -48,11 +48,19 @@ def _dslx_library_impl(ctx):
     if not xlsynth_tool_dir:
         fail("Please set XLSYNTH_TOOLS environment variable")
 
-    more_flags = ['--dslx_stdlib_path=' + xlsynth_tool_dir + '/xls/dslx/stdlib']
+    more_flags = ["--dslx_stdlib_path=" + xlsynth_tool_dir + "/xls/dslx/stdlib"]
+
+    enable_warnings = env.get("XLSYNTH_DSLX_ENABLE_WARNINGS")
+    if enable_warnings:
+        more_flags.append("--enable_warnings=" + enable_warnings)
+
+    disable_warnings = env.get("XLSYNTH_DSLX_DISABLE_WARNINGS")
+    if disable_warnings:
+        more_flags.append("--disable_warnings=" + disable_warnings)
 
     additional_dslx_paths = env.get("XLSYNTH_DSLX_PATH")
     if additional_dslx_paths:
-        more_flags.append('--dslx_path=' + additional_dslx_paths)
+        more_flags.append("--dslx_path=" + additional_dslx_paths)
 
     typecheck_main_file = xlsynth_tool_dir + "/typecheck_main"
 
@@ -76,7 +84,8 @@ def _dslx_library_impl(ctx):
         outputs = [typecheck_output],
         executable = typecheck_main_file,
         arguments = more_flags + [srcs[-1].path] + [
-            '--output_path', typecheck_output.path,
+            "--output_path",
+            typecheck_output.path,
         ],
     )
 
