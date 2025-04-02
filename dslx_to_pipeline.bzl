@@ -35,6 +35,9 @@ def _dslx_to_pipeline_impl(ctx):
     else:
         fail("Please specify the 'top' entry function to use")
 
+    if ctx.attr.reset:
+        flags_str += " --reset={}".format(ctx.attr.reset)
+
     # Define the output .sv file
     output_sv_file = ctx.outputs.sv_file
     output_sv_path = output_sv_file.path
@@ -93,6 +96,10 @@ dslx_to_pipeline = rule(
         ),
         "module_name": attr.string(
             doc = "The module name to use in generation.",
+            default = "",
+        ),
+        "reset": attr.string(
+            doc = "The reset signal to use in generation.",
             default = "",
         ),
         "top": attr.string(

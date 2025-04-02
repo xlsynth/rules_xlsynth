@@ -134,6 +134,7 @@ def main():
         ("typecheck_main", True),
         ("dslx_fmt", True),
         ("delay_info_main", True),
+        ("check_ir_equivalence_main", True),
     ]
 
     os.makedirs(options.output_dir, exist_ok=True)

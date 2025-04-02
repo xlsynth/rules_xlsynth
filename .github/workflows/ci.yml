@@ -10,76 +10,81 @@ on:
 
 jobs:
   dslx_ci:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
-    - name: Install libc++ from llvm-18
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y wget gnupg
-        cd /tmp/
-        wget https://apt.llvm.org/llvm.sh
-        chmod +x llvm.sh
-        sudo ./llvm.sh 18
-        sudo apt-get install -y libc++-18-dev libc++abi-18-dev
+      - name: Install libc++ from llvm-18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg
+          cd /tmp/
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 18
+          sudo apt-get install -y libc++-18-dev libc++abi-18-dev
 
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Download and rename libxls
-      run: |
-        RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep -v ".sha256" \
-          | grep "browser_download_url.*libxls-ubuntu2004.so" \
-          | cut -d '"' -f 4)
-        XLSYNTH_VERSION=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep "tag_name" \
-          | cut -d '"' -f 4)
-        # Make the xlsynth version available for subsequent steps:
-        echo "XLSYNTH_VERSION=${XLSYNTH_VERSION}" >> $GITHUB_ENV
-        echo "version: ${XLSYNTH_VERSION}"
-        echo "release_url: ${RELEASE_URL}"
-        curl -L -o libxls-ubuntu2004.so "$RELEASE_URL"
-        mv libxls-ubuntu2004.so "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
-        ls *.so
-        file *.so
-        export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
-        sudo ln -s ${PWD}/"libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
+      - name: Download and rename libxls
+        run: |
+          RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+            | grep -v ".sha256" \
+            | grep "browser_download_url.*libxls-ubuntu2004.so" \
+            | cut -d '"' -f 4)
+          XLSYNTH_VERSION=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+            | grep "tag_name" \
+            | cut -d '"' -f 4)
+          # Make the xlsynth version available for subsequent steps:
+          echo "XLSYNTH_VERSION=${XLSYNTH_VERSION}" >> $GITHUB_ENV
+          echo "version: ${XLSYNTH_VERSION}"
+          echo "release_url: ${RELEASE_URL}"
+          curl -L -o libxls-ubuntu2004.so "$RELEASE_URL"
+          mv libxls-ubuntu2004.so "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
+          ls *.so
+          file *.so
+          export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
+          sudo ln -s ${PWD}/"libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
 
-    - name: Download xlsynth binaries
-      run: |
-        python download_release.py -o dependencies/ -p ubuntu2004 -v ${XLSYNTH_VERSION}
+      - name: Download xlsynth binaries
+        run: |
+          python download_release.py -o dependencies/ -p ubuntu2004 -v ${XLSYNTH_VERSION}
 
-    - name: Install xlsynth-driver using Cargo
-      run: |
-        cargo install -vv xlsynth-driver
+      - name: Install Rust nightly toolchain
+        run: |
+          rustup toolchain install nightly
+          rustup default nightly
 
-    - name: Note xlsynth-driver version
-      run: |
-        ldd $(which xlsynth-driver)
-        LD_DEBUG=libs xlsynth-driver version
-        #xlsynth-driver version
+      - name: Install xlsynth-driver using Cargo
+        run: |
+          cargo +nightly install -vv xlsynth-driver
 
-    - name: Set up Bazelisk
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y curl gnupg
-        sudo curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
-        sudo chmod +x /usr/local/bin/bazel
-        bazel version
+      - name: Note xlsynth-driver version
+        run: |
+          ldd $(which xlsynth-driver)
+          LD_DEBUG=libs xlsynth-driver version
+          #xlsynth-driver version
 
-    - name: Download and unpack DSLX standard library
-      run: |
-        STD_LIB_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-          | grep -v ".sha256" \
-          | grep "browser_download_url.*dslx_stdlib.tar.gz" \
-          | cut -d '"' -f 4)
-        curl -L -o dslx_stdlib.tar.gz "$STD_LIB_URL"
-        tar -xzf dslx_stdlib.tar.gz -C dependencies/
+      - name: Set up Bazelisk
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl gnupg
+          sudo curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
+          sudo chmod +x /usr/local/bin/bazel
+          bazel version
 
-    - name: Run presubmit script
-      run: |
-        python3 run_presubmit.py \
-          --xlsynth-tools $(pwd)/dependencies \
-          --xlsynth-driver-dir $(dirname "$(which xlsynth-driver)") \
-          --dslx-path dependencies/dslx_stdlib
+      - name: Download and unpack DSLX standard library
+        run: |
+          STD_LIB_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
+            | grep -v ".sha256" \
+            | grep "browser_download_url.*dslx_stdlib.tar.gz" \
+            | cut -d '"' -f 4)
+          curl -L -o dslx_stdlib.tar.gz "$STD_LIB_URL"
+          tar -xzf dslx_stdlib.tar.gz -C dependencies/
+
+      - name: Run presubmit script
+        run: |
+          python3 run_presubmit.py \
+            --xlsynth-tools $(pwd)/dependencies \
+            --xlsynth-driver-dir $(dirname "$(which xlsynth-driver)") \
+            --dslx-path dependencies/dslx_stdlib

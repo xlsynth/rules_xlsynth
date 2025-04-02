@@ -18,9 +18,9 @@ def _ir_to_delay_info_impl(ctx):
         ctx.attr.top,
         output_file.path,
     )
-    
+
     ctx.actions.run(
-        inputs = [opt_ir_file, config_file],
+        inputs = [opt_ir_file] + [config_file],
         outputs = [output_file],
         arguments = ["-c", cmd],
         executable = "/bin/sh",

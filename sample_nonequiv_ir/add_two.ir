@@ -1,0 +1,6 @@
+package add_two
+
+fn main(x: bits[32]) -> bits[32] {
+    literal.2: bits[32] = literal(value=2)
+    ret add.3: bits[32] = add(x, literal.2)
+}

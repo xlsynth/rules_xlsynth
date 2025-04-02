@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "get_driver_path", "get_srcs_from_deps", "write_config_toml", "mangle_dslx_name")
+load(":helpers.bzl", "get_driver_path", "get_srcs_from_deps", "mangle_dslx_name", "write_config_toml")
 load(":ir_provider.bzl", "IrInfo")
 
 def _dslx_to_ir_impl(ctx):
-    env = ctx.configuration.default_shell_env
     xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
 
     srcs = get_srcs_from_deps(ctx)
