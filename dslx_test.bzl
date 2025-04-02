@@ -40,8 +40,6 @@ def _dslx_test_impl(ctx):
 
     cmd = dslx_interpreter_file + " " + flags_str + " " + " ".join([src.path for src in srcs])
 
-    print("cmd: " + cmd)
-
     runfiles = ctx.runfiles(srcs)
     executable_file = write_executable_shell_script(
         ctx = ctx,
