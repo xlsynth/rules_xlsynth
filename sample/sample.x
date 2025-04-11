@@ -14,3 +14,13 @@ fn test_main() {
 
 #[quickcheck]
 fn quickcheck_main(x: u32) -> bool { main() == imported::MOL }
+
+/// A function with a little bit more heft to it for gates analysis.
+fn add_chain(a: u32, b: u32, c: u32, d: u32) -> u32 {
+    let ab = a + b;
+    let abc = ab + c;
+    abc + d
+}
+
+#[test]
+fn test_add_chain() { assert_eq(u32:10, add_chain(u32:1, u32:2, u32:3, u32:4)); }

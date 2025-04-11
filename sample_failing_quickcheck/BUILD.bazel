@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
+# This sample demonstrates the dslx_prove_quickcheck_test rule with a function designed to fail,
+# and how the test framework catches the failure.
+
 load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_prove_quickcheck_test")
 
 # Note: we create a fairly useless diamond sequence of dependencies here

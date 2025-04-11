@@ -17,6 +17,7 @@ load(
     "ir_prove_equiv_test",
     "ir_to_delay_info",
     "mangle_dslx_name",
+    "ir_to_gates",
 )
 
 dslx_library(
@@ -49,7 +50,7 @@ dslx_library(
 dslx_to_ir(
     name = "sample_ir",
     top = "main",
-    deps = [":sample"],
+    lib = ":sample",
 )
 
 build_test(
@@ -77,6 +78,32 @@ ir_to_delay_info(
 build_test(
     name = "sample_delay_info_test",
     targets = [":sample_delay_info"],
+)
+
+ir_to_gates(
+    name = "sample_gates_analysis",
+    ir_src = ":sample_ir",
+)
+
+build_test(
+    name = "sample_gates_analysis_test",
+    targets = [":sample_gates_analysis"],
+)
+
+dslx_to_ir(
+    name = "add_chain_ir",
+    top = "add_chain",
+    lib = ":sample",
+)
+
+ir_to_gates(
+    name = "add_chain_gates_analysis",
+    ir_src = ":add_chain_ir",
+)
+
+build_test(
+    name = "add_chain_gates_analysis_test",
+    targets = [":add_chain_gates_analysis"],
 )
 
 dslx_test(
