@@ -8,4 +8,3 @@ dslx_library(
     name = "another",
     srcs = ["another.x"],
 )
-

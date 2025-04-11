@@ -61,7 +61,7 @@ def run_sample_failing_quickcheck(path_data: PathData):
             raise ValueError('Unexpected error running quickcheck: ' + e.stdout)
     else:
         raise ValueError('Expected quickcheck to fail')
-    
+
     try:
         bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_proof_test',), path_data, capture_output=True)
     except subprocess.CalledProcessError as e:
@@ -125,7 +125,7 @@ def main():
     path_data = PathData(xlsynth_tools=options.xlsynth_tools,
                          xlsynth_driver_dir=options.xlsynth_driver_dir,
                          dslx_path=dslx_path)
-    
+
     assert os.path.exists(os.path.join(path_data.xlsynth_tools, 'dslx_interpreter_main')), 'dslx_interpreter_main not found in XLSYNTH_TOOLS=' + path_data.xlsynth_tools
     assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found in XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir
 
