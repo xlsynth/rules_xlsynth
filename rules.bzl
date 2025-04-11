@@ -33,6 +33,7 @@ load(
     ":ir_to_delay_info.bzl",
     _ir_to_delay_info = "ir_to_delay_info",
 )
+load(":ir_to_gates.bzl", _ir_to_gates = "ir_to_gates")
 
 DslxInfo = _DslxInfo
 dslx_library = _dslx_library
@@ -45,3 +46,4 @@ ir_to_delay_info = _ir_to_delay_info
 mangle_dslx_name = _mangle_dslx_name
 dslx_prove_quickcheck_test = _dslx_prove_quickcheck_test
 ir_prove_equiv_test = _ir_prove_equiv_test
+ir_to_gates = _ir_to_gates

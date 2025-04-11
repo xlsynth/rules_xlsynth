@@ -112,3 +112,16 @@ dslx_prove_quickcheck_test(
     top = "quickcheck_various_things",
 )
 ```
+
+### `ir_to_gates` — convert IR to gate-level analysis
+
+Given an IR target (typically from `dslx_to_ir`) as input via `ir_src`, this rule runs the `ir2gates` tool to produce a text file containing gate-level analysis (e.g., gate counts, depth).
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "ir_to_gates")
+
+ir_to_gates(
+    name = "my_ir_gates_analysis",
+    ir_src = ":my_dslx_library_ir", # Target providing IrInfo
+)
+```
