@@ -52,8 +52,6 @@ def _dslx_to_pipeline_impl(ctx):
         output_sv_path,
     )
 
-    print("dslx to pipeline command: {}".format(repr(cmd)))
-
     ctx.actions.run(
         inputs = srcs + [config_file],
         outputs = [output_sv_file],
