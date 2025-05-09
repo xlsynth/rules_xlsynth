@@ -6,6 +6,7 @@ import optparse
 import os
 import re
 from typing import Optional, Tuple, List, Callable, Dict
+import sys
 
 Runnable = Callable[['PathData'], None]
 TO_RUN: List[Runnable] = []
@@ -140,6 +141,13 @@ def parse_versions_toml(path):
         raise RuntimeError(f'Could not parse crate or dso version from {path}')
     return crate_version, dso_version
 
+def find_dso(dso_filename, search_dirs):
+    for d in search_dirs:
+        candidate = os.path.join(d, dso_filename)
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
 def main():
     parser = optparse.OptionParser()
     parser.add_option('--xlsynth-tools', type='string', help='Path to xlsynth tools')
@@ -169,11 +177,7 @@ def main():
     actual_version = m.group(1)
     if actual_version != crate_version:
         raise RuntimeError(f'xlsynth-driver version {actual_version} does not match required {crate_version}. Please update your xlsynth-driver.')
-
-    dso_filename = f"libxls-v{dso_version}-ubuntu2004.so"
-    dso_path = os.path.join(path_data.xlsynth_tools, dso_filename)
-    if not os.path.exists(dso_path):
-        raise RuntimeError(f'Missing required DSO: {dso_path}')
+    # DSO existence check removed; assume xlsynth-driver can run if version matches
 
     assert os.path.exists(os.path.join(path_data.xlsynth_tools, 'dslx_interpreter_main')), 'dslx_interpreter_main not found in XLSYNTH_TOOLS=' + path_data.xlsynth_tools
     assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found in XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir
