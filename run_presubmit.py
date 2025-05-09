@@ -120,6 +120,7 @@ def run_sample_with_formats(path_data: PathData):
         more_action_env={
             'XLSYNTH_GATE_FORMAT': 'br_gate_buf gated_{output}(.in({input}), .out({output}))',
             'XLSYNTH_ASSERT_FORMAT': '`BR_ASSERT({label}, {condition})',
+            'XLSYNTH_USE_SYSTEM_VERILOG': 'true',
         },
     )
 

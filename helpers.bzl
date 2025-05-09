@@ -54,6 +54,16 @@ def get_srcs_from_lib(ctx):
     """Helper for the case where there's a lib attr that is a DSLX info provider."""
     return _get_srcs_from([ctx.attr.lib])
 
+def bool_env_var_to_toml(env_var_name, env_var):
+    if env_var == "true":
+        return "true"
+    elif env_var == "false":
+        return "false"
+    elif env_var == "":
+        return None
+    else:
+        fail("Invalid value for {}: {}".format(env_var_name, env_var))
+
 def write_config_toml(ctx, xlsynth_tool_dir):
     env = ctx.configuration.default_shell_env
 
@@ -74,6 +84,9 @@ def write_config_toml(ctx, xlsynth_tool_dir):
     disable_warnings_list = disable_warnings.split(",") if disable_warnings else []
     disable_warnings_toml = repr(disable_warnings_list)
 
+    use_system_verilog = env.get("XLSYNTH_USE_SYSTEM_VERILOG", "").strip()
+    use_system_verilog_toml = bool_env_var_to_toml("XLSYNTH_USE_SYSTEM_VERILOG", use_system_verilog)
+
     gate_format = env.get("XLSYNTH_GATE_FORMAT", "").strip()
     gate_format_toml = repr(gate_format)
 
@@ -89,10 +102,13 @@ disable_warnings = {}
 """.format(dslx_stdlib_path, tool_path, additional_dslx_paths_toml, enable_warnings_toml, disable_warnings_toml)
 
     if gate_format:
-        config_file_content += "\ngate_format = {}\n".format(gate_format_toml)
+        config_file_content += "gate_format = {}\n".format(gate_format_toml)
 
     if assert_format:
-        config_file_content += "\nassert_format = {}\n".format(assert_format_toml)
+        config_file_content += "assert_format = {}\n".format(assert_format_toml)
+
+    if use_system_verilog:
+        config_file_content += "use_system_verilog = {}\n".format(use_system_verilog_toml)
 
     # Write the configuration file
     config_file = ctx.actions.declare_file(ctx.label.name + "_config.toml")
