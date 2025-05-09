@@ -26,18 +26,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Parse xlsynth-versions.toml
+        id: versions
+        run: |
+          CRATE_VERSION=$(grep '^crate' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
+          DSO_VERSION=$(grep '^dso' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
+          echo "CRATE_VERSION=$CRATE_VERSION" >> $GITHUB_ENV
+          echo "DSO_VERSION=$DSO_VERSION" >> $GITHUB_ENV
+
       - name: Download and rename libxls
         run: |
           RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
             | grep -v ".sha256" \
             | grep "browser_download_url.*libxls-ubuntu2004.so" \
             | cut -d '"' -f 4)
-          XLSYNTH_VERSION=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-            | grep "tag_name" \
-            | cut -d '"' -f 4)
-          # Make the xlsynth version available for subsequent steps:
-          echo "XLSYNTH_VERSION=${XLSYNTH_VERSION}" >> $GITHUB_ENV
-          echo "version: ${XLSYNTH_VERSION}"
+          XLSYNTH_VERSION=${{ env.DSO_VERSION }}
+          echo "XLSYNTH_VERSION=${XLSYNTH_VERSION}"
           echo "release_url: ${RELEASE_URL}"
           curl -L -o libxls-ubuntu2004.so "$RELEASE_URL"
           mv libxls-ubuntu2004.so "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
@@ -48,7 +52,7 @@ jobs:
 
       - name: Download xlsynth binaries
         run: |
-          python download_release.py -o dependencies/ -p ubuntu2004 -v ${XLSYNTH_VERSION}
+          python download_release.py -o dependencies/ -p ubuntu2004 -v ${{ env.CRATE_VERSION }}
 
       - name: Install Rust nightly toolchain
         run: |
@@ -57,7 +61,7 @@ jobs:
 
       - name: Install xlsynth-driver using Cargo
         run: |
-          cargo +nightly install -vv xlsynth-driver
+          cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }}
 
       - name: Note xlsynth-driver version
         run: |

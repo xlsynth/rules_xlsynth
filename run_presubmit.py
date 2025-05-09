@@ -124,6 +124,22 @@ def run_sample_with_formats(path_data: PathData):
         },
     )
 
+def parse_versions_toml(path):
+    crate_version = None
+    dso_version = None
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            m = re.match(r'crate\s*=\s*"([^"]+)"', line)
+            if m:
+                crate_version = m.group(1)
+            m = re.match(r'dso\s*=\s*"([^"]+)"', line)
+            if m:
+                dso_version = m.group(1)
+    if not crate_version or not dso_version:
+        raise RuntimeError(f'Could not parse crate or dso version from {path}')
+    return crate_version, dso_version
+
 def main():
     parser = optparse.OptionParser()
     parser.add_option('--xlsynth-tools', type='string', help='Path to xlsynth tools')
@@ -139,22 +155,25 @@ def main():
                          xlsynth_driver_dir=options.xlsynth_driver_dir,
                          dslx_path=dslx_path)
 
-    # Version check for xlsynth-driver
-    min_version_path = os.path.join(os.path.dirname(__file__), 'min-required-xlsynth-driver-version.txt')
-    with open(min_version_path) as f:
-        min_version = f.read().strip()
+    # Version check for xlsynth-driver and DSO
+    versions_path = os.path.join(os.path.dirname(__file__), 'xlsynth-versions.toml')
+    crate_version, dso_version = parse_versions_toml(versions_path)
     driver_path = os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')
     try:
         version_out = subprocess.check_output([driver_path, '--version'], encoding='utf-8').strip()
     except Exception as e:
         raise RuntimeError(f'Could not run xlsynth-driver at {driver_path}: {e}')
-    # Extract version number using regex
     m = re.search(r'(\d+\.\d+\.\d+)', version_out)
     if not m:
         raise RuntimeError(f'Could not parse version from xlsynth-driver --version output: {version_out}')
     actual_version = m.group(1)
-    if actual_version != min_version:
-        raise RuntimeError(f'xlsynth-driver version {actual_version} does not match required {min_version}. Please update your xlsynth-driver.')
+    if actual_version != crate_version:
+        raise RuntimeError(f'xlsynth-driver version {actual_version} does not match required {crate_version}. Please update your xlsynth-driver.')
+
+    dso_filename = f"libxls-v{dso_version}-ubuntu2004.so"
+    dso_path = os.path.join(path_data.xlsynth_tools, dso_filename)
+    if not os.path.exists(dso_path):
+        raise RuntimeError(f'Missing required DSO: {dso_path}')
 
     assert os.path.exists(os.path.join(path_data.xlsynth_tools, 'dslx_interpreter_main')), 'dslx_interpreter_main not found in XLSYNTH_TOOLS=' + path_data.xlsynth_tools
     assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found in XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir
