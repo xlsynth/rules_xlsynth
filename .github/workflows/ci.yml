@@ -52,7 +52,7 @@ jobs:
 
       - name: Download xlsynth binaries
         run: |
-          python download_release.py -o dependencies/ -p ubuntu2004 -v ${{ env.CRATE_VERSION }}
+          python download_release.py -o dependencies/ -p ubuntu2004 -v ${{ env.DSO_VERSION }}
 
       - name: Install Rust nightly toolchain
         run: |
