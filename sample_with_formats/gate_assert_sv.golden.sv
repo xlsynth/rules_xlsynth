@@ -51,3 +51,4 @@ module __gate_assert_minimal__main(
   `BR_ASSERT(should_be_one, p0_x)
   `endif  // ASSERT_ON
 endmodule
+
