@@ -123,6 +123,9 @@ def main():
         parser.error(f"Unsupported platform '{options.platform}'. Supported platforms: {', '.join(SUPPORTED_PLATFORMS)}")
 
     version = options.version if options.version else get_latest_release(options.max_attempts)
+
+    assert version.startswith("v"), "Version must start with 'v'"
+
     base_url = f"https://github.com/xlsynth/xlsynth/releases/download/{version}"
 
     artifacts = [
