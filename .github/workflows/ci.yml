@@ -32,7 +32,7 @@ jobs:
           CRATE_VERSION=$(grep '^crate' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
           DSO_VERSION=$(grep '^dso' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
           echo "CRATE_VERSION=$CRATE_VERSION" >> $GITHUB_ENV
-          echo "DSO_VERSION=$DSO_VERSION" >> $GITHUB_ENV
+          echo "DSO_VERSION=v$DSO_VERSION" >> $GITHUB_ENV
 
       - name: Download and rename libxls
         run: |
