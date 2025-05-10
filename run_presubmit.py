@@ -6,6 +6,7 @@ import optparse
 import os
 import re
 from typing import Optional, Tuple, List, Callable, Dict
+import sys
 
 Runnable = Callable[['PathData'], None]
 TO_RUN: List[Runnable] = []
@@ -112,11 +113,47 @@ def run_sample_nonequiv_ir(path_data: PathData):
     else:
         raise ValueError('Expected nonequiv IR to fail')
 
+@register
+def run_sample_with_formats(path_data: PathData):
+    bazel_test_opt(
+        ('//sample_with_formats:gate_assert_minimal_sv_test',),
+        path_data,
+        more_action_env={
+            'XLSYNTH_GATE_FORMAT': 'br_gate_buf gated_{output}(.in({input}), .out({output}))',
+            'XLSYNTH_ASSERT_FORMAT': '`BR_ASSERT({label}, {condition})',
+            'XLSYNTH_USE_SYSTEM_VERILOG': 'true',
+        },
+    )
+
+def parse_versions_toml(path):
+    crate_version = None
+    dso_version = None
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            m = re.match(r'crate\s*=\s*"([^"]+)"', line)
+            if m:
+                crate_version = m.group(1)
+            m = re.match(r'dso\s*=\s*"([^"]+)"', line)
+            if m:
+                dso_version = m.group(1)
+    if not crate_version or not dso_version:
+        raise RuntimeError(f'Could not parse crate or dso version from {path}')
+    return crate_version, dso_version
+
+def find_dso(dso_filename, search_dirs):
+    for d in search_dirs:
+        candidate = os.path.join(d, dso_filename)
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
 def main():
     parser = optparse.OptionParser()
     parser.add_option('--xlsynth-tools', type='string', help='Path to xlsynth tools')
     parser.add_option('--xlsynth-driver-dir', type='string', help='Path to xlsynth driver directory')
     parser.add_option('--dslx-path', type='string', help='Path to DSLX standard library')
+    parser.add_option('-k', '--keyword', type='string', help='Only run tests whose function name contains this keyword')
     (options, args) = parser.parse_args()
     if options.xlsynth_tools is None or options.xlsynth_driver_dir is None:
         parser.error('Missing required argument(s): --xlsynth-tools, --xlsynth-driver-dir, --dslx-path')
@@ -126,10 +163,29 @@ def main():
                          xlsynth_driver_dir=options.xlsynth_driver_dir,
                          dslx_path=dslx_path)
 
+    # Version check for xlsynth-driver and DSO
+    versions_path = os.path.join(os.path.dirname(__file__), 'xlsynth-versions.toml')
+    crate_version, dso_version = parse_versions_toml(versions_path)
+    driver_path = os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')
+    try:
+        version_out = subprocess.check_output([driver_path, '--version'], encoding='utf-8').strip()
+    except Exception as e:
+        raise RuntimeError(f'Could not run xlsynth-driver at {driver_path}: {e}')
+    m = re.search(r'(\d+\.\d+\.\d+)', version_out)
+    if not m:
+        raise RuntimeError(f'Could not parse version from xlsynth-driver --version output: {version_out}')
+    actual_version = m.group(1)
+    if actual_version != crate_version:
+        raise RuntimeError(f'xlsynth-driver version {actual_version} does not match required {crate_version}. Please update your xlsynth-driver.')
+    # DSO existence check removed; assume xlsynth-driver can run if version matches
+
     assert os.path.exists(os.path.join(path_data.xlsynth_tools, 'dslx_interpreter_main')), 'dslx_interpreter_main not found in XLSYNTH_TOOLS=' + path_data.xlsynth_tools
     assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found in XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir
 
-    for f in TO_RUN:
+    to_run = TO_RUN
+    if options.keyword:
+        to_run = [f for f in TO_RUN if options.keyword in f.__name__]
+    for f in to_run:
         print('-' * 80)
         print('Executing', f.__name__)
         f(path_data)

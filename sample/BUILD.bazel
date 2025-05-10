@@ -16,8 +16,8 @@ load(
     "dslx_to_sv_types",
     "ir_prove_equiv_test",
     "ir_to_delay_info",
-    "mangle_dslx_name",
     "ir_to_gates",
+    "mangle_dslx_name",
 )
 
 dslx_library(
@@ -49,8 +49,8 @@ dslx_library(
 
 dslx_to_ir(
     name = "sample_ir",
-    top = "main",
     lib = ":sample",
+    top = "main",
 )
 
 build_test(
@@ -92,8 +92,8 @@ build_test(
 
 dslx_to_ir(
     name = "add_chain_ir",
-    top = "add_chain",
     lib = ":sample",
+    top = "add_chain",
 )
 
 ir_to_gates(

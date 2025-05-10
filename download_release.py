@@ -32,11 +32,15 @@ def request_with_retry(url, stream, headers, max_attempts):
         attempt += 1
         try:
             response = requests.get(url, stream=stream, headers=headers)
+            # If it's a 404, don't bother retrying.
+            if response.status_code == 404:
+                print(f"404 Not Found for {url} (not retrying).")
+                response.raise_for_status()
             response.raise_for_status()
             return response
         except requests.exceptions.RequestException as e:
-            if attempt == max_attempts:
-                print(f"All {max_attempts} attempts failed for {url}")
+            if attempt == max_attempts or (hasattr(e.response, "status_code") and e.response is not None and e.response.status_code == 404):
+                print(f"All {attempt} attempts failed for {url}")
                 raise
             else:
                 print(f"Attempt {attempt} failed for {url}. Error: {e}. Retrying in {delay} seconds...")
@@ -123,6 +127,10 @@ def main():
         parser.error(f"Unsupported platform '{options.platform}'. Supported platforms: {', '.join(SUPPORTED_PLATFORMS)}")
 
     version = options.version if options.version else get_latest_release(options.max_attempts)
+
+    # It's important to check this so that we get a URL that is actually released and valid.
+    assert version.startswith("v"), "Version must start with 'v'"
+
     base_url = f"https://github.com/xlsynth/xlsynth/releases/download/{version}"
 
     artifacts = [
