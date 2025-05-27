@@ -28,8 +28,10 @@ module __gate_assert_minimal__main(
   end
 
   // ===== Pipe stage 1:
+  wire p1_or_58_comb;
   wire p1_gated_comb;
   wire p1_load_en_comb;
+  assign p1_or_58_comb = ~p0_valid | p0_x | rst;
   br_gate_buf gated_p1_gated_comb(.in(p0_x), .out(p1_gated_comb));
   assign p1_load_en_comb = p0_valid | rst;
 
@@ -48,7 +50,7 @@ module __gate_assert_minimal__main(
   assign output_valid = p1_valid;
   assign out = p1_gated;
   `ifdef ASSERT_ON
-  `BR_ASSERT(should_be_one, p0_x)
+  `BR_ASSERT(should_be_one, p1_or_58_comb)
   `endif  // ASSERT_ON
 endmodule
 
