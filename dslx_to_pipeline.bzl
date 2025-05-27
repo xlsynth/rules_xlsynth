@@ -24,7 +24,11 @@ def _dslx_to_pipeline_impl(ctx):
         if value:
             flags_str += " --{}={}".format(flag, value)
 
-    bool_flags = ["flop_inputs", "flop_outputs"]
+    # Boolean flags that are forwarded verbatim to the driver as
+    #   --<flag>=true|false
+    # Note that we ALWAYS forward these, even if they are at their default
+    # value; this documents the chosen default in the command line.
+    bool_flags = ["flop_inputs", "flop_outputs", "reset_data_path"]
     for flag in bool_flags:
         value = getattr(ctx.attr, flag)
         flags_str += " --{}={}".format(flag, str(value).lower())
@@ -92,6 +96,10 @@ dslx_to_pipeline = rule(
         ),
         "flop_outputs": attr.bool(
             doc = "Whether to flop the output ports.",
+            default = True,
+        ),
+        "reset_data_path": attr.bool(
+            doc = "Whether to generate reset logic for data-path registers.",
             default = True,
         ),
         "module_name": attr.string(
