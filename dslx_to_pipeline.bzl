@@ -28,7 +28,7 @@ def _dslx_to_pipeline_impl(ctx):
     #   --<flag>=true|false
     # Note that we ALWAYS forward these, even if they are at their default
     # value; this documents the chosen default in the command line.
-    bool_flags = ["flop_inputs", "flop_outputs", "reset_data_path"]
+    bool_flags = ["flop_inputs", "flop_outputs", "reset_data_path", "add_invariant_assertions"]
     for flag in bool_flags:
         value = getattr(ctx.attr, flag)
         flags_str += " --{}={}".format(flag, str(value).lower())
@@ -101,6 +101,10 @@ dslx_to_pipeline = rule(
         "reset_data_path": attr.bool(
             doc = "Whether to generate reset logic for data-path registers.",
             default = True,
+        ),
+        "add_invariant_assertions": attr.bool(
+            doc = "Whether to add invariant assertions to the generated code.",
+            default = False,
         ),
         "module_name": attr.string(
             doc = "The module name to use in generation.",
