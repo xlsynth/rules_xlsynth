@@ -38,6 +38,15 @@ def _dslx_test_impl(ctx):
     if disable_warnings:
         flags_str += " --disable_warnings=" + disable_warnings
 
+    # If requested, enable the v2 type-inference pass.
+    type_inference_v2 = env.get("XLSYNTH_TYPE_INFERENCE_V2")
+    if type_inference_v2 == "true":
+        flags_str += " --type_inference_v2=true"
+    elif type_inference_v2 in (None, "", "false"):
+        pass  # v1 remains the default
+    else:
+        fail("Invalid value for XLSYNTH_TYPE_INFERENCE_V2: {}".format(type_inference_v2))
+
     cmd = dslx_interpreter_file + " " + flags_str + " " + " ".join([src.path for src in srcs])
 
     runfiles = ctx.runfiles(srcs)
