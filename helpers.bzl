@@ -93,13 +93,21 @@ def write_config_toml(ctx, xlsynth_tool_dir):
     assert_format = env.get("XLSYNTH_ASSERT_FORMAT", "").strip()
     assert_format_toml = repr(assert_format)
 
+    type_inference_v2 = env.get("XLSYNTH_TYPE_INFERENCE_V2", "false").strip()
+    type_inference_v2_toml = bool_env_var_to_toml("XLSYNTH_TYPE_INFERENCE_V2", type_inference_v2)
+
     config_file_content = """[toolchain]
-dslx_stdlib_path = "{}"
 tool_path = "{}"
+
+[toolchain.dslx]
+dslx_stdlib_path = "{}"
 dslx_path = {}
 enable_warnings = {}
 disable_warnings = {}
-""".format(dslx_stdlib_path, tool_path, additional_dslx_paths_toml, enable_warnings_toml, disable_warnings_toml)
+type_inference_v2 = {}
+
+[toolchain.codegen]
+""".format(tool_path, dslx_stdlib_path, additional_dslx_paths_toml, enable_warnings_toml, disable_warnings_toml, type_inference_v2_toml)
 
     if gate_format:
         config_file_content += "gate_format = {}\n".format(gate_format_toml)

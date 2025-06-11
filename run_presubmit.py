@@ -42,6 +42,28 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_out
     else:
         subprocess.run(cmdline, check=True)
 
+def bazel_build_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
+    """Run a `bazel build` over the given targets with the standard flags."""
+    assert isinstance(targets, tuple), targets
+    flags = ['-c', 'opt']
+    flags += [
+        '--action_env=XLSYNTH_TOOLS=' + path_data.xlsynth_tools,
+        '--action_env=XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir,
+    ]
+    if path_data.dslx_path is not None:
+        flags += [
+            '--action_env=XLSYNTH_DSLX_PATH=' + ':'.join(path_data.dslx_path),
+        ]
+    if more_action_env:
+        for k, v in more_action_env.items():
+            flags += ['--action_env=' + k + '=' + v]
+    cmdline = ['bazel', 'build'] + flags + ['--', *targets]
+    print('Running command: ' + subprocess.list2cmdline(cmdline))
+    if capture_output:
+        subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
+    else:
+        subprocess.run(cmdline, check=True)
+
 @register
 def run_sample(path_data: PathData):
     bazel_test_opt(('//sample/...',), path_data)
@@ -124,6 +146,33 @@ def run_sample_with_formats(path_data: PathData):
             'XLSYNTH_USE_SYSTEM_VERILOG': 'true',
         },
     )
+
+@register
+def run_sample_type_inference_v2(path_data: PathData):
+    print('== Running type inference v2 mismatch test...')
+    test_target = '//sample_type_inference_v2:slice_at_limit_test'
+    build_target = '//sample_type_inference_v2:slice_at_limit_ir'
+
+    # First, with XLSYNTH_TYPE_INFERENCE_V2 enabled we expect failures.
+    for tgt, is_test in ((test_target, True), (build_target, False)):
+        try:
+            if is_test:
+                bazel_test_opt((tgt,), path_data, capture_output=True, more_action_env={'XLSYNTH_TYPE_INFERENCE_V2': 'true'})
+            else:
+                bazel_build_opt((tgt,), path_data, capture_output=True, more_action_env={'XLSYNTH_TYPE_INFERENCE_V2': 'true'})
+        except subprocess.CalledProcessError as e:
+            combined = (e.stdout + e.stderr).lower()
+            if 'slice' in combined or 'out of range' in combined:
+                print(f'Got expected type-inference error for {tgt} with XLSYNTH_TYPE_INFERENCE_V2=true')
+            else:
+                raise ValueError(f'Unexpected error output for {tgt}; stdout: {repr(e.stdout)} stderr: {repr(e.stderr)}')
+        else:
+            raise ValueError(f'Expected type inference v2 to fail for {tgt} but it succeeded')
+
+    # Now run without the flag – should succeed.
+    print('== Running with default type inference v1 (should succeed)...')
+    bazel_test_opt((test_target,), path_data)
+    bazel_build_opt((build_target,), path_data)
 
 def parse_versions_toml(path):
     crate_version = None
