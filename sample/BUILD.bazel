@@ -85,6 +85,13 @@ ir_to_gates(
     ir_src = ":sample_ir",
 )
 
+# As above but with fraiging disabled so it runs faster.
+ir_to_gates(
+    name = "sample_gates_analysis_nofraig",
+    ir_src = ":sample_ir",
+    fraig = False,
+)
+
 build_test(
     name = "sample_gates_analysis_test",
     targets = [":sample_gates_analysis"],
