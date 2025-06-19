@@ -14,11 +14,12 @@ def _ir_to_gates_impl(ctx):
 
     config_file = write_config_toml(ctx, xlsynth_tool_dir)
 
-    cmd = "{driver} --toolchain={toolchain} ir2gates {src} > {output}".format(
+    cmd = "{driver} --toolchain={toolchain} ir2gates --fraig={fraig} {src} > {output}".format(
         driver = xlsynth_driver_file,
         toolchain = config_file.path,
         src = ir_file_to_use.path,
         output = output_file.path,
+        fraig = "true" if ctx.attr.fraig else "false",
     )
 
     ctx.actions.run(
@@ -43,6 +44,10 @@ ir_to_gates = rule(
             doc = "The IR target providing the source IR file.",
             providers = [IrInfo],
             mandatory = True,
+        ),
+        "fraig": attr.bool(
+            doc = "If true, perform \"fraig\" optimization; can be slow when gate graph is large.",
+            default = True,
         ),
     },
     outputs = {

@@ -122,6 +122,18 @@ load("@rules_xlsynth//:rules.bzl", "ir_to_gates")
 
 ir_to_gates(
     name = "my_ir_gates_analysis",
-    ir_src = ":my_dslx_library_ir", # Target providing IrInfo
+    ir_src = ":my_dslx_library_ir",  # Target providing IrInfo
+)
+```
+
+When the gate graph is large the "FRAIGing" optimization process can be slow, so there is a boolean option on the rule that allows users to disable it.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "ir_to_gates")
+
+ir_to_gates(
+    name = "my_ir_gates_analysis_nofraig",
+    ir_src = ":my_dslx_library_ir",
+    fraig = False,
 )
 ```
