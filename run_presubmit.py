@@ -5,6 +5,8 @@ import subprocess
 import optparse
 import os
 import re
+import tempfile
+import shutil
 from typing import Optional, Tuple, List, Callable, Dict
 import sys
 
@@ -173,6 +175,145 @@ def run_sample_type_inference_v2(path_data: PathData):
     print('== Running with default type inference v1 (should succeed)...')
     bazel_test_opt((test_target,), path_data)
     bazel_build_opt((build_target,), path_data)
+
+@register
+def run_readme_sample_snippets(path_data: PathData):
+    """Ensures that the Starlark BUILD snippets in the README can be loaded by Bazel.
+
+    The strategy is:
+      1. Extract every ```starlark code block from README.md.
+      2. Place the concatenated snippets into a temporary Bazel package inside the
+         repository (so that we have access to //:rules.bzl).
+      3. Materialize any `.x` files referenced in the snippets so that Bazel does
+         not complain about missing input files during package loading.
+      4. Invoke `bazel query` on that package; if Bazel can successfully load
+         the package and enumerate its targets, then all attributes / rule
+         names used in the snippets are valid.
+    """
+
+    repo_root = os.path.dirname(__file__)
+    readme_path = os.path.join(repo_root, "README.md")
+
+    if not os.path.exists(readme_path):
+        raise RuntimeError(f"README.md not found at {readme_path}")
+
+    with open(readme_path, "r", encoding="utf-8") as f:
+        readme_text = f.read()
+
+    # Extract ```starlark``` blocks.
+    snippet_blocks = re.findall(r"```starlark\s*(.*?)```", readme_text, re.DOTALL)
+    if not snippet_blocks:
+        raise RuntimeError("No starlark code blocks found in README.md")
+
+    # Flatten snippets into a list of lines, stripping trailing whitespace.
+    snippet_lines = []
+    for idx, block in enumerate(snippet_blocks, 1):
+        print("--- README snippet {} ---".format(idx))
+        print(block.strip())
+        print("----------------------")
+        snippet_lines.extend([ln.rstrip() for ln in block.splitlines() if ln.strip()])
+
+    # Determine which rule symbols are used so we can create a single load(...).
+    rule_name_pattern = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\(")
+    used_rule_names: set[str] = set()
+    for ln in snippet_lines:
+        m = rule_name_pattern.match(ln)
+        if m and m.group(1) != "load":
+            used_rule_names.add(m.group(1))
+
+    # Inspect rules.bzl to know what symbols it actually exports so we only
+    # attempt to load valid ones (e.g. we do NOT load `glob`).
+    rules_bzl_path = os.path.join(repo_root, "rules.bzl")
+    exported_rule_names: set[str] = set()
+    if os.path.exists(rules_bzl_path):
+        with open(rules_bzl_path, "r", encoding="utf-8") as rbzl:
+            for line in rbzl:
+                m = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=", line)
+                if m:
+                    exported_rule_names.add(m.group(1))
+
+    load_rule_names = sorted(name for name in used_rule_names if name in exported_rule_names)
+
+    # Gather referenced .x filenames so we can create stub DSLX files.
+    xfile_names = set(re.findall(r"['\"]([^'\"]+\.x)['\"]", "\n".join(snippet_lines)))
+
+    # Create a temporary package under the repository root.
+    temp_pkg_dir = tempfile.mkdtemp(prefix="readme_snippets_", dir=repo_root)
+    try:
+        build_path = os.path.join(temp_pkg_dir, "BUILD.bazel")
+
+        with open(build_path, "w", encoding="utf-8") as bf:
+            bf.write("# Auto-generated test BUILD file for README snippets.\n")
+            if load_rule_names:
+                bf.write("load(\"//:rules.bzl\", {} )\n\n".format(
+                    ", ".join(f'\"{name}\"' for name in load_rule_names)
+                ))
+
+            # Collect names defined in snippets to help stub out references.
+            defined_targets: set[str] = set()
+            name_attr_re = re.compile(r"name\s*=\s*\"([A-Za-z0-9_]+)\"")
+
+            for ln in snippet_lines:
+                if ln.lstrip().startswith("load("):
+                    # Skip user-provided load lines; we wrote our own above.
+                    continue
+
+                # Track defined target names.
+                m_name = name_attr_re.search(ln)
+                if m_name:
+                    defined_targets.add(m_name.group(1))
+
+                bf.write(ln + "\n")
+
+            # After writing original lines, add stub filegroups for any referenced
+            # targets that were not defined in the snippets themselves.
+            referenced_targets = set(re.findall(r"\"?:([A-Za-z0-9_]+)\"?", "\n".join(snippet_lines)))
+            missing_targets = referenced_targets - defined_targets
+
+            for tgt in sorted(missing_targets):
+                bf.write(f"filegroup(name = \"{tgt}\")\n")
+
+        # Stub out referenced .x files so the package loads cleanly.
+        for xfname in xfile_names:
+            # Skip wildcard entries (e.g. "*.x") that arise from glob patterns.
+            if any(ch in xfname for ch in "*?["):
+                continue
+            dst_path = os.path.join(temp_pkg_dir, xfname)
+            os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+            with open(dst_path, "w", encoding="utf-8") as xf:
+                xf.write("// stub file generated by run_presubmit.py\n")
+
+        # Run `bazel query` to ensure the package loads.
+        rel_pkg = os.path.relpath(temp_pkg_dir, repo_root)
+        query_target = f"//{rel_pkg}:all"
+
+        env = os.environ.copy()
+        env["XLSYNTH_TOOLS"] = path_data.xlsynth_tools
+        env["XLSYNTH_DRIVER_DIR"] = path_data.xlsynth_driver_dir
+        if path_data.dslx_path is not None:
+            env["XLSYNTH_DSLX_PATH"] = ":".join(path_data.dslx_path)
+
+        print(f"Running bazel query on README snippets: {query_target}\nBUILD file used: {build_path}")
+        try:
+            result = subprocess.run([
+                "bazel",
+                "query",
+                "--noshow_progress",
+                query_target,
+            ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", env=env)
+        except subprocess.CalledProcessError as e:
+            print("=== Bazel query failed ===")
+            print("STDOUT:\n" + (e.stdout or "<empty>"))
+            print("STDERR:\n" + (e.stderr or "<empty>"))
+            raise
+
+        print("README snippets successfully loaded by Bazel. Output targets:")
+        print(result.stdout)
+    finally:
+        if os.environ.get("KEEP_README_SNIPPET_TEMPS"):
+            print(f"KEEP_README_SNIPPET_TEMPS set; temp BUILD package retained at: {temp_pkg_dir}")
+        else:
+            shutil.rmtree(temp_pkg_dir)
 
 def parse_versions_toml(path):
     crate_version = None
