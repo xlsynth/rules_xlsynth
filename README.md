@@ -35,14 +35,14 @@ Or by passing `--action_env=` on the bazel command line.
 load("@rules_xlsynth//:rules.bzl", "dslx_library", "dslx_test")
 
 dslx_library(
-    name = "foo",
-    srcs = ["foo.x"],
+    name = "my_dslx_library",
+    srcs = ["my_dslx_library.x"],
 )
 
 # `dslx_test` can run all the inline tests in an associated library.
 dslx_test(
-    name = "foo_test",
-    deps = [":foo"],
+    name = "my_dslx_library_test",
+    deps = [":my_dslx_library"],
 )
 ```
 
@@ -63,8 +63,8 @@ dslx_fmt_test(
 load("@rules_xlsynth//:rules.bzl", "dslx_to_sv_types")
 
 dslx_to_sv_types(
-    name = "foo_pkg",
-    deps = [":foo"],
+    name = "my_dslx_library_pkg",
+    deps = [":my_dslx_library"],
 )
 ```
 
@@ -82,7 +82,7 @@ load("@rules_xlsynth//:rules.bzl", "dslx_to_ir")
 
 dslx_to_ir(
     name = "my_dslx_library_ir",
-    deps = [":my_dslx_library"],
+    lib = ":my_dslx_library",
     top = "main",
 )
 ```
