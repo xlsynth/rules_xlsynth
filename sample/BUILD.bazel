@@ -18,6 +18,7 @@ load(
     "ir_to_delay_info",
     "ir_to_gates",
     "mangle_dslx_name",
+    "dslx_stitch_pipeline",
 )
 
 dslx_library(
@@ -190,4 +191,23 @@ dslx_prove_quickcheck_test(
     name = "sample_prove_quickcheck_test",
     lib = ":sample",
     top = "quickcheck_main",
+)
+
+# Pipeline stitching example
+
+dslx_library(
+    name = "pipeline_stages_lib",
+    srcs = ["pipeline_stages.x"],
+)
+
+dslx_stitch_pipeline(
+    name = "pipeline_stages_pipeline",
+    lib = ":pipeline_stages_lib",
+    top = "foo",
+)
+
+diff_test(
+    name = "pipeline_stages_pipeline_test",
+    file1 = ":pipeline_stages_pipeline",
+    file2 = ":pipeline_stages_pipeline.golden.sv",
 )
