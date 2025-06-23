@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load(":dslx_provider.bzl", "DslxInfo")
+load(":helpers.bzl", "get_driver_path", "get_srcs_from_lib", "write_config_toml")
+
+
+def _dslx_stitch_pipeline_impl(ctx):
+    xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
+    lib_info = ctx.attr.lib[DslxInfo]
+    lib_dag_list = lib_info.dag.to_list()
+    if not lib_dag_list:
+        fail("DAG for library {} is empty".format(ctx.attr.lib.label))
+    main_srcs = lib_dag_list[-1].srcs
+    if len(main_srcs) != 1:
+        fail("Expected exactly one source file for the library {}; got: {}".format(ctx.attr.lib.label, [s.path for s in main_srcs]))
+    main_src = main_srcs[0]
+
+    srcs = get_srcs_from_lib(ctx)
+    config_file = write_config_toml(ctx, xlsynth_tool_dir)
+
+    flags_str = " --use_system_verilog={}".format(
+        str(ctx.attr.use_system_verilog).lower()
+    )
+    if ctx.attr.stages:
+        flags_str += " --stages=" + ",".join(ctx.attr.stages)
+    if ctx.attr.input_valid_signal:
+        flags_str += " --input_valid_signal=" + ctx.attr.input_valid_signal
+    if ctx.attr.output_valid_signal:
+        flags_str += " --output_valid_signal=" + ctx.attr.output_valid_signal
+    if ctx.attr.reset:
+        flags_str += " --reset=" + ctx.attr.reset
+
+    cmd = "{driver} --toolchain={toolchain} dslx-stitch-pipeline --dslx_input_file={src} --dslx_top={top}{flags} > {output}".format(
+        driver = xlsynth_driver_file,
+        toolchain = config_file.path,
+        src = main_src.path,
+        top = ctx.attr.top,
+        flags = flags_str,
+        output = ctx.outputs.sv_file.path,
+    )
+
+    ctx.actions.run(
+        inputs = srcs + [config_file],
+        outputs = [ctx.outputs.sv_file],
+        arguments = ["-c", cmd],
+        executable = "/bin/sh",
+        use_default_shell_env = True,
+    )
+
+    return DefaultInfo(
+        files = depset(direct = [ctx.outputs.sv_file]),
+    )
+
+
+dslx_stitch_pipeline = rule(
+    doc = "Stitch pipeline stage functions into a wrapper module",
+    implementation = _dslx_stitch_pipeline_impl,
+    attrs = {
+        "lib": attr.label(
+            doc = "The DSLX library containing the pipeline stage functions.",
+            providers = [DslxInfo],
+            mandatory = True,
+        ),
+        "top": attr.string(
+            doc = "Prefix for the pipeline stage functions (e.g. foo for foo_cycleN).",
+            mandatory = True,
+        ),
+        "stages": attr.string_list(
+            doc = "Explicit stage function names in order; overrides automatic discovery.",
+        ),
+        "input_valid_signal": attr.string(
+            doc = "Valid signal for stage input data.",
+        ),
+        "output_valid_signal": attr.string(
+            doc = "Valid signal for stage output data.",
+        ),
+        "reset": attr.string(
+            doc = "Reset signal used for pipeline registers.",
+        ),
+        "use_system_verilog": attr.bool(
+            doc = "Emit SystemVerilog when true, plain Verilog when false.",
+            default = True,
+        ),
+    },
+    outputs = {
+        "sv_file": "%{name}.sv",
+    },
+)

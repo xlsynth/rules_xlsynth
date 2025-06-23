@@ -27,6 +27,10 @@ load(
     ":dslx_to_sv_types.bzl",
     _dslx_to_sv_types = "dslx_to_sv_types",
 )
+load(
+    ":dslx_stitch_pipeline.bzl",
+    _dslx_stitch_pipeline = "dslx_stitch_pipeline",
+)
 load(":helpers.bzl", _mangle_dslx_name = "mangle_dslx_name")
 load(":ir_prove_equiv_test.bzl", _ir_prove_equiv_test = "ir_prove_equiv_test")
 load(
@@ -47,3 +51,4 @@ mangle_dslx_name = _mangle_dslx_name
 dslx_prove_quickcheck_test = _dslx_prove_quickcheck_test
 ir_prove_equiv_test = _ir_prove_equiv_test
 ir_to_gates = _ir_to_gates
+dslx_stitch_pipeline = _dslx_stitch_pipeline
