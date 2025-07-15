@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: Apache-2.0
 
 import imported;  // resolved via XLSYNTH_DSLX_PATH
