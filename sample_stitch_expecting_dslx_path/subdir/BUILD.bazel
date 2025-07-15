@@ -1,0 +1,10 @@
+
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "dslx_library")
+
+dslx_library(
+    name = "another",
+    srcs = ["another.x"],
+    visibility = ["//visibility:public"],
+)

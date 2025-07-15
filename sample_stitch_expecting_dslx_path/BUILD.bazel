@@ -1,0 +1,38 @@
+
+# SPDX-License-Identifier: Apache-2.0
+
+# Sample BUILD file demonstrating dslx_stitch_pipeline with nonstandard DSLX_PATH.
+
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//:rules.bzl", "dslx_library", "dslx_stitch_pipeline")
+
+# Library providing a constant to be imported via DSLX_PATH.
+dslx_library(
+    name = "imported",
+    srcs = ["imported.x"],
+)
+
+# Library containing the pipeline stage functions.
+dslx_library(
+    name = "pipeline_stages",
+    srcs = ["pipeline_stages.x"],
+    deps = [
+        ":imported",
+        "//sample_stitch_expecting_dslx_path/subdir:another",
+    ],
+    # Note: we still demonstrate XLSYNTH_DSLX_PATH because the DSLX imports use
+    # bare module names (no explicit path prefixes).
+)
+
+# Stitch the stage functions into a wrapper module.
+dslx_stitch_pipeline(
+    name = "pipeline_stages_pipeline",
+    lib = ":pipeline_stages",
+    top = "foo",
+)
+
+# Build test ensures the stitching step succeeds.
+build_test(
+    name = "pipeline_stages_pipeline_build_test",
+    targets = [":pipeline_stages_pipeline"],
+)

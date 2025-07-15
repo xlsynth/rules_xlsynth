@@ -315,6 +315,20 @@ def run_readme_sample_snippets(path_data: PathData):
         else:
             shutil.rmtree(temp_pkg_dir)
 
+@register
+def run_sample_stitch_pipeline_expecting_dslx_path(path_data: PathData):
+    """Runs the pipeline stitching sample that relies on XLSYNTH_DSLX_PATH search paths."""
+    path_data.dslx_path = (
+        'sample_stitch_expecting_dslx_path',
+        'sample_stitch_expecting_dslx_path/subdir',
+    )
+    bazel_test_opt(
+        (
+            '//sample_stitch_expecting_dslx_path:pipeline_stages_pipeline_build_test',
+        ),
+        path_data,
+    )
+
 def parse_versions_toml(path):
     crate_version = None
     dso_version = None
