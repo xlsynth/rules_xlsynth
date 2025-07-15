@@ -46,19 +46,15 @@ jobs:
 
       - name: Download and rename libxls
         run: |
-          RELEASE_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-            | grep -v ".sha256" \
-            | grep "browser_download_url.*libxls-ubuntu2004.so" \
-            | cut -d '"' -f 4)
           XLSYNTH_VERSION=${{ env.DSO_VERSION }}
-          echo "XLSYNTH_VERSION=${XLSYNTH_VERSION}"
-          echo "release_url: ${RELEASE_URL}"
-          curl -L -o libxls-ubuntu2004.so "$RELEASE_URL"
-          mv libxls-ubuntu2004.so "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
+          LIB_FILE="libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
+          RELEASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}/${LIB_FILE}"
+          echo "Downloading ${RELEASE_URL}"
+          curl -L -o "${LIB_FILE}" "${RELEASE_URL}"
           ls *.so
           file *.so
           export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
-          sudo ln -s ${PWD}/"libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
+          sudo ln -s ${PWD}/"${LIB_FILE}" /usr/lib/
 
       - name: Download xlsynth binaries
         run: |
@@ -89,11 +85,11 @@ jobs:
 
       - name: Download and unpack DSLX standard library
         run: |
-          STD_LIB_URL=$(curl -s https://api.github.com/repos/xlsynth/xlsynth/releases/latest \
-            | grep -v ".sha256" \
-            | grep "browser_download_url.*dslx_stdlib.tar.gz" \
-            | cut -d '"' -f 4)
-          curl -L -o dslx_stdlib.tar.gz "$STD_LIB_URL"
+          XLSYNTH_VERSION=${{ env.DSO_VERSION }}
+          STD_LIB_FILE="dslx_stdlib.tar.gz"
+          STD_LIB_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}/${STD_LIB_FILE}"
+          echo "Downloading ${STD_LIB_URL}"
+          curl -L -o ${STD_LIB_FILE} "${STD_LIB_URL}"
           tar -xzf dslx_stdlib.tar.gz -C dependencies/
 
       - name: Run presubmit script
