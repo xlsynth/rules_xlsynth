@@ -1,4 +1,3 @@
-
 # SPDX-License-Identifier: Apache-2.0
 
 # Sample BUILD file demonstrating dslx_stitch_pipeline with nonstandard DSLX_PATH.
