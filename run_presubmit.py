@@ -27,7 +27,8 @@ class PathData:
 
 def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
     assert isinstance(targets, tuple), targets
-    flags = ['-c', 'opt', '--test_output=errors']
+    flags = []
+    flags += ['-c', 'opt', '--test_output=errors']
     flags += [
         '--action_env=XLSYNTH_TOOLS=' + path_data.xlsynth_tools,
         '--action_env=XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir,
@@ -39,7 +40,7 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_out
     if more_action_env:
         for k, v in more_action_env.items():
             flags += ['--action_env=' + k + '=' + v]
-    cmdline = ['bazel', 'test', '--test_output=errors'] + flags + ['--', *targets]
+    cmdline = ['bazel', '--bazelrc=/dev/null', 'test', '--test_output=errors'] + flags + ['--', *targets]
     print('Running command: ' + subprocess.list2cmdline(cmdline))
     if capture_output:
         subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
@@ -49,7 +50,8 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_out
 def bazel_build_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
     """Run a `bazel build` over the given targets with the standard flags."""
     assert isinstance(targets, tuple), targets
-    flags = ['-c', 'opt']
+    flags = []
+    flags += ['-c', 'opt']
     flags += [
         '--action_env=XLSYNTH_TOOLS=' + path_data.xlsynth_tools,
         '--action_env=XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir,
@@ -61,7 +63,7 @@ def bazel_build_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_ou
     if more_action_env:
         for k, v in more_action_env.items():
             flags += ['--action_env=' + k + '=' + v]
-    cmdline = ['bazel', 'build'] + flags + ['--', *targets]
+    cmdline = ['bazel', '--bazelrc=/dev/null', 'build'] + flags + ['--', *targets]
     print('Running command: ' + subprocess.list2cmdline(cmdline))
     if capture_output:
         subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
