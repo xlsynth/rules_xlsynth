@@ -53,7 +53,8 @@ jobs:
           curl -fILs "${BASE_URL}/${LIB_FILE}" | head -n 1  # sanity check (expects HTTP/2 200)
           curl -L -o "${LIB_FILE}" "${BASE_URL}/${LIB_FILE}"
           curl -L -o "${LIB_FILE}.sha256" "${BASE_URL}/${LIB_FILE}.sha256"
-          sha256sum -c "${LIB_FILE}.sha256"
+          EXPECTED=$(cut -d' ' -f1 "${LIB_FILE}.sha256")
+          echo "${EXPECTED}  ${LIB_FILE}" | sha256sum -c -
           mv "${LIB_FILE}" "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
           ls libxls-*.so
           file libxls-*.so
@@ -96,7 +97,8 @@ jobs:
           curl -fILs "${BASE_URL}/${STD_LIB_FILE}" | head -n 1
           curl -L -o "${STD_LIB_FILE}" "${BASE_URL}/${STD_LIB_FILE}"
           curl -L -o "${STD_LIB_FILE}.sha256" "${BASE_URL}/${STD_LIB_FILE}.sha256"
-          sha256sum -c "${STD_LIB_FILE}.sha256"
+          EXPECTED=$(cut -d' ' -f1 "${STD_LIB_FILE}.sha256")
+          echo "${EXPECTED}  ${STD_LIB_FILE}" | sha256sum -c -
           tar -xzf "${STD_LIB_FILE}" -C dependencies/
 
       - name: Run presubmit script
