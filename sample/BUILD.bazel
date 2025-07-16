@@ -20,6 +20,7 @@ load(
     "mangle_dslx_name",
     "dslx_stitch_pipeline",
 )
+load("//:sha256sum_test.bzl", "sha256sum_test")
 
 dslx_library(
     name = "imported",

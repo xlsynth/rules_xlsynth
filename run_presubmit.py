@@ -4,11 +4,14 @@ import dataclasses
 import subprocess
 import optparse
 import os
+from pathlib import Path
 import re
 import tempfile
 import shutil
 from typing import Optional, Tuple, List, Callable, Dict
 import sys
+import hashlib
+import urllib.request
 
 Runnable = Callable[['PathData'], None]
 TO_RUN: List[Runnable] = []
@@ -25,7 +28,8 @@ class PathData:
 
 def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
     assert isinstance(targets, tuple), targets
-    flags = ['-c', 'opt', '--test_output=errors']
+    flags = []
+    flags += ['-c', 'opt', '--test_output=errors']
     flags += [
         '--action_env=XLSYNTH_TOOLS=' + path_data.xlsynth_tools,
         '--action_env=XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir,
@@ -37,7 +41,7 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_out
     if more_action_env:
         for k, v in more_action_env.items():
             flags += ['--action_env=' + k + '=' + v]
-    cmdline = ['bazel', 'test', '--test_output=errors'] + flags + ['--', *targets]
+    cmdline = ['bazel', '--bazelrc=/dev/null', 'test', '--test_output=errors'] + flags + ['--', *targets]
     print('Running command: ' + subprocess.list2cmdline(cmdline))
     if capture_output:
         subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
@@ -47,7 +51,8 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_out
 def bazel_build_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
     """Run a `bazel build` over the given targets with the standard flags."""
     assert isinstance(targets, tuple), targets
-    flags = ['-c', 'opt']
+    flags = []
+    flags += ['-c', 'opt']
     flags += [
         '--action_env=XLSYNTH_TOOLS=' + path_data.xlsynth_tools,
         '--action_env=XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir,
@@ -59,7 +64,7 @@ def bazel_build_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_ou
     if more_action_env:
         for k, v in more_action_env.items():
             flags += ['--action_env=' + k + '=' + v]
-    cmdline = ['bazel', 'build'] + flags + ['--', *targets]
+    cmdline = ['bazel', '--bazelrc=/dev/null', 'build'] + flags + ['--', *targets]
     print('Running command: ' + subprocess.list2cmdline(cmdline))
     if capture_output:
         subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
@@ -315,6 +320,20 @@ def run_readme_sample_snippets(path_data: PathData):
         else:
             shutil.rmtree(temp_pkg_dir)
 
+@register
+def run_sample_stitch_pipeline_expecting_dslx_path(path_data: PathData):
+    """Runs the pipeline stitching sample that relies on XLSYNTH_DSLX_PATH search paths."""
+    path_data.dslx_path = (
+        'sample_stitch_expecting_dslx_path',
+        'sample_stitch_expecting_dslx_path/subdir',
+    )
+    bazel_test_opt(
+        (
+            '//sample_stitch_expecting_dslx_path:pipeline_stages_pipeline_build_test',
+        ),
+        path_data,
+    )
+
 def parse_versions_toml(path):
     crate_version = None
     dso_version = None
@@ -336,7 +355,91 @@ def find_dso(dso_filename, search_dirs):
         candidate = os.path.join(d, dso_filename)
         if os.path.exists(candidate):
             return candidate
+    # Use ldconfig to find shared library paths
+    try:
+        output = subprocess.check_output(['ldconfig', '-p'], encoding='utf-8', stderr=subprocess.DEVNULL)
+        for line in output.splitlines():
+            line = line.strip()
+            if dso_filename in line:
+                parts = line.split('=>')
+                if len(parts) == 2:
+                    candidate = parts[1].strip()
+                    if os.path.exists(candidate):
+                        return candidate
+    except Exception:
+        pass  # ldconfig may not be available (e.g. on macOS)
     return None
+
+def _fetch_remote_sha256(url: str) -> str:
+    """Fetches the expected SHA-256 (first token) from a .sha256 URL."""
+    try:
+        with urllib.request.urlopen(url, timeout=15) as response:
+            text = response.read().decode('utf-8')
+    except Exception as e:
+        raise RuntimeError(f'Failed to fetch SHA256 from {url}: {e}')
+    first_token = text.strip().split()[0]
+    if not re.fullmatch(r'[0-9a-fA-F]{64}', first_token):
+        raise RuntimeError(f'Unexpected SHA256 file contents from {url}: {text}')
+    return first_token
+
+
+def _sha256_of_file(path: str) -> str:
+    """Computes the SHA-256 digest of the given file and returns it as hex."""
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_tool_binaries(tools_dir: str, version: str, *, platform: str = 'ubuntu2004') -> None:
+    """Verifies that each tool binary's SHA-256 matches the released checksum.
+
+    Raises RuntimeError on mismatch.
+    """
+    base_url = f"https://github.com/xlsynth/xlsynth/releases/download/v{version}"
+    artifacts = [
+        'dslx_interpreter_main',
+        'ir_converter_main',
+        'codegen_main',
+        'opt_main',
+        'prove_quickcheck_main',
+        'typecheck_main',
+        'dslx_fmt',
+        'delay_info_main',
+        'check_ir_equivalence_main',
+    ]
+
+    for art in artifacts:
+        local_path = os.path.join(tools_dir, art)
+        if not os.path.exists(local_path):
+            raise RuntimeError(f'Expected tool binary not found at {local_path}')
+        remote_asset = f"{art}-{platform}"
+        remote_sha_url = f"{base_url}/{remote_asset}.sha256"
+        expected = _fetch_remote_sha256(remote_sha_url)
+        actual = _sha256_of_file(local_path)
+        if actual != expected:
+            raise RuntimeError(
+                f'SHA256 mismatch for {art}: local {actual} != expected {expected} (from {remote_sha_url})'
+            )
+        else:
+            print(f"Verified SHA256 for {art} matches release v{version}.")
+
+    # Verify the libxls DSO if present next to the repository root.
+    dso_name = f"libxls-v{version}-{platform}.so"
+    dso_path = find_dso(dso_name, [os.getcwd(), '/usr/lib', '/usr/local/lib'])
+    if dso_path:
+        remote_sha_url = f"{base_url}/libxls-{platform}.so.sha256"
+        expected = _fetch_remote_sha256(remote_sha_url)
+        actual = _sha256_of_file(dso_path)
+        if actual != expected:
+            raise RuntimeError(
+                f'SHA256 mismatch for {dso_name}: local {actual} != expected {expected} (from {remote_sha_url})'
+            )
+        else:
+            print(f"Verified SHA256 for {dso_name} matches release v{version}.")
+    else:
+        print(f"WARNING: Could not find local libxls DSO ({dso_name}); skipping checksum verification.")
 
 def main():
     parser = optparse.OptionParser()
@@ -349,9 +452,25 @@ def main():
         parser.error('Missing required argument(s): --xlsynth-tools, --xlsynth-driver-dir, --dslx-path')
         return
     dslx_path = options.dslx_path.split(':') if options.dslx_path else None
-    path_data = PathData(xlsynth_tools=options.xlsynth_tools,
-                         xlsynth_driver_dir=options.xlsynth_driver_dir,
-                         dslx_path=dslx_path)
+    # Canonicalize directories (remove redundant slashes, resolve '..') so that
+    # downstream path concatenations do not introduce double-slash artefacts.
+    tools_dir = str(Path(options.xlsynth_tools).expanduser().resolve())
+    driver_dir = str(Path(options.xlsynth_driver_dir).expanduser().resolve())
+
+    path_data = PathData(
+        xlsynth_tools=tools_dir,
+        xlsynth_driver_dir=driver_dir,
+        dslx_path=dslx_path,
+    )
+
+    # Ensure we are running tests from a pristine Bazel state so that stale
+    # runfiles (e.g. golden files) are not reused across presubmit
+    # invocations. This avoids situations where updated test inputs do not
+    # invalidate previous action results.
+    try:
+        subprocess.run(["bazel", "clean", "--expunge_async"], check=True)
+    except Exception as e:
+        print("WARNING: bazel clean failed: {} -- continuing".format(e))
 
     # Version check for xlsynth-driver and DSO
     versions_path = os.path.join(os.path.dirname(__file__), 'xlsynth-versions.toml')
@@ -369,6 +488,8 @@ def main():
         raise RuntimeError(f'xlsynth-driver version {actual_version} does not match required {crate_version}. Please update your xlsynth-driver.')
     # DSO existence check removed; assume xlsynth-driver can run if version matches
 
+    verify_tool_binaries(path_data.xlsynth_tools, dso_version)
+
     assert os.path.exists(os.path.join(path_data.xlsynth_tools, 'dslx_interpreter_main')), 'dslx_interpreter_main not found in XLSYNTH_TOOLS=' + path_data.xlsynth_tools
     assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found in XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir
 
@@ -378,6 +499,10 @@ def main():
     for f in to_run:
         print('-' * 80)
         print('Executing', f.__name__)
+        print('-' * 80)
+
+        print(f"xlsynth-driver version: {version_out}")
+
         f(path_data)
 
 if __name__ == '__main__':

@@ -147,8 +147,5 @@ dslx_stitch_pipeline(
     name = "my_pipeline",
     lib = ":my_dslx_library",
     top = "foo",
-    input_valid_signal = "in_valid",
-    output_valid_signal = "out_valid",
-    reset = "rst",
 )
 ```

@@ -23,12 +23,6 @@ def _dslx_stitch_pipeline_impl(ctx):
     )
     if ctx.attr.stages:
         flags_str += " --stages=" + ",".join(ctx.attr.stages)
-    if ctx.attr.input_valid_signal:
-        flags_str += " --input_valid_signal=" + ctx.attr.input_valid_signal
-    if ctx.attr.output_valid_signal:
-        flags_str += " --output_valid_signal=" + ctx.attr.output_valid_signal
-    if ctx.attr.reset:
-        flags_str += " --reset=" + ctx.attr.reset
 
     cmd = "{driver} --toolchain={toolchain} dslx-stitch-pipeline --dslx_input_file={src} --dslx_top={top}{flags} > {output}".format(
         driver = xlsynth_driver_file,
@@ -67,15 +61,6 @@ dslx_stitch_pipeline = rule(
         ),
         "stages": attr.string_list(
             doc = "Explicit stage function names in order; overrides automatic discovery.",
-        ),
-        "input_valid_signal": attr.string(
-            doc = "Valid signal for stage input data.",
-        ),
-        "output_valid_signal": attr.string(
-            doc = "Valid signal for stage output data.",
-        ),
-        "reset": attr.string(
-            doc = "Reset signal used for pipeline registers.",
         ),
         "use_system_verilog": attr.bool(
             doc = "Emit SystemVerilog when true, plain Verilog when false.",
