@@ -367,6 +367,15 @@ def main():
                          xlsynth_driver_dir=options.xlsynth_driver_dir,
                          dslx_path=dslx_path)
 
+    # Ensure we are running tests from a pristine Bazel state so that stale
+    # runfiles (e.g. golden files) are not reused across presubmit
+    # invocations. This avoids situations where updated test inputs do not
+    # invalidate previous action results.
+    try:
+        subprocess.run(["bazel", "clean", "--expunge_async"], check=True)
+    except Exception as e:
+        print("WARNING: bazel clean failed: {} -- continuing".format(e))
+
     # Version check for xlsynth-driver and DSO
     versions_path = os.path.join(os.path.dirname(__file__), 'xlsynth-versions.toml')
     crate_version, dso_version = parse_versions_toml(versions_path)
