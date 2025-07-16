@@ -4,6 +4,7 @@ import dataclasses
 import subprocess
 import optparse
 import os
+from pathlib import Path
 import re
 import tempfile
 import shutil
@@ -453,8 +454,8 @@ def main():
     dslx_path = options.dslx_path.split(':') if options.dslx_path else None
     # Canonicalize directories (remove redundant slashes, resolve '..') so that
     # downstream path concatenations do not introduce double-slash artefacts.
-    tools_dir = os.path.normpath(options.xlsynth_tools)
-    driver_dir = os.path.normpath(options.xlsynth_driver_dir)
+    tools_dir = str(Path(options.xlsynth_tools).expanduser().resolve())
+    driver_dir = str(Path(options.xlsynth_driver_dir).expanduser().resolve())
 
     path_data = PathData(
         xlsynth_tools=tools_dir,
