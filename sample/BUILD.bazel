@@ -160,20 +160,6 @@ diff_test(
     file2 = ":sample_main_sv_no_data_reset.golden.sv",
 )
 
-# Deterministic-hash checks for generated SV files — catches accidental
-# changes across environments.
-sha256sum_test(
-    name = "sample_main_sv_hash_test",
-    src = ":sample_main_sv",
-    want = "a6825b397ca6020b826bbcd329c8e4982ba9f0bcf465e2c344fc6a29fcb91e38",
-)
-
-sha256sum_test(
-    name = "sample_main_sv_no_data_reset_hash_test",
-    src = ":sample_main_sv_no_data_reset",
-    want = "236a60334a0638e63f1b6cb499d944887bd9cc5f21f7600a5859ad4f268c71e8",
-)
-
 # -- no flops on input/output
 
 dslx_to_pipeline(

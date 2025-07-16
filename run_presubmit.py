@@ -451,9 +451,16 @@ def main():
         parser.error('Missing required argument(s): --xlsynth-tools, --xlsynth-driver-dir, --dslx-path')
         return
     dslx_path = options.dslx_path.split(':') if options.dslx_path else None
-    path_data = PathData(xlsynth_tools=options.xlsynth_tools,
-                         xlsynth_driver_dir=options.xlsynth_driver_dir,
-                         dslx_path=dslx_path)
+    # Canonicalize directories (remove redundant slashes, resolve '..') so that
+    # downstream path concatenations do not introduce double-slash artefacts.
+    tools_dir = os.path.normpath(options.xlsynth_tools)
+    driver_dir = os.path.normpath(options.xlsynth_driver_dir)
+
+    path_data = PathData(
+        xlsynth_tools=tools_dir,
+        xlsynth_driver_dir=driver_dir,
+        dslx_path=dslx_path,
+    )
 
     # Ensure we are running tests from a pristine Bazel state so that stale
     # runfiles (e.g. golden files) are not reused across presubmit
