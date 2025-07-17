@@ -24,43 +24,38 @@ module foo(
   input wire rst,
   input wire input_valid,
   input wire [31:0] x,
-  output wire output_valid,
-  output wire [31:0] out
+  output wire [31:0] out,
+  output wire output_valid
 );
   reg [31:0] p0_x;
+  reg p0_valid;
   always_ff @ (posedge clk) begin
-    if (rst) begin
-      p0_x <= 32'h0000_0000;
-    end else if (input_valid) begin
-      p0_x <= x;
-    end
+    p0_x <= input_valid ? x : p0_x;
+    p0_valid <= rst ? 1'b0 : input_valid;
   end
-  wire [31:0] p1_next;
+  wire [31:0] stage0_out_comb;
   foo_cycle0 foo_cycle0_i (
     .x(p0_x),
-    .out(p1_next)
+    .out(stage0_out_comb)
   );
-  reg [31:0] p1;
+  reg [31:0] p1_out;
+  reg p1_valid;
   always_ff @ (posedge clk) begin
-    if (rst) begin
-      p1 <= 32'h0000_0000;
-    end else begin
-      p1 <= p1_next;
-    end
+    p1_out <= p0_valid ? stage0_out_comb : p1_out;
+    p1_valid <= rst ? 1'b0 : p0_valid;
   end
-  wire [31:0] p2_next;
+  wire [31:0] stage1_out_comb;
   foo_cycle1 foo_cycle1_i (
-    .x(p1),
-    .out(p2_next)
+    .x(p1_out),
+    .out(stage1_out_comb)
   );
-  reg [31:0] p2;
+  reg [31:0] p2_out;
+  reg p2_valid;
   always_ff @ (posedge clk) begin
-    if (rst) begin
-      p2 <= 32'h0000_0000;
-    end else begin
-      p2 <= p2_next;
-    end
+    p2_out <= p1_valid ? stage1_out_comb : p2_out;
+    p2_valid <= rst ? 1'b0 : p1_valid;
   end
-  assign out = p2;
-  assign output_valid = input_valid;
-endmodule 
+  assign out = p2_out;
+  assign output_valid = p2_valid;
+endmodule
+
