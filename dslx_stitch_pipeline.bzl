@@ -24,6 +24,25 @@ def _dslx_stitch_pipeline_impl(ctx):
     if ctx.attr.stages:
         flags_str += " --stages=" + ",".join(ctx.attr.stages)
 
+    # String-based flags that should be forwarded verbatim when specified.
+    string_flags = [
+        "input_valid_signal",
+        "output_valid_signal",
+        "reset",
+    ]
+    for flag in string_flags:
+        value = getattr(ctx.attr, flag)
+        if value:
+            flags_str += " --{}={}".format(flag, value)
+
+    # Boolean flags that are always forwarded to document the chosen default.
+    bool_flags = [
+        "reset_active_low",
+    ]
+    for flag in bool_flags:
+        value = getattr(ctx.attr, flag)
+        flags_str += " --{}={}".format(flag, str(value).lower())
+
     cmd = "{driver} --toolchain={toolchain} dslx-stitch-pipeline --dslx_input_file={src} --dslx_top={top}{flags} > {output}".format(
         driver = xlsynth_driver_file,
         toolchain = config_file.path,
@@ -65,6 +84,19 @@ dslx_stitch_pipeline = rule(
         "use_system_verilog": attr.bool(
             doc = "Emit SystemVerilog when true, plain Verilog when false.",
             default = True,
+        ),
+        "input_valid_signal": attr.string(
+            doc = "The pipeline load enable signal to use for input data.",
+        ),
+        "output_valid_signal": attr.string(
+            doc = "The pipeline load enable signal for output data.",
+        ),
+        "reset": attr.string(
+            doc = "The reset signal to use in generation.",
+        ),
+        "reset_active_low": attr.bool(
+            doc = "Whether the reset signal is active low (true) or active high (false).",
+            default = False,
         ),
     },
     outputs = {
