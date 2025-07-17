@@ -212,3 +212,23 @@ diff_test(
     file1 = ":pipeline_stages_pipeline",
     file2 = ":pipeline_stages_pipeline.golden.sv",
 )
+
+# -- Pipeline stitching with valid and reset signals (demonstration)
+
+dslx_stitch_pipeline(
+    name = "pipeline_stages_pipeline_with_valid_reset",
+    lib = ":pipeline_stages_lib",
+    top = "foo",
+    input_valid_signal = "input_valid",
+    output_valid_signal = "output_valid",
+    reset = "rst",
+    reset_active_low = False,
+    tags = ["manual"],
+)
+
+diff_test(
+    name = "pipeline_stages_pipeline_with_valid_reset_test",
+    file1 = ":pipeline_stages_pipeline_with_valid_reset",
+    file2 = ":pipeline_stages_pipeline_with_valid_reset.golden.sv",
+    tags = ["manual"],
+)
