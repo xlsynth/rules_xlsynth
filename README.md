@@ -149,3 +149,19 @@ dslx_stitch_pipeline(
     top = "foo",
 )
 ```
+
+#### Attributes (non-exhaustive)
+
+* `stages` — optional explicit list of stage function names to stitch when auto-discovery is not desired.
+* `input_valid_signal` / `output_valid_signal` — when provided, additional `valid` handshaking logic is generated.
+* `reset` — name of the reset signal to thread through the generated wrapper. Use together with `reset_active_low` to control polarity.
+* `reset_active_low` — `True` when the reset signal is active low (defaults to `False`).
+* `flop_inputs` — `True` to insert an input register stage in front of the first stitched stage (defaults to `True`).
+* `flop_outputs` — `True` to insert an output register stage after the final stage (defaults to `True`).
+
+The `flop_inputs` and `flop_outputs` flags give fine-grained control over where pipeline registers are placed. For example, the `sample/BUILD.bazel` file contains demonstrations that verify:
+
+* `flop_inputs = True,  flop_outputs = False` — only input side flops.
+* `flop_inputs = False, flop_outputs = True` — only output side flops.
+
+Corresponding golden SystemVerilog files live next to the BUILD file so you can observe the emitted RTL.
