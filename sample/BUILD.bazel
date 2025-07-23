@@ -210,7 +210,7 @@ dslx_stitch_pipeline(
 diff_test(
     name = "pipeline_stages_pipeline_test",
     file1 = ":pipeline_stages_pipeline",
-    file2 = ":pipeline_stages_pipeline.golden.sv",
+    file2 = ":pipeline_stages_pipeline.golden.v",
 )
 
 # -- Pipeline stitching with valid and reset signals (demonstration)
@@ -228,7 +228,7 @@ dslx_stitch_pipeline(
 diff_test(
     name = "pipeline_stages_pipeline_with_valid_reset_test",
     file1 = ":pipeline_stages_pipeline_with_valid_reset",
-    file2 = ":pipeline_stages_pipeline_with_valid_reset.golden.sv",
+    file2 = ":pipeline_stages_pipeline_with_valid_reset.golden.v",
 )
 
 # -- Pipeline stitching with valid/reset signals and flop_inputs only
@@ -248,7 +248,7 @@ dslx_stitch_pipeline(
 diff_test(
     name = "pipeline_stages_pipeline_flop_inputs_test",
     file1 = ":pipeline_stages_pipeline_flop_inputs",
-    file2 = ":pipeline_stages_pipeline_flop_inputs.golden.sv",
+    file2 = ":pipeline_stages_pipeline_flop_inputs.golden.v",
 )
 
 # -- Pipeline stitching with valid/reset signals and flop_outputs only
@@ -268,5 +268,5 @@ dslx_stitch_pipeline(
 diff_test(
     name = "pipeline_stages_pipeline_flop_outputs_test",
     file1 = ":pipeline_stages_pipeline_flop_outputs",
-    file2 = ":pipeline_stages_pipeline_flop_outputs.golden.sv",
+    file2 = ":pipeline_stages_pipeline_flop_outputs.golden.v",
 )
