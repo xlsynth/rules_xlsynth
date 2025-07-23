@@ -38,6 +38,8 @@ def _dslx_stitch_pipeline_impl(ctx):
     # Boolean flags that are always forwarded to document the chosen default.
     bool_flags = [
         "reset_active_low",
+        "flop_inputs",
+        "flop_outputs",
     ]
     for flag in bool_flags:
         value = getattr(ctx.attr, flag)
@@ -97,6 +99,14 @@ dslx_stitch_pipeline = rule(
         "reset_active_low": attr.bool(
             doc = "Whether the reset signal is active low (true) or active high (false).",
             default = False,
+        ),
+        "flop_inputs": attr.bool(
+            doc = "Whether to insert flops on inputs (true) or not (false).",
+            default = True,
+        ),
+        "flop_outputs": attr.bool(
+            doc = "Whether to insert flops on outputs (true) or not (false).",
+            default = True,
         ),
     },
     outputs = {

@@ -230,3 +230,43 @@ diff_test(
     file1 = ":pipeline_stages_pipeline_with_valid_reset",
     file2 = ":pipeline_stages_pipeline_with_valid_reset.golden.sv",
 )
+
+# -- Pipeline stitching with valid/reset signals and flop_inputs only
+
+dslx_stitch_pipeline(
+    name = "pipeline_stages_pipeline_flop_inputs",
+    lib = ":pipeline_stages_lib",
+    top = "foo",
+    stages = ["foo_cycle0"],
+    input_valid_signal = "input_valid",
+    output_valid_signal = "output_valid",
+    reset = "rst",
+    flop_inputs = True,
+    flop_outputs = False,
+)
+
+diff_test(
+    name = "pipeline_stages_pipeline_flop_inputs_test",
+    file1 = ":pipeline_stages_pipeline_flop_inputs",
+    file2 = ":pipeline_stages_pipeline_flop_inputs.golden.sv",
+)
+
+# -- Pipeline stitching with valid/reset signals and flop_outputs only
+
+dslx_stitch_pipeline(
+    name = "pipeline_stages_pipeline_flop_outputs",
+    lib = ":pipeline_stages_lib",
+    top = "foo",
+    stages = ["foo_cycle0"],
+    input_valid_signal = "input_valid",
+    output_valid_signal = "output_valid",
+    reset = "rst",
+    flop_inputs = False,
+    flop_outputs = True,
+)
+
+diff_test(
+    name = "pipeline_stages_pipeline_flop_outputs_test",
+    file1 = ":pipeline_stages_pipeline_flop_outputs",
+    file2 = ":pipeline_stages_pipeline_flop_outputs.golden.sv",
+)
