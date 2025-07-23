@@ -29,7 +29,11 @@ class PathData:
 def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
     assert isinstance(targets, tuple), targets
     flags = []
-    flags += ['-c', 'opt', '--test_output=errors']
+    # Force Bazel to rebuild rather than reusing the local shared disk cache so that
+    # stale outputs (e.g. generated Verilog) cannot mask real regressions.
+    #   * --disk_cache=  : overrides any ~/.bazelrc --disk_cache setting with an empty value
+    #   * --nocache_test_results : still avoid caching test results inside the build tree
+    flags += ['--nocache_test_results', '--disk_cache=', '-c', 'opt', '--test_output=errors']
     flags += [
         '--action_env=XLSYNTH_TOOLS=' + path_data.xlsynth_tools,
         '--action_env=XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir,
@@ -41,6 +45,7 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_out
     if more_action_env:
         for k, v in more_action_env.items():
             flags += ['--action_env=' + k + '=' + v]
+    # Use the caller's default .bazelrc files so presubmit and one-off runs behave consistently.
     cmdline = ['bazel', '--bazelrc=/dev/null', 'test', '--test_output=errors'] + flags + ['--', *targets]
     print('Running command: ' + subprocess.list2cmdline(cmdline))
     if capture_output:
@@ -52,7 +57,8 @@ def bazel_build_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_ou
     """Run a `bazel build` over the given targets with the standard flags."""
     assert isinstance(targets, tuple), targets
     flags = []
-    flags += ['-c', 'opt']
+    # Disable the shared disk cache for builds as well so we always rebuild fresh.
+    flags += ['--disk_cache=', '-c', 'opt']
     flags += [
         '--action_env=XLSYNTH_TOOLS=' + path_data.xlsynth_tools,
         '--action_env=XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir,
@@ -64,6 +70,7 @@ def bazel_build_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_ou
     if more_action_env:
         for k, v in more_action_env.items():
             flags += ['--action_env=' + k + '=' + v]
+    # Use the caller's default .bazelrc so build behaviour matches regular developer invocations.
     cmdline = ['bazel', '--bazelrc=/dev/null', 'build'] + flags + ['--', *targets]
     print('Running command: ' + subprocess.list2cmdline(cmdline))
     if capture_output:
