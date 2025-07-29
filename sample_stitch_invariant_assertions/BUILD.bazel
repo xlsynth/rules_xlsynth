@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "dslx_library", "dslx_stitch_pipeline")
+
+# Simple two-stage pipeline to exercise invariant-assertion handling in the
+# stitching rule.
+
+dslx_library(
+    name = "stages_lib",
+    srcs = ["stages.x"],
+)
+
+# Default – relies on env/TOML setting.
+dslx_stitch_pipeline(
+    name = "stages_pipeline",
+    lib = ":stages_lib",
+    top = "foo",
+)
