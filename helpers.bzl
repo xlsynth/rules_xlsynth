@@ -96,6 +96,10 @@ def write_config_toml(ctx, xlsynth_tool_dir):
     type_inference_v2 = env.get("XLSYNTH_TYPE_INFERENCE_V2", "false").strip()
     type_inference_v2_toml = bool_env_var_to_toml("XLSYNTH_TYPE_INFERENCE_V2", type_inference_v2)
 
+    # Add invariant assertions.
+    add_invariant_assertions = env.get("XLSYNTH_ADD_INVARIANT_ASSERTIONS", "").strip()
+    add_invariant_assertions_toml = bool_env_var_to_toml("XLSYNTH_ADD_INVARIANT_ASSERTIONS", add_invariant_assertions)
+
     config_file_content = """[toolchain]
 tool_path = "{}"
 
@@ -117,6 +121,9 @@ type_inference_v2 = {}
 
     if use_system_verilog:
         config_file_content += "use_system_verilog = {}\n".format(use_system_verilog_toml)
+
+    if add_invariant_assertions:
+        config_file_content += "add_invariant_assertions = {}\n".format(add_invariant_assertions_toml)
 
     # Write the configuration file
     config_file = ctx.actions.declare_file(ctx.label.name + "_config.toml")
