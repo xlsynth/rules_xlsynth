@@ -410,6 +410,40 @@ def run_sample_invariant_assertions(path_data: PathData):
         )
     print("Rule override to 'true' correctly enabled assertions despite env-var=false.")
 
+# -----------------------------------------------------------------------------
+
+@register
+def run_stitch_invariant_assertions(path_data: PathData):
+    """Analogous checks for dslx_stitch_pipeline rule overrides."""
+
+    repo_root = os.path.dirname(__file__)
+    base_tgt = "//sample_stitch_invariant_assertions:stages_pipeline"
+
+    # Build with env-var off, record baseline.
+    bazel_build_opt((base_tgt,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
+    sv_base = os.path.join(repo_root, "bazel-bin", "sample_stitch_invariant_assertions", "stages_pipeline.sv")
+    with open(sv_base, "r", encoding="utf-8") as f:
+        sv_without = f.read()
+
+    # Build with env-var on, capture.
+    bazel_build_opt((base_tgt,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "true"})
+    with open(sv_base, "r", encoding="utf-8") as f:
+        sv_with_env = f.read()
+
+    def cnt(txt: str) -> int:
+        return txt.lower().count("assert")
+
+    base_cnt = cnt(sv_without)
+    env_cnt = cnt(sv_with_env)
+
+    if base_cnt != 0:
+        raise ValueError(f"Expected zero assertions with env-var=false; got {base_cnt}")
+
+    if env_cnt == 0:
+        raise ValueError("Expected assertions to be present with env-var=true but count was zero")
+
+    print(f"Stitch pipeline assertion counts: disabled={base_cnt}, enabled={env_cnt} (ok)")
+
 def parse_versions_toml(path):
     crate_version = None
     dso_version = None

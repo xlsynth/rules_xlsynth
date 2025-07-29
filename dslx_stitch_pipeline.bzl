@@ -45,6 +45,9 @@ def _dslx_stitch_pipeline_impl(ctx):
         value = getattr(ctx.attr, flag)
         flags_str += " --{}={}".format(flag, str(value).lower())
 
+    # Invariant-assertion behaviour is controlled via the toolchain TOML; no
+    # dedicated command-line flag exists for the stitch subcommand.
+
     cmd = "{driver} --toolchain={toolchain} dslx-stitch-pipeline --dslx_input_file={src} --dslx_top={top}{flags} > {output}".format(
         driver = xlsynth_driver_file,
         toolchain = config_file.path,
