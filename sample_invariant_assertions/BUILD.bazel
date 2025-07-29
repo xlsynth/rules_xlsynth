@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "dslx_library", "dslx_to_pipeline")
+
+# DSLX library containing the example function that will exercise the
+# invariant-assertion code-generation path when
+# XLSYNTH_ADD_INVARIANT_ASSERTIONS=true.
+dslx_library(
+    name = "array_match",
+    srcs = ["array_match.x"],
+)
+
+dslx_to_pipeline(
+    name = "array_match_sv",
+    delay_model = "asap7",
+    # A minimal single-stage pipeline is sufficient – we are only interested
+    # in whether the generated Verilog contains the extra assertions.
+    pipeline_stages = 1,
+    top = "f",
+    deps = [":array_match"],
+)

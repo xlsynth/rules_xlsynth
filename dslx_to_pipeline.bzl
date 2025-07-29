@@ -14,21 +14,34 @@ def _dslx_to_pipeline_impl(ctx):
     # Flags for stdlib path
     flags_str = ""
 
-    # Delay model flag
-    if ctx.attr.delay_model:
-        flags_str += " --delay_model=" + ctx.attr.delay_model
+    # Delay model flag (required)
+    flags_str += " --delay_model=" + ctx.attr.delay_model
 
-    string_flags = ["pipeline_stages", "input_valid_signal", "output_valid_signal", "module_name"]
-    for flag in string_flags:
+    # Forward string-valued flags when a non-empty value is provided.
+    for flag in ["input_valid_signal", "output_valid_signal", "module_name"]:
         value = getattr(ctx.attr, flag)
         if value:
             flags_str += " --{}={}".format(flag, value)
+
+    # Forward integer-valued timing flags when >0.
+    if ctx.attr.pipeline_stages > 0:
+        flags_str += " --pipeline_stages={}".format(ctx.attr.pipeline_stages)
+    if ctx.attr.clock_period_ps > 0:
+        flags_str += " --clock_period_ps={}".format(ctx.attr.clock_period_ps)
+
+    # Validate that either pipeline_stages or clock_period_ps is specified (>0).
+    if ctx.attr.pipeline_stages == 0 and ctx.attr.clock_period_ps == 0:
+        fail("Please specify either 'pipeline_stages' (>0) or 'clock_period_ps' (>0)")
 
     # Boolean flags that are forwarded verbatim to the driver as
     #   --<flag>=true|false
     # Note that we ALWAYS forward these, even if they are at their default
     # value; this documents the chosen default in the command line.
-    bool_flags = ["flop_inputs", "flop_outputs", "reset_data_path", "add_invariant_assertions"]
+    bool_flags = [
+        "flop_inputs",
+        "flop_outputs",
+        "reset_data_path",
+    ]
     for flag in bool_flags:
         value = getattr(ctx.attr, flag)
         flags_str += " --{}={}".format(flag, str(value).lower())
@@ -78,7 +91,7 @@ dslx_to_pipeline = rule(
         ),
         "delay_model": attr.string(
             doc = "The delay model to be used (e.g., 'asap7').",
-            default = "",
+            mandatory = True,
         ),
         "input_valid_signal": attr.string(
             doc = "The pipeline load enable signal to use for input data",
@@ -88,6 +101,10 @@ dslx_to_pipeline = rule(
         ),
         "pipeline_stages": attr.int(
             doc = "The number of pipeline stages.",
+            default = 0,
+        ),
+        "clock_period_ps": attr.int(
+            doc = "Target clock period in picoseconds (alternative to pipeline_stages).",
             default = 0,
         ),
         "flop_inputs": attr.bool(
@@ -103,7 +120,7 @@ dslx_to_pipeline = rule(
             default = True,
         ),
         "add_invariant_assertions": attr.bool(
-            doc = "Whether to add invariant assertions to the generated code.",
+            doc = "Whether to add invariant assertions to the generated code (overrides env/toolchain).",
             default = False,
         ),
         "module_name": attr.string(
