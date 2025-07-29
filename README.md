@@ -17,6 +17,11 @@ These environment variables can act as a repository-level configuration for the 
 - `XLSYNTH_DSLX_PATH`: a colon-separated list of additional DSLX paths to search for imported files.
 - `XLSYNTH_DSLX_ENABLE_WARNINGS`: a comma-separated list of warnings to enable.
 - `XLSYNTH_DSLX_DISABLE_WARNINGS`: a comma-separated list of warnings to disable.
+- `XLSYNTH_GATE_FORMAT`: format string used when emitting `gate!()` operations; `{input}` and `{output}` placeholders will be substituted with signal names.
+- `XLSYNTH_ASSERT_FORMAT`: format string used when emitting `assert!()` operations; `{condition}` and `{label}` placeholders will be substituted with the assertion expression and label.
+- `XLSYNTH_USE_SYSTEM_VERILOG`: `true|false`; when `true`, SystemVerilog constructs are emitted instead of plain Verilog.
+- `XLSYNTH_TYPE_INFERENCE_V2`: `true|false`; opt-in to the experimental v2 type-inference engine.
+- `XLSYNTH_ADD_INVARIANT_ASSERTIONS`: `true|false`; when `true`, extra runtime assertions (e.g. one-hot validation checks) are inserted in generated RTL.
 
 These can be set in your `.bazelrc` file like this:
 

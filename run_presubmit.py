@@ -372,18 +372,43 @@ def run_sample_invariant_assertions(path_data: PathData):
     # Heuristic: when the flag is on we expect extra assertion logic to be
     # generated. We conservatively look for the token "assert" (case-insensitive)
     # appearing more frequently when the flag is enabled.
-    count_without = sv_without.lower().count("assert")
-    count_with = sv_with.lower().count("assert")
-    if count_with <= count_without:
+    def count_asserts(text: str) -> int:
+        return text.lower().count("assert")
+
+    count_without = count_asserts(sv_without)
+    count_with_env = count_asserts(sv_with)
+    if count_with_env <= count_without:
         raise ValueError(
-            "Expected more assertion machinery in generated Verilog when "
-            "XLSYNTH_ADD_INVARIANT_ASSERTIONS=true; got {} vs {}".format(count_with, count_without)
+            "Expected more assertion machinery when enabling env-var; got {} vs {}".format(count_with_env, count_without)
         )
-    else:
-        print(
-            f"Invariant-assertion flag works: saw {count_without} → {count_with} occurrences of 'assert' "
-            f"in {sv_path} when enabling XLSYNTH_ADD_INVARIANT_ASSERTIONS."
+    print(f"Env-var toggling works: {count_without} → {count_with_env} assertions.")
+
+    # -- Now verify rule-level override behaviour.
+    tgt_attr_false = "//sample_invariant_assertions:array_match_sv_attr_false"
+    bazel_build_opt((tgt_attr_false,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "true"})
+    sv_path_attr_false = os.path.join(repo_root, "bazel-bin", "sample_invariant_assertions", "array_match_sv_attr_false.sv")
+    with open(sv_path_attr_false, "r", encoding="utf-8") as f:
+        sv_attr_false = f.read()
+
+    count_attr_false = count_asserts(sv_attr_false)
+    if count_attr_false != count_without:
+        raise ValueError(
+            "Rule attribute 'false' did not override env-var 'true'; expected {} asserts but saw {}".format(count_without, count_attr_false)
         )
+    print("Rule override to 'false' correctly suppressed extra assertions despite env-var=true.")
+
+    tgt_attr_true = "//sample_invariant_assertions:array_match_sv_attr_true"
+    bazel_build_opt((tgt_attr_true,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
+    sv_path_attr_true = os.path.join(repo_root, "bazel-bin", "sample_invariant_assertions", "array_match_sv_attr_true.sv")
+    with open(sv_path_attr_true, "r", encoding="utf-8") as f:
+        sv_attr_true = f.read()
+
+    count_attr_true = count_asserts(sv_attr_true)
+    if count_attr_true <= count_without:
+        raise ValueError(
+            "Rule attribute 'true' did not override env-var 'false'; counts {} vs baseline {}".format(count_attr_true, count_without)
+        )
+    print("Rule override to 'true' correctly enabled assertions despite env-var=false.")
 
 def parse_versions_toml(path):
     crate_version = None

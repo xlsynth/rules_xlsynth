@@ -46,6 +46,11 @@ def _dslx_to_pipeline_impl(ctx):
         value = getattr(ctx.attr, flag)
         flags_str += " --{}={}".format(flag, str(value).lower())
 
+    # If the attribute is explicitly set ("true" or "false") forward it to
+    # override whatever value may be present in the toolchain config.
+    if ctx.attr.add_invariant_assertions != "":
+        flags_str += " --add_invariant_assertions={}".format(ctx.attr.add_invariant_assertions)
+
     # Top entry function flag
     if ctx.attr.top:
         top_entry = ctx.attr.top
@@ -119,9 +124,14 @@ dslx_to_pipeline = rule(
             doc = "Whether to generate reset logic for data-path registers.",
             default = True,
         ),
-        "add_invariant_assertions": attr.bool(
-            doc = "Whether to add invariant assertions to the generated code (overrides env/toolchain).",
-            default = False,
+        # Tri-state: "true" / "false" / "" (unspecified). When non-empty the
+        # provided value overrides the setting in the TOML (which may come from
+        # XLSYNTH_ADD_INVARIANT_ASSERTIONS). Using a string lets us detect the
+        # unspecified case, which is not possible with attr.bool.
+        "add_invariant_assertions": attr.string(
+            doc = "Override for invariant assertions generation: 'true', 'false', or leave empty to use toolchain default.",
+            default = "",
+            values = ["true", "false", ""],
         ),
         "module_name": attr.string(
             doc = "The module name to use in generation.",

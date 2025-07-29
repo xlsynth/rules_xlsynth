@@ -19,3 +19,25 @@ dslx_to_pipeline(
     top = "f",
     deps = [":array_match"],
 )
+
+# -- Targets that explicitly override the invariant-assertion setting via rule
+#    attribute so we can test that it supersedes any value coming from the
+#    environment / toolchain TOML.
+
+dslx_to_pipeline(
+    name = "array_match_sv_attr_true",
+    delay_model = "asap7",
+    pipeline_stages = 1,
+    top = "f",
+    deps = [":array_match"],
+    add_invariant_assertions = "true",
+)
+
+dslx_to_pipeline(
+    name = "array_match_sv_attr_false",
+    delay_model = "asap7",
+    pipeline_stages = 1,
+    top = "f",
+    deps = [":array_match"],
+    add_invariant_assertions = "false",
+)
