@@ -63,20 +63,26 @@ def _dslx_to_pipeline_impl(ctx):
     # Define the output .sv file
     output_sv_file = ctx.outputs.sv_file
     output_sv_path = output_sv_file.path
+    output_unopt_ir_file = ctx.outputs.unopt_ir_file
+    output_unopt_ir_path = output_unopt_ir_file.path
+    output_opt_ir_file = ctx.outputs.opt_ir_file
+    output_opt_ir_path = output_opt_ir_file.path
 
     # Construct the command
-    cmd = "{} --toolchain={} dslx2pipeline --dslx_input_file={} --dslx_top={} {} > {}".format(
+    cmd = "{} --toolchain={} dslx2pipeline --dslx_input_file={} --dslx_top={} --output_unopt_ir={} --output_opt_ir={} {} > {}".format(
         xlsynth_driver_file,
         config_file.path,
         srcs[0].path,
         top_entry,
+        output_unopt_ir_path,
+        output_opt_ir_path,
         flags_str,
         output_sv_path,
     )
 
     ctx.actions.run(
         inputs = srcs + [config_file],
-        outputs = [output_sv_file],
+        outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
         arguments = ["-c", cmd],
         executable = "/bin/sh",
         use_default_shell_env = True,
@@ -148,5 +154,7 @@ dslx_to_pipeline = rule(
     },
     outputs = {
         "sv_file": "%{name}.sv",
+        "unopt_ir_file": "%{name}.unopt.ir",
+        "opt_ir_file": "%{name}.opt.ir",
     },
 )

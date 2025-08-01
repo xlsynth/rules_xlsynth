@@ -140,6 +140,28 @@ diff_test(
     file2 = ":sample_main_sv.golden.sv",
 )
 
+# -- compare IR artifacts against golden references
+
+diff_test(
+    name = "sample_main_sv_unopt_ir_test",
+    file1 = ":sample_main_sv.unopt.ir",
+    file2 = ":sample_main_sv.unopt.golden.ir",
+)
+
+diff_test(
+    name = "sample_main_sv_opt_ir_test",
+    file1 = ":sample_main_sv.opt.ir",
+    file2 = ":sample_main_sv.opt.golden.ir",
+)
+
+# Prove the unoptimized and optimized IRs are equivalent.
+ir_prove_equiv_test(
+    name = "sample_main_sv_ir_prove_equiv_test",
+    lhs = ":sample_main_sv.unopt.ir",
+    rhs = ":sample_main_sv.opt.ir",
+    top = mangle_dslx_name("sample", "main"),
+)
+
 # -- variant without data-path reset
 
 dslx_to_pipeline(
