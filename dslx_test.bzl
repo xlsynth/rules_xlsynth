@@ -39,7 +39,7 @@ def _dslx_test_impl(ctx):
         fail("Don't provide the test through more than one attribute: src/lib/deps.")
 
     # The order of the srcs matters. dslx_interpreter_main runs tests from the first file.
-    srcs = test_src + get_srcs_from_deps(ctx)
+    srcs = test_src + srcs_from_deps
 
     flags_str = "--compare=jit --alsologtostderr --dslx_stdlib_path=" + xlsynth_tool_dir + "/xls/dslx/stdlib"
 
