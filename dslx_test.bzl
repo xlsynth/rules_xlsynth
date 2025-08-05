@@ -27,12 +27,16 @@ def _dslx_test_impl(ctx):
     xlsynth_tool_dir, _xlsynth_driver_file = get_driver_path(ctx)
     dslx_interpreter_file = xlsynth_tool_dir + "/dslx_interpreter_main"
 
+    srcs_from_deps = get_srcs_from_deps(ctx)
     if ctx.attr.src:
         test_src = [ctx.file.src]
     elif ctx.attr.lib:
         test_src = get_srcs_from_lib(ctx)
     else:
         test_src = []
+    
+    if len(test_src) == 1 and test_src[0] in srcs_from_deps:
+        fail("Don't provide the test through more than one attribute: src/lib/deps.")
 
     # The order of the srcs matters. dslx_interpreter_main runs tests from the first file.
     srcs = test_src + get_srcs_from_deps(ctx)
@@ -80,7 +84,7 @@ dslx_test = rule(
     attrs = {
         "src": attr.label(
             doc = "The DSLX source module to be tested. Use either src or lib, but not both. If there is only one module, you may instead use deps.",
-            allow_files = [".x"],
+            allow_single_file = [".x"],
         ),
         "lib": attr.label(
             doc = "The DSLX library to be tested. Use either src or lib, but not both. If there is only one module, you may instead use deps.",
