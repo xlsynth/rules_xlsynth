@@ -22,7 +22,8 @@ def _dslx_test_impl(ctx):
     xlsynth_tool_dir, _xlsynth_driver_file = get_driver_path(ctx)
     dslx_interpreter_file = xlsynth_tool_dir + "/dslx_interpreter_main"
 
-    srcs = get_srcs_from_deps(ctx)
+    # The order of the srcs matters. dslx_interpreter_main expects the first src file to be the one that contains the tests.
+    srcs = ctx.files.src + get_srcs_from_deps(ctx)
 
     flags_str = "--compare=jit --alsologtostderr --dslx_stdlib_path=" + xlsynth_tool_dir + "/xls/dslx/stdlib"
 
@@ -65,8 +66,13 @@ dslx_test = rule(
     doc = "Test a DSLX module using the interpreter.",
     implementation = _dslx_test_impl,
     attrs = {
+        "src": attr.label(
+            doc = "The DSLX module to be tested.",
+            providers = [DslxInfo],
+            allow_files = [".x"],
+        ),
         "deps": attr.label_list(
-            doc = "The list of DSLX libraries to be tested.",
+            doc = "The DSLX library dependencies for the src.",
             providers = [DslxInfo],
         ),
     },
