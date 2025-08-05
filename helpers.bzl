@@ -43,7 +43,7 @@ def _get_srcs_from(dslx_info_providers):
     for entry in dag_entries:
         srcs += [src for src in list(entry.srcs)]
 
-    srcs = list(reversed(srcs))
+    srcs = list(srcs)
     return srcs
 
 def get_srcs_from_deps(ctx):
