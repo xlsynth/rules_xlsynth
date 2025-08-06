@@ -34,7 +34,7 @@ def get_driver_path(ctx):
     return xlsynth_tool_dir, xlsynth_driver_file
 
 def _get_srcs_from(dslx_info_providers):
-    # Get DAG entries from DslxInfo
+    # Get DAG entries from DslxInfo. Returns a list where index 0 is the root module.
     dag_entries = []
     for item in dslx_info_providers:
         dag_entries.extend(item[DslxInfo].dag.to_list())
@@ -43,7 +43,7 @@ def _get_srcs_from(dslx_info_providers):
     for entry in dag_entries:
         srcs += [src for src in list(entry.srcs)]
 
-    srcs = list(srcs)
+    srcs = list(reversed(srcs))
     return srcs
 
 def get_srcs_from_deps(ctx):
