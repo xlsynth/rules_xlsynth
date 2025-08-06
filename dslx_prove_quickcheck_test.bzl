@@ -1,27 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "write_executable_shell_script", "get_driver_path", "get_srcs_from_lib")
+load(":helpers.bzl", "write_executable_shell_script", "get_srcs_from_lib")
+
 
 def _dslx_prove_quickcheck_test_impl(ctx):
-    """
-    Implements a test rule that proves a quickcheck holds for its entire input domain.
-
-    Args:
-      ctx: The context for this rule.
-
-    Returns:
-      A struct representing the result of this rule, including any run actions.
-    """
-    env = ctx.configuration.default_shell_env
-    xlsynth_tool_dir = env.get("XLSYNTH_TOOLS")
-    if not xlsynth_tool_dir:
-        fail("Please set XLSYNTH_TOOLS environment variable")
-
-    # Ensure the interpreter binary exists
-    xlsynth_tool_dir, _xlsynth_driver_file = get_driver_path(ctx)
-    prove_quickcheck_main_file = xlsynth_tool_dir + "/prove_quickcheck_main"
-
     lib = ctx.attr.lib[DslxInfo]
     lib_srcs = lib.dag.to_list()[-1].srcs
     if len(lib_srcs) != 1:
@@ -30,17 +13,14 @@ def _dslx_prove_quickcheck_test_impl(ctx):
 
     srcs = get_srcs_from_lib(ctx)
 
-    flags_str = '--alsologtostderr --dslx_stdlib_path=' + xlsynth_tool_dir + '/xls/dslx/stdlib'
-
-    additional_dslx_paths = env.get("XLSYNTH_DSLX_PATH")
-    if additional_dslx_paths:
-        flags_str += ' --dslx_path=' + additional_dslx_paths
-
-    cmd = prove_quickcheck_main_file + ' ' + flags_str + ' ' + lib_src.path
+    cmd = "/usr/bin/env python3 {} tool prove_quickcheck_main {}".format(
+        ctx.file._runner.short_path,
+        lib_src.short_path,
+    )
     if ctx.attr.top:
-        cmd += ' --test_filter=' + ctx.attr.top
+        cmd += " --test_filter=" + ctx.attr.top
 
-    runfiles = ctx.runfiles(srcs)
+    runfiles = ctx.runfiles(srcs + [ctx.file._runner])
     executable_file = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
@@ -51,6 +31,7 @@ def _dslx_prove_quickcheck_test_impl(ctx):
         files = depset(direct = [executable_file]),
         executable = executable_file,
     )
+
 
 dslx_prove_quickcheck_test = rule(
     doc = "Prove a DSLX quickcheck holds for its entire input domain.",
@@ -63,6 +44,10 @@ dslx_prove_quickcheck_test = rule(
         ),
         "top": attr.string(
             doc = "The quickcheck function to be tested. If none is provided, all quickcheck functions in the library will be tested.",
+        ),
+        "_runner": attr.label(
+            default = Label("//:xlsynth_runner.py"),
+            allow_single_file = True,
         ),
     },
     test = True,

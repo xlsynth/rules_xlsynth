@@ -1,15 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "get_driver_path", "get_srcs_from_deps", "write_config_toml")
+load(":helpers.bzl", "get_srcs_from_deps")
 
 def _dslx_to_pipeline_impl(ctx):
-    env = ctx.configuration.default_shell_env
-    xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
-
     srcs = get_srcs_from_deps(ctx)
-
-    config_file = write_config_toml(ctx, xlsynth_tool_dir)
 
     # Flags for stdlib path
     flags_str = ""
@@ -60,31 +55,29 @@ def _dslx_to_pipeline_impl(ctx):
     if ctx.attr.reset:
         flags_str += " --reset={}".format(ctx.attr.reset)
 
-    # Define the output .sv file
     output_sv_file = ctx.outputs.sv_file
-    output_sv_path = output_sv_file.path
     output_unopt_ir_file = ctx.outputs.unopt_ir_file
-    output_unopt_ir_path = output_unopt_ir_file.path
     output_opt_ir_file = ctx.outputs.opt_ir_file
-    output_opt_ir_path = output_opt_ir_file.path
 
-    # Construct the command
-    cmd = "{} --toolchain={} dslx2pipeline --dslx_input_file={} --dslx_top={} --output_unopt_ir={} --output_opt_ir={} {} > {}".format(
-        xlsynth_driver_file,
-        config_file.path,
-        srcs[0].path,
-        top_entry,
-        output_unopt_ir_path,
-        output_opt_ir_path,
-        flags_str,
-        output_sv_path,
-    )
+    args = [
+        "python3",
+        ctx.file._runner.path,
+        "driver",
+        "dslx2pipeline",
+        "--dslx_input_file={}".format(srcs[0].path),
+        "--dslx_top={}".format(top_entry),
+        "--output_unopt_ir={}".format(output_unopt_ir_file.path),
+        "--output_opt_ir={}".format(output_opt_ir_file.path),
+    ]
+    if flags_str:
+        # Split by spaces to avoid shell; flags_str is well-formed
+        args += [s for s in flags_str.strip().split(" ") if s]
 
     ctx.actions.run(
-        inputs = srcs + [config_file],
+        inputs = srcs + [ctx.file._runner],
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
-        arguments = ["-c", cmd],
-        executable = "/bin/sh",
+        arguments = args + ["--stdout_out", output_sv_file.path],
+        executable = "/usr/bin/env",
         use_default_shell_env = True,
     )
 
@@ -92,69 +85,79 @@ def _dslx_to_pipeline_impl(ctx):
         files = depset(direct = [output_sv_file]),
     )
 
+DslxToPipelineAttrs = {
+    "deps": attr.label_list(
+        doc = "The list of DSLX libraries to be tested.",
+        providers = [DslxInfo],
+    ),
+    "delay_model": attr.string(
+        doc = "The delay model to be used (e.g., 'asap7').",
+        mandatory = True,
+    ),
+    "input_valid_signal": attr.string(
+        doc = "The pipeline load enable signal to use for input data",
+    ),
+    "output_valid_signal": attr.string(
+        doc = "The pipeline load enable signal for output data",
+    ),
+    "pipeline_stages": attr.int(
+        doc = "The number of pipeline stages.",
+        default = 0,
+    ),
+    "clock_period_ps": attr.int(
+        doc = "Target clock period in picoseconds (alternative to pipeline_stages).",
+        default = 0,
+    ),
+    "flop_inputs": attr.bool(
+        doc = "Whether to flop the input ports.",
+        default = True,
+    ),
+    "flop_outputs": attr.bool(
+        doc = "Whether to flop the output ports.",
+        default = True,
+    ),
+    "reset_data_path": attr.bool(
+        doc = "Whether to generate reset logic for data-path registers.",
+        default = True,
+    ),
+    # Tri-state: "true" / "false" / "" (unspecified). When non-empty the
+    # provided value overrides the setting in the TOML (which may come from
+    # XLSYNTH_ADD_INVARIANT_ASSERTIONS). Using a string lets us detect the
+    # unspecified case, which is not possible with attr.bool.
+    "add_invariant_assertions": attr.string(
+        doc = "Override for invariant assertions generation: 'true', 'false', or leave empty to use toolchain default.",
+        default = "",
+        values = ["true", "false", ""],
+    ),
+    "module_name": attr.string(
+        doc = "The module name to use in generation.",
+        default = "",
+    ),
+    "reset": attr.string(
+        doc = "The reset signal to use in generation.",
+        default = "",
+    ),
+    "top": attr.string(
+        doc = "The top entry function within the dependency module.",
+        mandatory = True,
+    ),
+    "_runner": attr.label(
+        default = Label("//:xlsynth_runner.py"),
+        allow_single_file = True,
+    ),
+}
+
+# Keep the public rule signature stable
+DslxToPipelineOutputs = {
+    "sv_file": "%{name}.sv",
+    "unopt_ir_file": "%{name}.unopt.ir",
+    "opt_ir_file": "%{name}.opt.ir",
+}
+
+
 dslx_to_pipeline = rule(
     doc = "Convert a DSLX file to SystemVerilog type definitions",
     implementation = _dslx_to_pipeline_impl,
-    attrs = {
-        "deps": attr.label_list(
-            doc = "The list of DSLX libraries to be tested.",
-            providers = [DslxInfo],
-        ),
-        "delay_model": attr.string(
-            doc = "The delay model to be used (e.g., 'asap7').",
-            mandatory = True,
-        ),
-        "input_valid_signal": attr.string(
-            doc = "The pipeline load enable signal to use for input data",
-        ),
-        "output_valid_signal": attr.string(
-            doc = "The pipeline load enable signal for output data",
-        ),
-        "pipeline_stages": attr.int(
-            doc = "The number of pipeline stages.",
-            default = 0,
-        ),
-        "clock_period_ps": attr.int(
-            doc = "Target clock period in picoseconds (alternative to pipeline_stages).",
-            default = 0,
-        ),
-        "flop_inputs": attr.bool(
-            doc = "Whether to flop the input ports.",
-            default = True,
-        ),
-        "flop_outputs": attr.bool(
-            doc = "Whether to flop the output ports.",
-            default = True,
-        ),
-        "reset_data_path": attr.bool(
-            doc = "Whether to generate reset logic for data-path registers.",
-            default = True,
-        ),
-        # Tri-state: "true" / "false" / "" (unspecified). When non-empty the
-        # provided value overrides the setting in the TOML (which may come from
-        # XLSYNTH_ADD_INVARIANT_ASSERTIONS). Using a string lets us detect the
-        # unspecified case, which is not possible with attr.bool.
-        "add_invariant_assertions": attr.string(
-            doc = "Override for invariant assertions generation: 'true', 'false', or leave empty to use toolchain default.",
-            default = "",
-            values = ["true", "false", ""],
-        ),
-        "module_name": attr.string(
-            doc = "The module name to use in generation.",
-            default = "",
-        ),
-        "reset": attr.string(
-            doc = "The reset signal to use in generation.",
-            default = "",
-        ),
-        "top": attr.string(
-            doc = "The top entry function within the dependency module.",
-            mandatory = True,
-        ),
-    },
-    outputs = {
-        "sv_file": "%{name}.sv",
-        "unopt_ir_file": "%{name}.unopt.ir",
-        "opt_ir_file": "%{name}.opt.ir",
-    },
+    attrs = DslxToPipelineAttrs,
+    outputs = DslxToPipelineOutputs,
 )

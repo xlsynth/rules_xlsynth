@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "get_driver_path", "get_srcs_from_lib", "write_config_toml")
+load(":helpers.bzl", "get_srcs_from_lib")
 
 
 def _dslx_stitch_pipeline_impl(ctx):
-    xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
     lib_info = ctx.attr.lib[DslxInfo]
     lib_dag_list = lib_info.dag.to_list()
     if not lib_dag_list:
@@ -16,7 +15,6 @@ def _dslx_stitch_pipeline_impl(ctx):
     main_src = main_srcs[0]
 
     srcs = get_srcs_from_lib(ctx)
-    config_file = write_config_toml(ctx, xlsynth_tool_dir)
 
     flags_str = " --use_system_verilog={}".format(
         str(ctx.attr.use_system_verilog).lower()
@@ -24,7 +22,6 @@ def _dslx_stitch_pipeline_impl(ctx):
     if ctx.attr.stages:
         flags_str += " --stages=" + ",".join(ctx.attr.stages)
 
-    # String-based flags that should be forwarded verbatim when specified.
     string_flags = [
         "input_valid_signal",
         "output_valid_signal",
@@ -35,7 +32,6 @@ def _dslx_stitch_pipeline_impl(ctx):
         if value:
             flags_str += " --{}={}".format(flag, value)
 
-    # Boolean flags that are always forwarded to document the chosen default.
     bool_flags = [
         "reset_active_low",
         "flop_inputs",
@@ -45,23 +41,22 @@ def _dslx_stitch_pipeline_impl(ctx):
         value = getattr(ctx.attr, flag)
         flags_str += " --{}={}".format(flag, str(value).lower())
 
-    # Invariant-assertion behaviour is controlled via the toolchain TOML; no
-    # dedicated command-line flag exists for the stitch subcommand.
-
-    cmd = "{driver} --toolchain={toolchain} dslx-stitch-pipeline --dslx_input_file={src} --dslx_top={top}{flags} > {output}".format(
-        driver = xlsynth_driver_file,
-        toolchain = config_file.path,
-        src = main_src.path,
-        top = ctx.attr.top,
-        flags = flags_str,
-        output = ctx.outputs.sv_file.path,
-    )
+    args = [
+        "python3",
+        ctx.file._runner.path,
+        "driver",
+        "dslx-stitch-pipeline",
+        "--dslx_input_file={}".format(main_src.path),
+        "--dslx_top={}".format(ctx.attr.top),
+    ]
+    if flags_str:
+        args += [s for s in flags_str.strip().split(" ") if s]
 
     ctx.actions.run(
-        inputs = srcs + [config_file],
+        inputs = srcs + [ctx.file._runner],
         outputs = [ctx.outputs.sv_file],
-        arguments = ["-c", cmd],
-        executable = "/bin/sh",
+        arguments = args + ["--stdout_out", ctx.outputs.sv_file.path],
+        executable = "/usr/bin/env",
         use_default_shell_env = True,
     )
 
@@ -110,6 +105,10 @@ dslx_stitch_pipeline = rule(
         "flop_outputs": attr.bool(
             doc = "Whether to insert flops on outputs (true) or not (false).",
             default = True,
+        ),
+        "_runner": attr.label(
+            default = Label("//:xlsynth_runner.py"),
+            allow_single_file = True,
         ),
     },
     outputs = {

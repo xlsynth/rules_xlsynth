@@ -1,14 +1,6 @@
-load(":helpers.bzl", "write_executable_shell_script", "get_driver_path")
+load(":helpers.bzl", "write_executable_shell_script")
 
 def _dslx_format_impl(ctx):
-    env = ctx.configuration.default_shell_env
-    xlsynth_tool_dir = env.get("XLSYNTH_TOOLS")
-    if not xlsynth_tool_dir:
-        fail("Please set XLSYNTH_TOOLS environment variable")
-
-    # Ensure the interpreter binary exists
-    dslx_fmt_file = xlsynth_tool_dir + "/dslx_fmt"
-
     src_depset_files = ctx.attr.srcs
 
     input_files = []
@@ -20,22 +12,25 @@ def _dslx_format_impl(ctx):
         formatted_file = ctx.actions.declare_file(input_file.basename + ".fmt")
         formatted_files.append(formatted_file)
 
-        # Command to run the formatter and redirect stdout to the output file
-        format_cmd = "{} {} > {}".format(dslx_fmt_file, input_file.path, formatted_file.path)
-
-        # Create an action to run the formatter
         ctx.actions.run(
-            inputs=[input_file],
+            inputs=[input_file, ctx.file._runner],
             outputs=[formatted_file],
-            executable="/bin/sh",
-            arguments=["-c", format_cmd],
+            executable="/usr/bin/env",
+            arguments=[
+                "python3",
+                ctx.file._runner.path,
+                "tool",
+                "dslx_fmt",
+                input_file.path,
+                "--stdout_out",
+                formatted_file.path,
+            ],
             use_default_shell_env=True,
         )
 
-    # Create an executable shell script to run the diff check for all files
     diff_commands = []
     for input_file, formatted_file in zip(input_files, formatted_files):
-        diff_cmd = "diff -u {} {} || (echo 'Formatting differs. Run: `{}/dslx_fmt -i {}` to fix formatting in place' && exit 1)".format(input_file.short_path, formatted_file.short_path, xlsynth_tool_dir, input_file.short_path)
+        diff_cmd = "diff -u {} {} || (echo 'Formatting differs. Run: `dslx_fmt -i {}` to fix formatting in place' && exit 1)".format(input_file.short_path, formatted_file.short_path, input_file.short_path)
         diff_commands.append(diff_cmd)
 
     diff_script_file = write_executable_shell_script(
@@ -50,10 +45,15 @@ def _dslx_format_impl(ctx):
         executable=diff_script_file,
     )
 
+
 dslx_fmt_test = rule(
     implementation=_dslx_format_impl,
     attrs={
         "srcs": attr.label_list(allow_files=[".x"], allow_empty=False, doc="Source files to check formatting"),
+        "_runner": attr.label(
+            default = Label("//:xlsynth_runner.py"),
+            allow_single_file = True,
+        ),
     },
     doc="A rule that checks if the given DSLX files are properly formatted.",
     test=True,
