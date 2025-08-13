@@ -39,7 +39,7 @@ dslx_to_sv_types = rule(
         ),
         "_runner": attr.label(
             default = Label("//:xlsynth_runner.py"),
-            allow_single_file = True,
+            allow_single_file = [".py"],
         ),
     },
     outputs = {

@@ -52,7 +52,7 @@ dslx_fmt_test = rule(
         "srcs": attr.label_list(allow_files=[".x"], allow_empty=False, doc="Source files to check formatting"),
         "_runner": attr.label(
             default = Label("//:xlsynth_runner.py"),
-            allow_single_file = True,
+            allow_single_file = [".py"],
         ),
     },
     doc="A rule that checks if the given DSLX files are properly formatted.",
