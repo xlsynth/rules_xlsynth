@@ -59,24 +59,22 @@ def _dslx_to_pipeline_impl(ctx):
     output_unopt_ir_file = ctx.outputs.unopt_ir_file
     output_opt_ir_file = ctx.outputs.opt_ir_file
 
-    args = [
-        "python3",
-        ctx.file._runner.path,
-        "driver",
-        "dslx2pipeline",
-        "--dslx_input_file={}".format(srcs[0].path),
-        "--dslx_top={}".format(top_entry),
-        "--output_unopt_ir={}".format(output_unopt_ir_file.path),
-        "--output_opt_ir={}".format(output_opt_ir_file.path),
-    ]
-    if flags_str:
-        # Split by spaces to avoid shell; flags_str is well-formed
-        args += [s for s in flags_str.strip().split(" ") if s]
-
     ctx.actions.run(
         inputs = srcs + [ctx.file._runner],
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
-        arguments = args + ["--stdout_out", output_sv_file.path],
+        arguments = [
+            "python3",
+            ctx.file._runner.path,
+            "driver",
+            "dslx2pipeline",
+            "--dslx_input_file={}".format(srcs[0].path),
+            "--dslx_top={}".format(top_entry),
+            "--output_unopt_ir={}".format(output_unopt_ir_file.path),
+            "--output_opt_ir={}".format(output_opt_ir_file.path),
+        ] + ([s for s in flags_str.strip().split(" ") if s] if flags_str else []) + [
+            "--stdout_out",
+            output_sv_file.path,
+        ],
         executable = "/usr/bin/env",
         use_default_shell_env = True,
     )

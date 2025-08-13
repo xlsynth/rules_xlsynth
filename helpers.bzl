@@ -15,9 +15,13 @@ def write_executable_shell_script(ctx, filename, cmd, env_exports = None):
     content = "\n".join([
             "#!/usr/bin/env bash",
             "set -e",
-            #"set -ex",
-            #"ls -alR",
-            #"pwd",
+            # Note: these are left in on purpose to help us remember what magic incantations can help
+            # us to debug the bash script's execution environment.
+            # ```
+            # "set -ex",
+            # "ls -alR",
+            # "pwd",
+            # ```
         ]) + "\n"
     if env_exports:
         for key, value in env_exports.items():

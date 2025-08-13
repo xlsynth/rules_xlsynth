@@ -9,20 +9,20 @@ def _ir_to_gates_impl(ctx):
     gates_file = ctx.outputs.gates_file
     metrics_file = ctx.outputs.metrics_json
 
-    args = [
-        "python3",
-        ctx.file._runner.path,
-        "driver",
-        "ir2gates",
-        "--fraig={}".format("true" if ctx.attr.fraig else "false"),
-        "--output_json={}".format(metrics_file.path),
-        ir_file_to_use.path,
-    ]
-
     ctx.actions.run(
         inputs = [ir_file_to_use, ctx.file._runner],
         outputs = [gates_file, metrics_file],
-        arguments = args + ["--stdout_out", gates_file.path],
+        arguments = [
+            "python3",
+            ctx.file._runner.path,
+            "driver",
+            "ir2gates",
+            "--fraig={}".format("true" if ctx.attr.fraig else "false"),
+            "--output_json={}".format(metrics_file.path),
+            ir_file_to_use.path,
+            "--stdout_out",
+            gates_file.path,
+        ],
         executable = "/usr/bin/env",
         use_default_shell_env = True,
         progress_message = "Generating gate-level analysis for IR",
