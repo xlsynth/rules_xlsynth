@@ -220,21 +220,26 @@ def _tool(args: argparse.Namespace) -> int:
 
 
 def main(argv: List[str]) -> int:
-    parser = argparse.ArgumentParser(prog="xlsynth_runner")
+    parser = argparse.ArgumentParser(prog="xlsynth_runner", allow_abbrev=False)
     sub = parser.add_subparsers(dest="mode", required=True)
 
-    p_driver = sub.add_parser("driver")
+    # Arguments common to all subcommands
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--stdout_out", metavar="PATH")
+
+    p_driver = sub.add_parser("driver", parents=[common])
     p_driver.add_argument("subcommand")
-    p_driver.add_argument("--stdout_out", metavar="PATH")
     p_driver.set_defaults(func=_driver)
 
-    p_tool = sub.add_parser("tool")
+    p_tool = sub.add_parser("tool", parents=[common])
     p_tool.add_argument("tool")
-    p_tool.add_argument("--stdout_out", metavar="PATH")
     p_tool.set_defaults(func=_tool)
 
+    # We intentionally use parse_known_args so that only flags defined on the selected
+    # subparser (e.g. --stdout_out) are consumed here. All remaining args are treated
+    # as passthrough and forwarded verbatim to the underlying tool/driver subcommand.
     args, unknown = parser.parse_known_args(argv[1:])
-    # Treat any unrecognized arguments as passthrough to the underlying tool/driver subcommand
+    # Treat any unrecognized arguments as passthrough to the underlying tool/driver subcommand.
     setattr(args, "passthrough", unknown)
     return int(args.func(args))
 
