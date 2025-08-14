@@ -1,35 +1,30 @@
 # SPDX-License-Identifier: Apache-2.0
 
-load(":helpers.bzl", "get_driver_path", "write_config_toml")
 load(":ir_provider.bzl", "IrInfo")
+
 
 def _ir_to_delay_info_impl(ctx):
     opt_ir_file = ctx.attr.ir[IrInfo].ir_file if ctx.attr.use_unopt_ir else ctx.attr.ir[IrInfo].opt_ir_file
     output_file = ctx.outputs.delay_info
 
-    xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
-    config_file = write_config_toml(ctx, xlsynth_tool_dir)
-
-    cmd = "{} --toolchain={} ir2delayinfo --delay_model={} {} {} > {}".format(
-        xlsynth_driver_file,
-        config_file.path,
-        ctx.attr.delay_model,
-        opt_ir_file.path,
-        ctx.attr.top,
-        output_file.path,
-    )
-
-    ctx.actions.run(
-        inputs = [opt_ir_file] + [config_file],
+    ctx.actions.run_shell(
+        inputs = [opt_ir_file, ctx.file._runner],
         outputs = [output_file],
-        arguments = ["-c", cmd],
-        executable = "/bin/sh",
+        command = "/usr/bin/env python3 \"$1\" driver ir2delayinfo --delay_model=\"$2\" \"$3\" \"$4\" > \"$5\"",
+        arguments = [
+            ctx.file._runner.path,
+            ctx.attr.delay_model,
+            opt_ir_file.path,
+            ctx.attr.top,
+            output_file.path,
+        ],
         use_default_shell_env = True,
     )
 
     return DefaultInfo(
         files = depset(direct = [output_file]),
     )
+
 
 ir_to_delay_info = rule(
     doc = "Convert an IR file to delay info",
@@ -50,6 +45,10 @@ ir_to_delay_info = rule(
         "use_unopt_ir": attr.bool(
             doc = "Whether to use the unoptimized IR file instead of optimized IR file.",
             default = False,
+        ),
+        "_runner": attr.label(
+            default = Label("//:xlsynth_runner.py"),
+            allow_single_file = [".py"],
         ),
     },
     outputs = {

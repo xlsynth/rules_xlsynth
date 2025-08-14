@@ -7,12 +7,14 @@ DslxInfo = provider(
     },
 )
 
+
 def make_dag_entry(srcs, deps, label):
     return struct(
         srcs = tuple(srcs),
         deps = tuple(deps),
         label = label,
     )
+
 
 def make_dslx_info(
         new_entries = (),
@@ -24,6 +26,7 @@ def make_dslx_info(
             transitive = [x.dag for x in old_infos],
         ),
     )
+
 
 def _dslx_library_impl(ctx):
     """Produces a DAG for the given target.
@@ -43,31 +46,8 @@ def _dslx_library_impl(ctx):
         old_infos = [dep[DslxInfo] for dep in ctx.attr.deps],
     )
 
-    env = ctx.configuration.default_shell_env
-    xlsynth_tool_dir = env.get("XLSYNTH_TOOLS")
-    if not xlsynth_tool_dir:
-        fail("Please set XLSYNTH_TOOLS environment variable")
-
-    more_flags = ["--dslx_stdlib_path=" + xlsynth_tool_dir + "/xls/dslx/stdlib"]
-
-    enable_warnings = env.get("XLSYNTH_DSLX_ENABLE_WARNINGS")
-    if enable_warnings:
-        more_flags.append("--enable_warnings=" + enable_warnings)
-
-    disable_warnings = env.get("XLSYNTH_DSLX_DISABLE_WARNINGS")
-    if disable_warnings:
-        more_flags.append("--disable_warnings=" + disable_warnings)
-
-    additional_dslx_paths = env.get("XLSYNTH_DSLX_PATH")
-    if additional_dslx_paths:
-        more_flags.append("--dslx_path=" + additional_dslx_paths)
-
-    typecheck_main_file = xlsynth_tool_dir + "/typecheck_main"
-
-    # Define the output file to signal successful typechecking
     typecheck_output = ctx.actions.declare_file(ctx.label.name + ".typecheck")
 
-    # Get DAG entries from DslxInfo
     dag_entries = []
     for dep in ctx.attr.deps:
         dag_entries.extend(dep[DslxInfo].dag.to_list())
@@ -78,21 +58,28 @@ def _dslx_library_impl(ctx):
     for src in ctx.files.srcs:
         srcs.append(src)
 
-    # Run typechecking on the sources
+    # Run typechecking via the runner so env is read at action runtime, not in Starlark.
     ctx.actions.run(
-        inputs = srcs,
+        inputs = srcs + [ctx.file._runner],
         outputs = [typecheck_output],
-        executable = typecheck_main_file,
-        arguments = more_flags + [srcs[-1].path] + [
+        executable = "/usr/bin/env",
+        arguments = [
+            "python3",
+            ctx.file._runner.path,
+            "tool",
+            "typecheck_main",
+            srcs[-1].path,
             "--output_path",
             typecheck_output.path,
         ],
+        use_default_shell_env = True,
     )
 
     return [
         dslx_info,
         DefaultInfo(files = depset([typecheck_output])),
     ]
+
 
 dslx_library = rule(
     doc = "Define a DSLX module.",
@@ -107,6 +94,10 @@ dslx_library = rule(
         "srcs": attr.label_list(
             doc = "DSLX sources.",
             allow_files = [".x"],
+        ),
+        "_runner": attr.label(
+            default = Label("//:xlsynth_runner.py"),
+            allow_single_file = [".py"],
         ),
     },
 )

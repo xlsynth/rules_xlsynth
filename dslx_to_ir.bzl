@@ -1,12 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "get_driver_path", "get_srcs_from_lib", "mangle_dslx_name", "write_config_toml")
+load(":helpers.bzl", "get_srcs_from_lib", "mangle_dslx_name")
 load(":ir_provider.bzl", "IrInfo")
 
 def _dslx_to_ir_impl(ctx):
-    xlsynth_tool_dir, xlsynth_driver_file = get_driver_path(ctx)
-
     # Get the DslxInfo from the direct library target
     lib_info = ctx.attr.lib[DslxInfo]
     # Convert the DAG depset to a list. The last element corresponds to the direct target due to postorder traversal.
@@ -18,23 +16,19 @@ def _dslx_to_ir_impl(ctx):
         fail("Expected exactly one source file for the library {}; got: {}".format(ctx.attr.lib.label, [s.path for s in main_srcs]))
     main_src = main_srcs[0]
 
-    config_file = write_config_toml(ctx, xlsynth_tool_dir)
-
-    cmd = "{driver} --toolchain={toolchain} dslx2ir --dslx_input_file={src} --dslx_top={top} > {output}".format(
-        driver = xlsynth_driver_file,
-        toolchain = config_file.path,
-        src = main_src.path,
-        top = ctx.attr.top,
-        output = ctx.outputs.ir_file.path,
-    )
-
     all_transitive_srcs = get_srcs_from_lib(ctx)
 
-    ctx.actions.run(
-        inputs = all_transitive_srcs + [config_file],
+    # Stage 1: dslx2ir
+    ctx.actions.run_shell(
+        inputs = all_transitive_srcs + [ctx.file._runner],
         outputs = [ctx.outputs.ir_file],
-        arguments = ["-c", cmd],
-        executable = "/bin/sh",
+        command = "/usr/bin/env python3 \"$1\" driver dslx2ir --dslx_input_file=\"$2\" --dslx_top=\"$3\" > \"$4\"",
+        arguments = [
+            ctx.file._runner.path,
+            main_src.path,
+            ctx.attr.top,
+            ctx.outputs.ir_file.path,
+        ],
         use_default_shell_env = True,
         progress_message = "Generating IR for DSLX",
         mnemonic = "DSLX2IR",
@@ -42,21 +36,17 @@ def _dslx_to_ir_impl(ctx):
 
     ir_top = mangle_dslx_name(main_src.basename, ctx.attr.top)
 
-    # Now we optimize that (unoptimized) IR file.
-
-    cmd = "{driver} --toolchain={toolchain} ir2opt {src} --top {ir_top} > {output}".format(
-        driver = xlsynth_driver_file,
-        toolchain = config_file.path,
-        src = ctx.outputs.ir_file.path,
-        ir_top = ir_top,
-        output = ctx.outputs.opt_ir_file.path,
-    )
-
-    ctx.actions.run(
-        inputs = [ctx.outputs.ir_file] + [config_file],
+    # Stage 2: ir2opt
+    ctx.actions.run_shell(
+        inputs = [ctx.outputs.ir_file, ctx.file._runner],
         outputs = [ctx.outputs.opt_ir_file],
-        arguments = ["-c", cmd],
-        executable = "/bin/sh",
+        command = "/usr/bin/env python3 \"$1\" driver ir2opt \"$2\" --top \"$3\" > \"$4\"",
+        arguments = [
+            ctx.file._runner.path,
+            ctx.outputs.ir_file.path,
+            ir_top,
+            ctx.outputs.opt_ir_file.path,
+        ],
         use_default_shell_env = True,
         progress_message = "Optimizing IR",
         mnemonic = "IR2OPT",
@@ -79,6 +69,10 @@ dslx_to_ir = rule(
         "top": attr.string(
             doc = "The top-level DSLX module to be converted to IR.",
             mandatory = True,
+        ),
+        "_runner": attr.label(
+            default = Label("//:xlsynth_runner.py"),
+            allow_single_file = [".py"],
         ),
     },
     outputs = {
