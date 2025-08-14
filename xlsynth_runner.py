@@ -5,7 +5,9 @@ import os
 import subprocess
 import sys
 import tempfile
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
+from typing import List, Optional, Tuple, Dict
 
 
 def _bool_env_to_toml(name: str, val: str) -> Optional[str]:
@@ -54,6 +56,85 @@ def _toml_lines_from_bool_envs(pairs: List[Tuple[str, str]]) -> List[str]:
         if b is not None:
             lines.append(f"{toml_key} = {b}")
     return lines
+
+
+# Declarative per-tool configuration for extra flags
+_TOOL_CONFIG = {
+    "dslx_interpreter_main": {
+        "base_flags": ["--compare=jit", "--alsologtostderr"],
+        "env_flags": [
+            "XLSYNTH_DSLX_PATH",
+            "XLSYNTH_DSLX_ENABLE_WARNINGS",
+            "XLSYNTH_DSLX_DISABLE_WARNINGS",
+            "XLSYNTH_TYPE_INFERENCE_V2",
+        ],
+    },
+    "prove_quickcheck_main": {
+        "base_flags": ["--alsologtostderr"],
+        "env_flags": [
+            "XLSYNTH_DSLX_PATH",
+        ],
+    },
+    "typecheck_main": {
+        "base_flags": [],
+        "env_flags": [
+            "XLSYNTH_DSLX_PATH",
+            "XLSYNTH_DSLX_ENABLE_WARNINGS",
+            "XLSYNTH_DSLX_DISABLE_WARNINGS",
+        ],
+    },
+}
+
+
+class EnvFlagMode(Enum):
+    PASSTHROUGH_IF_NONEMPTY = "passthrough_if_nonempty"
+    TRUE_ONLY = "true_only"
+
+
+@dataclass(frozen=True)
+class EnvFlagSpec:
+    flag_name: str
+    mode: EnvFlagMode
+
+
+# Declarative mapping from env var to flag-building behavior
+_ENV_FLAG_SPECS: Dict[str, EnvFlagSpec] = {
+    "XLSYNTH_DSLX_PATH": EnvFlagSpec("dslx_path", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
+    "XLSYNTH_DSLX_ENABLE_WARNINGS": EnvFlagSpec("enable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
+    "XLSYNTH_DSLX_DISABLE_WARNINGS": EnvFlagSpec("disable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
+    "XLSYNTH_TYPE_INFERENCE_V2": EnvFlagSpec("type_inference_v2", EnvFlagMode.TRUE_ONLY),
+}
+
+
+def _env_flag_builder(env_name: str, value: str) -> List[str]:
+    spec = _ENV_FLAG_SPECS.get(env_name)
+    if not spec:
+        return []
+
+    if spec.mode == EnvFlagMode.PASSTHROUGH_IF_NONEMPTY:
+        return [f"--{spec.flag_name}={value}"] if value else []
+
+    if spec.mode == EnvFlagMode.TRUE_ONLY:
+        if value == "true":
+            return [f"--{spec.flag_name}=true"]
+        if value in ("", "false"):
+            return []
+        raise ValueError("Invalid value for XLSYNTH_TYPE_INFERENCE_V2: " + value)
+
+    return []
+
+
+def _build_extra_args_for_tool(tool: str, tools_dir: str) -> List[str]:
+    cfg = _TOOL_CONFIG.get(tool)
+    if not cfg:
+        return []
+    stdlib = os.path.join(tools_dir, "xls", "dslx", "stdlib")
+    extra: List[str] = [f"--dslx_stdlib_path={stdlib}"]
+    extra.extend(cfg.get("base_flags", []))
+    for env_name in cfg.get("env_flags", []):
+        v = _get_env(env_name) or ""
+        extra.extend(_env_flag_builder(env_name, v))
+    return extra
 
 
 def _build_toolchain_toml(tool_dir: str) -> str:
@@ -130,54 +211,8 @@ def _tool(args: argparse.Namespace) -> int:
     passthrough = list(args.passthrough)
     stdout_out = args.stdout_out
 
-    if args.tool == "dslx_interpreter_main":
-        stdlib = os.path.join(tools_dir, "xls", "dslx", "stdlib")
-        extra: List[str] = [
-            "--compare=jit",
-            "--alsologtostderr",
-            f"--dslx_stdlib_path={stdlib}",
-        ]
-        add_path = _get_env("XLSYNTH_DSLX_PATH") or ""
-        if add_path:
-            extra.append(f"--dslx_path={add_path}")
-        enable_w = _get_env("XLSYNTH_DSLX_ENABLE_WARNINGS") or ""
-        if enable_w:
-            extra.append(f"--enable_warnings={enable_w}")
-        disable_w = _get_env("XLSYNTH_DSLX_DISABLE_WARNINGS") or ""
-        if disable_w:
-            extra.append(f"--disable_warnings={disable_w}")
-        tiv2 = _get_env("XLSYNTH_TYPE_INFERENCE_V2") or ""
-        if tiv2 == "true":
-            extra.append("--type_inference_v2=true")
-        elif tiv2 in ("", "false"):
-            pass
-        else:
-            raise ValueError("Invalid value for XLSYNTH_TYPE_INFERENCE_V2: " + tiv2)
-        passthrough = extra + passthrough
-    elif args.tool == "prove_quickcheck_main":
-        stdlib = os.path.join(tools_dir, "xls", "dslx", "stdlib")
-        extra = [
-            "--alsologtostderr",
-            f"--dslx_stdlib_path={stdlib}",
-        ]
-        add_path = _get_env("XLSYNTH_DSLX_PATH") or ""
-        if add_path:
-            extra.append(f"--dslx_path={add_path}")
-        passthrough = extra + passthrough
-    elif args.tool == "typecheck_main":
-        stdlib = os.path.join(tools_dir, "xls", "dslx", "stdlib")
-        extra: List[str] = [
-            f"--dslx_stdlib_path={stdlib}",
-        ]
-        add_path = _get_env("XLSYNTH_DSLX_PATH") or ""
-        if add_path:
-            extra.append(f"--dslx_path={add_path}")
-        enable_w = _get_env("XLSYNTH_DSLX_ENABLE_WARNINGS") or ""
-        if enable_w:
-            extra.append(f"--enable_warnings={enable_w}")
-        disable_w = _get_env("XLSYNTH_DSLX_DISABLE_WARNINGS") or ""
-        if disable_w:
-            extra.append(f"--disable_warnings={disable_w}")
+    extra = _build_extra_args_for_tool(args.tool, tools_dir)
+    if extra:
         passthrough = extra + passthrough
 
     cmd = [tool_path, *passthrough]
