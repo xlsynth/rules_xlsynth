@@ -9,17 +9,14 @@ def _dslx_to_sv_types_impl(ctx):
 
     output_sv_file = ctx.outputs.sv_file
 
-    ctx.actions.run(
+    ctx.actions.run_shell(
         inputs = srcs + [ctx.file._runner],
         outputs = [output_sv_file],
-        executable = "/usr/bin/env",
+        command = "/usr/bin/env python3 \"$1\" driver dslx2sv-types --dslx_input_file=\"$2\" > \"$3\"",
         arguments = [
-            "python3",
             ctx.file._runner.path,
-            "driver",
-            "dslx2sv-types",
-            "--dslx_input_file={}".format(srcs[0].path),
-            "--stdout_out", output_sv_file.path,
+            srcs[0].path,
+            output_sv_file.path,
         ],
         use_default_shell_env = True,
     )

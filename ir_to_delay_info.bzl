@@ -7,19 +7,15 @@ def _ir_to_delay_info_impl(ctx):
     opt_ir_file = ctx.attr.ir[IrInfo].ir_file if ctx.attr.use_unopt_ir else ctx.attr.ir[IrInfo].opt_ir_file
     output_file = ctx.outputs.delay_info
 
-    ctx.actions.run(
+    ctx.actions.run_shell(
         inputs = [opt_ir_file, ctx.file._runner],
         outputs = [output_file],
-        executable = "/usr/bin/env",
+        command = "/usr/bin/env python3 \"$1\" driver ir2delayinfo --delay_model=\"$2\" \"$3\" \"$4\" > \"$5\"",
         arguments = [
-            "python3",
             ctx.file._runner.path,
-            "driver",
-            "ir2delayinfo",
-            "--delay_model={}".format(ctx.attr.delay_model),
+            ctx.attr.delay_model,
             opt_ir_file.path,
             ctx.attr.top,
-            "--stdout_out",
             output_file.path,
         ],
         use_default_shell_env = True,

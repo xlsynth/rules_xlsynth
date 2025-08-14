@@ -12,17 +12,13 @@ def _dslx_format_impl(ctx):
         formatted_file = ctx.actions.declare_file(input_file.basename + ".fmt")
         formatted_files.append(formatted_file)
 
-        ctx.actions.run(
+        ctx.actions.run_shell(
             inputs=[input_file, ctx.file._runner],
             outputs=[formatted_file],
-            executable="/usr/bin/env",
+            command="/usr/bin/env python3 \"$1\" tool dslx_fmt \"$2\" > \"$3\"",
             arguments=[
-                "python3",
                 ctx.file._runner.path,
-                "tool",
-                "dslx_fmt",
                 input_file.path,
-                "--stdout_out",
                 formatted_file.path,
             ],
             use_default_shell_env=True,

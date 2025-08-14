@@ -41,21 +41,16 @@ def _dslx_stitch_pipeline_impl(ctx):
         value = getattr(ctx.attr, flag)
         flags_str += " --{}={}".format(flag, str(value).lower())
 
-    ctx.actions.run(
+    ctx.actions.run_shell(
         inputs = srcs + [ctx.file._runner],
         outputs = [ctx.outputs.sv_file],
+        command = "/usr/bin/env python3 \"$1\" driver dslx-stitch-pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\"" + flags_str + " > \"$4\"",
         arguments = [
-            "python3",
             ctx.file._runner.path,
-            "driver",
-            "dslx-stitch-pipeline",
-            "--dslx_input_file={}".format(main_src.path),
-            "--dslx_top={}".format(ctx.attr.top),
-        ] + ([s for s in flags_str.strip().split(" ") if s] if flags_str else []) + [
-            "--stdout_out",
+            main_src.path,
+            ctx.attr.top,
             ctx.outputs.sv_file.path,
         ],
-        executable = "/usr/bin/env",
         use_default_shell_env = True,
     )
 

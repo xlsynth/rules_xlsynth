@@ -19,18 +19,15 @@ def _dslx_to_ir_impl(ctx):
     all_transitive_srcs = get_srcs_from_lib(ctx)
 
     # Stage 1: dslx2ir
-    ctx.actions.run(
+    ctx.actions.run_shell(
         inputs = all_transitive_srcs + [ctx.file._runner],
         outputs = [ctx.outputs.ir_file],
-        executable = "/usr/bin/env",
+        command = "/usr/bin/env python3 \"$1\" driver dslx2ir --dslx_input_file=\"$2\" --dslx_top=\"$3\" > \"$4\"",
         arguments = [
-            "python3",
             ctx.file._runner.path,
-            "driver",
-            "dslx2ir",
-            "--dslx_input_file={}".format(main_src.path),
-            "--dslx_top={}".format(ctx.attr.top),
-            "--stdout_out", ctx.outputs.ir_file.path,
+            main_src.path,
+            ctx.attr.top,
+            ctx.outputs.ir_file.path,
         ],
         use_default_shell_env = True,
         progress_message = "Generating IR for DSLX",
@@ -40,18 +37,15 @@ def _dslx_to_ir_impl(ctx):
     ir_top = mangle_dslx_name(main_src.basename, ctx.attr.top)
 
     # Stage 2: ir2opt
-    ctx.actions.run(
+    ctx.actions.run_shell(
         inputs = [ctx.outputs.ir_file, ctx.file._runner],
         outputs = [ctx.outputs.opt_ir_file],
-        executable = "/usr/bin/env",
+        command = "/usr/bin/env python3 \"$1\" driver ir2opt \"$2\" --top \"$3\" > \"$4\"",
         arguments = [
-            "python3",
             ctx.file._runner.path,
-            "driver",
-            "ir2opt",
             ctx.outputs.ir_file.path,
-            "--top", ir_top,
-            "--stdout_out", ctx.outputs.opt_ir_file.path,
+            ir_top,
+            ctx.outputs.opt_ir_file.path,
         ],
         use_default_shell_env = True,
         progress_message = "Optimizing IR",

@@ -59,23 +59,18 @@ def _dslx_to_pipeline_impl(ctx):
     output_unopt_ir_file = ctx.outputs.unopt_ir_file
     output_opt_ir_file = ctx.outputs.opt_ir_file
 
-    ctx.actions.run(
+    ctx.actions.run_shell(
         inputs = srcs + [ctx.file._runner],
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
+        command = "/usr/bin/env python3 \"$1\" driver dslx2pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\" --output_unopt_ir=\"$4\" --output_opt_ir=\"$5\"" + flags_str + " > \"$6\"",
         arguments = [
-            "python3",
             ctx.file._runner.path,
-            "driver",
-            "dslx2pipeline",
-            "--dslx_input_file={}".format(srcs[0].path),
-            "--dslx_top={}".format(top_entry),
-            "--output_unopt_ir={}".format(output_unopt_ir_file.path),
-            "--output_opt_ir={}".format(output_opt_ir_file.path),
-        ] + ([s for s in flags_str.strip().split(" ") if s] if flags_str else []) + [
-            "--stdout_out",
+            srcs[0].path,
+            top_entry,
+            output_unopt_ir_file.path,
+            output_opt_ir_file.path,
             output_sv_file.path,
         ],
-        executable = "/usr/bin/env",
         use_default_shell_env = True,
     )
 

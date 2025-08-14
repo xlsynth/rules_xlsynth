@@ -174,14 +174,9 @@ def _build_toolchain_toml(tool_dir: str) -> str:
 
     return "\n".join(lines) + "\n"
 
-def _run(cmd: List[str], stdout_out: Optional[str]) -> int:
-    if stdout_out:
-        with open(stdout_out, "wb") as f:
-            proc = subprocess.run(cmd, stdout=f, check=False)
-            return proc.returncode
-    else:
-        proc = subprocess.run(cmd, check=False)
-        return proc.returncode
+def _run(cmd: List[str]) -> int:
+    proc = subprocess.run(cmd, check=False)
+    return proc.returncode
 
 
 def _driver(args: argparse.Namespace) -> int:
@@ -189,15 +184,13 @@ def _driver(args: argparse.Namespace) -> int:
     driver_dir = _require_env("XLSYNTH_DRIVER_DIR")
     driver_path = os.path.join(driver_dir, "xlsynth-driver")
     passthrough = list(args.passthrough)
-    stdout_out = args.stdout_out
-
     toml = _build_toolchain_toml(tools_dir)
     with tempfile.NamedTemporaryFile("w", delete=False, prefix="xlsynth_toolchain_", suffix=".toml") as tf:
         tf.write(toml)
         toolchain_path = tf.name
     try:
         cmd = [driver_path, f"--toolchain={toolchain_path}", args.subcommand, *passthrough]
-        return _run(cmd, stdout_out)
+        return _run(cmd)
     finally:
         try:
             os.unlink(toolchain_path)
@@ -209,34 +202,30 @@ def _tool(args: argparse.Namespace) -> int:
     tools_dir = _require_env("XLSYNTH_TOOLS")
     tool_path = os.path.join(tools_dir, args.tool)
     passthrough = list(args.passthrough)
-    stdout_out = args.stdout_out
-
     extra = _build_extra_args_for_tool(args.tool, tools_dir)
     if extra:
         passthrough = extra + passthrough
 
     cmd = [tool_path, *passthrough]
-    return _run(cmd, stdout_out)
+    return _run(cmd)
 
 
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(prog="xlsynth_runner", allow_abbrev=False)
     sub = parser.add_subparsers(dest="mode", required=True)
 
-    # Arguments common to all subcommands
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--stdout_out", metavar="PATH")
+    # No global arguments; subcommands define their own.
 
-    p_driver = sub.add_parser("driver", parents=[common])
+    p_driver = sub.add_parser("driver")
     p_driver.add_argument("subcommand")
     p_driver.set_defaults(func=_driver)
 
-    p_tool = sub.add_parser("tool", parents=[common])
+    p_tool = sub.add_parser("tool")
     p_tool.add_argument("tool")
     p_tool.set_defaults(func=_tool)
 
     # We intentionally use parse_known_args so that only flags defined on the selected
-    # subparser (e.g. --stdout_out) are consumed here. All remaining args are treated
+    # subparser are consumed here. All remaining args are treated
     # as passthrough and forwarded verbatim to the underlying tool/driver subcommand.
     args, unknown = parser.parse_known_args(argv[1:])
     # Treat any unrecognized arguments as passthrough to the underlying tool/driver subcommand.
