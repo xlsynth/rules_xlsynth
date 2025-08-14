@@ -19,7 +19,7 @@ def _bool_env_to_toml(name: str, val: str) -> Optional[str]:
     return v
 
 
-def _get_env(name: str) -> Optional[str]:
+def _get_env(name: str) -> str:
     return os.environ.get(name, "").strip()
 
 
@@ -174,11 +174,6 @@ def _build_toolchain_toml(tool_dir: str) -> str:
 
     return "\n".join(lines) + "\n"
 
-def _run(cmd: List[str]) -> int:
-    proc = subprocess.run(cmd, check=False)
-    return proc.returncode
-
-
 def _driver(args: argparse.Namespace) -> int:
     tools_dir = _require_env("XLSYNTH_TOOLS")
     driver_dir = _require_env("XLSYNTH_DRIVER_DIR")
@@ -190,7 +185,8 @@ def _driver(args: argparse.Namespace) -> int:
         toolchain_path = tf.name
     try:
         cmd = [driver_path, f"--toolchain={toolchain_path}", args.subcommand, *passthrough]
-        return _run(cmd)
+        proc = subprocess.run(cmd, check=False)
+        return proc.returncode
     finally:
         try:
             os.unlink(toolchain_path)
@@ -207,7 +203,8 @@ def _tool(args: argparse.Namespace) -> int:
         passthrough = extra + passthrough
 
     cmd = [tool_path, *passthrough]
-    return _run(cmd)
+    proc = subprocess.run(cmd, check=False)
+    return proc.returncode
 
 
 def main(argv: List[str]) -> int:
