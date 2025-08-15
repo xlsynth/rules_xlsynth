@@ -126,13 +126,14 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Install prerequisites (apt, curl, unzip, gnupg, git)
+      - name: Install prerequisites (apt, curl, unzip, gnupg, git, build tools)
         run: |
           apt-get update
           apt-get install -y -q tzdata
           ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime
           dpkg-reconfigure -f noninteractive tzdata
-          apt-get install -y -q wget curl unzip gnupg software-properties-common ca-certificates git
+          apt-get install -y -q wget curl unzip gnupg software-properties-common ca-certificates git \
+            build-essential pkg-config libssl-dev zlib1g-dev
 
       - name: Install libc++ from llvm-18
         run: |
@@ -189,10 +190,15 @@ jobs:
         run: |
           python3.6 download_release.py -o dependencies/ -p ubuntu2004 -v ${{ env.DSO_VERSION }}
 
-      - name: Install Rust nightly toolchain
+      - name: Install rustup
         run: |
           curl https://sh.rustup.rs -sSf | sh -s -- -y
+          # rustup/cargo may be installed under /root due to container euid; add both to PATH for subsequent steps
+          echo "/root/.cargo/bin" >> $GITHUB_PATH
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install Rust nightly toolchain
+        run: |
           rustup toolchain install nightly
           rustup default nightly
 
