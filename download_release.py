@@ -4,9 +4,11 @@ import os
 import hashlib
 import shutil
 import tempfile
-import requests
 import time
+import json
 from optparse import OptionParser
+from urllib import request as urlrequest
+from urllib import error as urlerror
 
 GITHUB_API_URL = "https://api.github.com/repos/xlsynth/xlsynth/releases"
 SUPPORTED_PLATFORMS = ["ubuntu2004", "ubuntu2204", "rocky8", "arm64", "x64"]
@@ -23,35 +25,38 @@ def get_headers():
 
 def request_with_retry(url, stream, headers, max_attempts):
     """
-    Attempts to send a GET request to a given URL with exponential backoff.
-    Retries up to max_attempts times.
+    Attempts to open a URL with exponential backoff using urllib.
+    Retries up to max_attempts times. Does not retry on HTTP 404.
     """
     attempt = 0
     delay = 1  # initial delay in seconds
     while attempt < max_attempts:
         attempt += 1
+        req = urlrequest.Request(url, headers=headers or {})
         try:
-            response = requests.get(url, stream=stream, headers=headers)
-            # If it's a 404, don't bother retrying.
-            if response.status_code == 404:
-                print(f"404 Not Found for {url} (not retrying).")
-                response.raise_for_status()
-            response.raise_for_status()
-            return response
-        except requests.exceptions.RequestException as e:
-            if attempt == max_attempts or (hasattr(e.response, "status_code") and e.response is not None and e.response.status_code == 404):
+            resp = urlrequest.urlopen(req)
+            return resp
+        except urlerror.HTTPError as e:
+            if e.code == 404 or attempt == max_attempts:
                 print(f"All {attempt} attempts failed for {url}")
                 raise
-            else:
-                print(f"Attempt {attempt} failed for {url}. Error: {e}. Retrying in {delay} seconds...")
-                time.sleep(delay)
-                delay *= 2  # exponential backoff
+            print(f"Attempt {attempt} failed for {url}. HTTP {e.code}. Retrying in {delay} seconds...")
+            time.sleep(delay)
+            delay *= 2
+        except urlerror.URLError as e:
+            if attempt == max_attempts:
+                print(f"All {attempt} attempts failed for {url}")
+                raise
+            print(f"Attempt {attempt} failed for {url}. Error: {e}. Retrying in {delay} seconds...")
+            time.sleep(delay)
+            delay *= 2
 
 def get_latest_release(max_attempts):
     print("Discovering the latest release version...")
     print("PAT present? ", os.getenv('GH_PAT') is not None)
-    response = request_with_retry(f"{GITHUB_API_URL}/latest", stream=False, headers=get_headers(), max_attempts=max_attempts)
-    latest_version = response.json()["tag_name"]
+    with request_with_retry(f"{GITHUB_API_URL}/latest", stream=False, headers=get_headers(), max_attempts=max_attempts) as r:
+        body = r.read().decode('utf-8')
+    latest_version = json.loads(body)["tag_name"]
     print(f"Latest version discovered: {latest_version}")
     return latest_version
 
@@ -71,12 +76,12 @@ def high_integrity_download(base_url, filename, target_dir, max_attempts, is_bin
         # Download SHA256 file with retry support
         with request_with_retry(sha256_url, stream=True, headers=headers, max_attempts=max_attempts) as r:
             with open(sha256_path, 'wb') as f:
-                shutil.copyfileobj(r.raw, f)
+                shutil.copyfileobj(r, f)
 
         # Download the artifact with retry support
         with request_with_retry(artifact_url, stream=True, headers=headers, max_attempts=max_attempts) as r:
             with open(artifact_path, 'wb') as f:
-                shutil.copyfileobj(r.raw, f)
+                shutil.copyfileobj(r, f)
 
         # Verify checksum
         with open(sha256_path, 'r') as f:

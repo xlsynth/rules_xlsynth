@@ -5,9 +5,8 @@ import os
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, NamedTuple
 
 
 def _bool_env_to_toml(name: str, val: str) -> Optional[str]:
@@ -91,8 +90,7 @@ class EnvFlagMode(Enum):
     TRUE_ONLY = "true_only"
 
 
-@dataclass(frozen=True)
-class EnvFlagSpec:
+class EnvFlagSpec(NamedTuple):
     flag_name: str
     mode: EnvFlagMode
 
@@ -209,7 +207,7 @@ def _tool(args: argparse.Namespace) -> int:
 
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(prog="xlsynth_runner", allow_abbrev=False)
-    sub = parser.add_subparsers(dest="mode", required=True)
+    sub = parser.add_subparsers(dest="mode")
 
     # No global arguments; subcommands define their own.
 
@@ -225,6 +223,9 @@ def main(argv: List[str]) -> int:
     # subparser are consumed here. All remaining args are treated
     # as passthrough and forwarded verbatim to the underlying tool/driver subcommand.
     args, unknown = parser.parse_known_args(argv[1:])
+    if args.mode is None:
+        parser.print_usage()
+        return 2
     # Treat any unrecognized arguments as passthrough to the underlying tool/driver subcommand.
     setattr(args, "passthrough", unknown)
     return int(args.func(args))
