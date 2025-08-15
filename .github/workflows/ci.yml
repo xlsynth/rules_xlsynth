@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.6.8", "3.9", "3.11"]
+        python-version: ["3.9", "3.11"]
     name: dslx_ci (Python ${{ matrix.python-version }})
 
     steps:
@@ -112,6 +112,116 @@ jobs:
       - name: Run presubmit script
         run: |
           python run_presubmit.py \
+            --xlsynth-tools $(pwd)/dependencies \
+            --xlsynth-driver-dir $(dirname "$(which xlsynth-driver)") \
+            --dslx-path dependencies/dslx_stdlib
+
+  dslx_ci_py36:
+    runs-on: ubuntu-latest
+    name: dslx_ci (Python 3.6.8 in ubuntu:20.04 container)
+    container: ubuntu:20.04
+    steps:
+      - name: Install prerequisites (apt, curl, unzip, gnupg)
+        run: |
+          apt-get update
+          apt-get install -y wget curl unzip gnupg software-properties-common ca-certificates
+
+      - name: Install libc++ from llvm-18
+        run: |
+          cd /tmp/
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          bash ./llvm.sh 18
+          apt-get install -y libc++-18-dev libc++abi-18-dev
+
+      - name: Install protobuf compiler
+        run: |
+          wget https://github.com/protocolbuffers/protobuf/releases/download/v29.1/protoc-29.1-linux-x86_64.zip
+          unzip protoc-29.1-linux-x86_64.zip -d protoc
+          mv protoc/bin/protoc /usr/local/bin/protoc
+          mv protoc /tmp/
+          mv protoc-*.zip /tmp/
+          protoc --version
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Parse xlsynth-versions.toml
+        id: versions
+        run: |
+          CRATE_VERSION=$(grep '^crate' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
+          DSO_VERSION=$(grep '^dso' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
+          echo "CRATE_VERSION=$CRATE_VERSION" >> $GITHUB_ENV
+          echo "DSO_VERSION=v$DSO_VERSION" >> $GITHUB_ENV
+
+      - name: Install Python 3.6.8 via deadsnakes
+        run: |
+          add-apt-repository ppa:deadsnakes/ppa -y
+          apt-get update
+          apt-get install -y python3.6 python3.6-venv python3.6-distutils
+          python3.6 --version
+
+      - name: Download and rename libxls
+        run: |
+          XLSYNTH_VERSION=${{ env.DSO_VERSION }}
+          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
+          LIB_FILE="libxls-ubuntu2004.so"
+          echo "Downloading ${BASE_URL}/${LIB_FILE}"
+          curl -L -o "${LIB_FILE}" "${BASE_URL}/${LIB_FILE}"
+          curl -L -o "${LIB_FILE}.sha256" "${BASE_URL}/${LIB_FILE}.sha256"
+          EXPECTED=$(cut -d' ' -f1 "${LIB_FILE}.sha256")
+          echo "${EXPECTED}  ${LIB_FILE}" | sha256sum -c -
+          mv "${LIB_FILE}" "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
+          ls libxls-*.so
+          file libxls-*.so
+          export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
+          ln -s ${PWD}/"libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
+
+      - name: Download xlsynth binaries
+        run: |
+          python3.6 download_release.py -o dependencies/ -p ubuntu2004 -v ${{ env.DSO_VERSION }}
+
+      - name: Install Rust nightly toolchain
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          source $HOME/.cargo/env
+          rustup toolchain install nightly
+          rustup default nightly
+
+      - name: Install xlsynth-driver using Cargo
+        run: |
+          source $HOME/.cargo/env
+          cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }}
+
+      - name: Note xlsynth-driver version
+        run: |
+          source $HOME/.cargo/env
+          ldd $(which xlsynth-driver)
+          LD_DEBUG=libs xlsynth-driver version
+
+      - name: Set up Bazelisk
+        run: |
+          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
+          chmod +x /usr/local/bin/bazel
+          bazel version
+
+      - name: Download and unpack DSLX standard library
+        run: |
+          XLSYNTH_VERSION=${{ env.DSO_VERSION }}
+          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
+          STD_LIB_FILE="dslx_stdlib.tar.gz"
+          echo "Downloading ${BASE_URL}/${STD_LIB_FILE}"
+          curl -L -o "${STD_LIB_FILE}" "${BASE_URL}/${STD_LIB_FILE}"
+          curl -L -o "${STD_LIB_FILE}.sha256" "${BASE_URL}/${STD_LIB_FILE}.sha256"
+          EXPECTED=$(cut -d' ' -f1 "${STD_LIB_FILE}.sha256")
+          echo "${EXPECTED}  ${STD_LIB_FILE}" | sha256sum -c -
+          mkdir -p dependencies/
+          tar -xzf "${STD_LIB_FILE}" -C dependencies/
+
+      - name: Run presubmit script (Python 3.6)
+        run: |
+          source $HOME/.cargo/env
+          python3.6 run_presubmit.py \
             --xlsynth-tools $(pwd)/dependencies \
             --xlsynth-driver-dir $(dirname "$(which xlsynth-driver)") \
             --dslx-path dependencies/dslx_stdlib
