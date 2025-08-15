@@ -10,11 +10,11 @@ on:
 
 jobs:
   dslx_ci:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.6", "3.9", "3.11"]
+        python-version: ["3.6.8", "3.9", "3.11"]
     name: dslx_ci (Python ${{ matrix.python-version }})
 
     steps:
