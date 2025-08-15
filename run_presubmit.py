@@ -600,6 +600,8 @@ def main():
     to_run = TO_RUN
     if options.keyword:
         to_run = [f for f in TO_RUN if options.keyword in f.__name__]
+
+    failures: List[Tuple[str, str]] = []
     for f in to_run:
         print('-' * 80)
         print('Executing', f.__name__)
@@ -607,7 +609,26 @@ def main():
 
         print(f"xlsynth-driver version: {version_out}")
 
-        f(path_data)
+        try:
+            f(path_data)
+        except Exception as e:
+            err_msg = str(e)
+            failures.append((f.__name__, err_msg))
+            print("FAILED presubmit step:", f.__name__)
+            print("Reason:", err_msg)
+            # Continue to gather all failures so we can summarize at the end.
+
+    if failures:
+        print('\n' + '=' * 80)
+        print('Presubmit summary: FAIL ({} failing step(s))'.format(len(failures)))
+        for name, msg in failures:
+            print('- {}: {}'.format(name, msg))
+        print('=' * 80)
+        sys.exit(1)
+    else:
+        print('\n' + '=' * 80)
+        print('Presubmit summary: OK (all {} step(s) passed)'.format(len(to_run)))
+        print('=' * 80)
 
 if __name__ == '__main__':
     main()
