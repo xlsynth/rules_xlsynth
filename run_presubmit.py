@@ -384,7 +384,8 @@ def run_sample_invariant_assertions(path_data: PathData):
         raise ValueError(
             "Expected more assertion machinery when enabling env-var; got {} vs {}".format(count_with_env, count_without)
         )
-    print(f"Env-var toggling works: {count_without} → {count_with_env} assertions.")
+    # Avoid non-ASCII arrow to ensure output is safe under ASCII-only stdout (e.g. Python 3.6 CI)
+    print(f"Env-var toggling works: {count_without} -> {count_with_env} assertions.")
 
     # -- Now verify rule-level override behaviour.
     tgt_attr_false = "//sample_invariant_assertions:array_match_sv_attr_false"
