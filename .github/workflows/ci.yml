@@ -120,6 +120,8 @@ jobs:
     runs-on: ubuntu-latest
     name: dslx_ci (Python 3.6.8 in ubuntu:20.04 container)
     container: ubuntu:20.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
     defaults:
       run:
         shell: bash
@@ -127,7 +129,10 @@ jobs:
       - name: Install prerequisites (apt, curl, unzip, gnupg, git)
         run: |
           apt-get update
-          apt-get install -y wget curl unzip gnupg software-properties-common ca-certificates git
+          apt-get install -y -q tzdata
+          ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime
+          dpkg-reconfigure -f noninteractive tzdata
+          apt-get install -y -q wget curl unzip gnupg software-properties-common ca-certificates git
 
       - name: Install libc++ from llvm-18
         run: |
