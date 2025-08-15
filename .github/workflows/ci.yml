@@ -11,6 +11,11 @@ on:
 jobs:
   dslx_ci:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.6", "3.9", "3.11"]
+    name: dslx_ci (Python ${{ matrix.python-version }})
 
     steps:
       - name: Install libc++ from llvm-18
@@ -35,6 +40,11 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Parse xlsynth-versions.toml
         id: versions
@@ -101,7 +111,7 @@ jobs:
 
       - name: Run presubmit script
         run: |
-          python3 run_presubmit.py \
+          python run_presubmit.py \
             --xlsynth-tools $(pwd)/dependencies \
             --xlsynth-driver-dir $(dirname "$(which xlsynth-driver)") \
             --dslx-path dependencies/dslx_stdlib

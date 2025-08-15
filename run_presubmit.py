@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-import dataclasses
+from typing import Optional, Tuple, List, Callable, Dict, Set
 import subprocess
 import optparse
 import os
@@ -8,7 +8,6 @@ from pathlib import Path
 import re
 import tempfile
 import shutil
-from typing import Optional, Tuple, List, Callable, Dict
 import sys
 import hashlib
 import urllib.request
@@ -20,11 +19,15 @@ def register(f: Runnable):
     TO_RUN.append(f)
     return f
 
-@dataclasses.dataclass
 class PathData:
     xlsynth_tools: str
     xlsynth_driver_dir: str
     dslx_path: Optional[Tuple[str, ...]]
+
+    def __init__(self, xlsynth_tools: str, xlsynth_driver_dir: str, dslx_path: Optional[Tuple[str, ...]]):
+        self.xlsynth_tools = xlsynth_tools
+        self.xlsynth_driver_dir = xlsynth_driver_dir
+        self.dslx_path = dslx_path
 
 def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
     assert isinstance(targets, tuple), targets
@@ -234,7 +237,7 @@ def run_readme_sample_snippets(path_data: PathData):
 
     # Determine which rule symbols are used so we can create a single load(...).
     rule_name_pattern = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\(")
-    used_rule_names: set[str] = set()
+    used_rule_names: Set[str] = set()
     for ln in snippet_lines:
         m = rule_name_pattern.match(ln)
         if m and m.group(1) != "load":
@@ -243,7 +246,7 @@ def run_readme_sample_snippets(path_data: PathData):
     # Inspect rules.bzl to know what symbols it actually exports so we only
     # attempt to load valid ones (e.g. we do NOT load `glob`).
     rules_bzl_path = os.path.join(repo_root, "rules.bzl")
-    exported_rule_names: set[str] = set()
+    exported_rule_names: Set[str] = set()
     if os.path.exists(rules_bzl_path):
         with open(rules_bzl_path, "r", encoding="utf-8") as rbzl:
             for line in rbzl:
@@ -269,7 +272,7 @@ def run_readme_sample_snippets(path_data: PathData):
                 ))
 
             # Collect names defined in snippets to help stub out references.
-            defined_targets: set[str] = set()
+            defined_targets: Set[str] = set()
             name_attr_re = re.compile(r"name\s*=\s*\"([A-Za-z0-9_]+)\"")
 
             for ln in snippet_lines:
