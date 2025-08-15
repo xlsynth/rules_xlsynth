@@ -120,11 +120,14 @@ jobs:
     runs-on: ubuntu-latest
     name: dslx_ci (Python 3.6.8 in ubuntu:20.04 container)
     container: ubuntu:20.04
+    defaults:
+      run:
+        shell: bash
     steps:
-      - name: Install prerequisites (apt, curl, unzip, gnupg)
+      - name: Install prerequisites (apt, curl, unzip, gnupg, git)
         run: |
           apt-get update
-          apt-get install -y wget curl unzip gnupg software-properties-common ca-certificates
+          apt-get install -y wget curl unzip gnupg software-properties-common ca-certificates git
 
       - name: Install libc++ from llvm-18
         run: |
@@ -184,18 +187,16 @@ jobs:
       - name: Install Rust nightly toolchain
         run: |
           curl https://sh.rustup.rs -sSf | sh -s -- -y
-          source $HOME/.cargo/env
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           rustup toolchain install nightly
           rustup default nightly
 
       - name: Install xlsynth-driver using Cargo
         run: |
-          source $HOME/.cargo/env
           cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }}
 
       - name: Note xlsynth-driver version
         run: |
-          source $HOME/.cargo/env
           ldd $(which xlsynth-driver)
           LD_DEBUG=libs xlsynth-driver version
 
