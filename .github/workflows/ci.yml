@@ -163,11 +163,15 @@ jobs:
           echo "CRATE_VERSION=$CRATE_VERSION" >> $GITHUB_ENV
           echo "DSO_VERSION=v$DSO_VERSION" >> $GITHUB_ENV
 
-      - name: Install Python 3.6.8 via deadsnakes
+      - name: Install Python 3.6 via deadsnakes (with retries)
         run: |
-          add-apt-repository ppa:deadsnakes/ppa -y
-          apt-get update
-          apt-get install -y python3.6 python3.6-venv python3.6-distutils
+          apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout="15"
+          apt-get install -y -q software-properties-common
+          add-apt-repository -y ppa:deadsnakes/ppa
+          # Refresh indices with retries to weather transient 503s from Launchpad mirrors
+          apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout="15"
+          # Only python3.6 is strictly needed for our scripts
+          apt-get install -y -q python3.6
           python3.6 --version
 
       - name: Download and rename libxls
