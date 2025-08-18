@@ -58,17 +58,27 @@ jobs:
         run: |
           XLSYNTH_VERSION=${{ env.DSO_VERSION }}
           BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
+          GZ_FILE="libxls-ubuntu2004.so.gz"
+          SHA_FILE="${GZ_FILE}.sha256"
           LIB_FILE="libxls-ubuntu2004.so"
-          echo "Downloading ${BASE_URL}/${LIB_FILE}"
-          curl -L -o "${LIB_FILE}" "${BASE_URL}/${LIB_FILE}"
-          curl -L -o "${LIB_FILE}.sha256" "${BASE_URL}/${LIB_FILE}.sha256"
-          EXPECTED=$(cut -d' ' -f1 "${LIB_FILE}.sha256")
-          echo "${EXPECTED}  ${LIB_FILE}" | sha256sum -c -
+          echo "Downloading ${BASE_URL}/${GZ_FILE}"
+          curl -fL -o "${GZ_FILE}" "${BASE_URL}/${GZ_FILE}"
+          echo "Downloading ${BASE_URL}/${SHA_FILE}"
+          curl -fL -o "${SHA_FILE}" "${BASE_URL}/${SHA_FILE}"
+          # Verify checksum of the gzipped file
+          EXPECTED=$(cut -d' ' -f1 "${SHA_FILE}")
+          echo "${EXPECTED}  ${GZ_FILE}" | sha256sum -c -
+          # Unzip to produce the .so
+          echo "Unzipping ${GZ_FILE}"
+          gunzip -f "${GZ_FILE}"  # yields ${LIB_FILE}
+          # Version the library filename
           mv "${LIB_FILE}" "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
           ls libxls-*.so
           file libxls-*.so
-          export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
-          sudo ln -s ${PWD}/"libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
+          # Ensure current dir is searched first; tolerate empty LD_LIBRARY_PATH
+          export LD_LIBRARY_PATH="$(pwd):${LD_LIBRARY_PATH:-}"
+          # Symlink into /usr/lib (force if it already exists)
+          sudo ln -sf "${PWD}/libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
 
       - name: Download xlsynth binaries
         run: |
@@ -178,17 +188,27 @@ jobs:
         run: |
           XLSYNTH_VERSION=${{ env.DSO_VERSION }}
           BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
+          GZ_FILE="libxls-ubuntu2004.so.gz"
+          SHA_FILE="${GZ_FILE}.sha256"
           LIB_FILE="libxls-ubuntu2004.so"
-          echo "Downloading ${BASE_URL}/${LIB_FILE}"
-          curl -L -o "${LIB_FILE}" "${BASE_URL}/${LIB_FILE}"
-          curl -L -o "${LIB_FILE}.sha256" "${BASE_URL}/${LIB_FILE}.sha256"
-          EXPECTED=$(cut -d' ' -f1 "${LIB_FILE}.sha256")
-          echo "${EXPECTED}  ${LIB_FILE}" | sha256sum -c -
+          echo "Downloading ${BASE_URL}/${GZ_FILE}"
+          curl -fL -o "${GZ_FILE}" "${BASE_URL}/${GZ_FILE}"
+          echo "Downloading ${BASE_URL}/${SHA_FILE}"
+          curl -fL -o "${SHA_FILE}" "${BASE_URL}/${SHA_FILE}"
+          # Verify checksum of the gzipped file
+          EXPECTED=$(cut -d' ' -f1 "${SHA_FILE}")
+          echo "${EXPECTED}  ${GZ_FILE}" | sha256sum -c -
+          # Unzip to produce the .so
+          echo "Unzipping ${GZ_FILE}"
+          gunzip -f "${GZ_FILE}"  # yields ${LIB_FILE}
+          # Version the library filename
           mv "${LIB_FILE}" "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
           ls libxls-*.so
           file libxls-*.so
-          export LD_LIBRARY_PATH=$(pwd):$LD_LIBRARY_PATH
-          ln -s ${PWD}/"libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
+          # Ensure current dir is searched first; tolerate empty LD_LIBRARY_PATH
+          export LD_LIBRARY_PATH="$(pwd):${LD_LIBRARY_PATH:-}"
+          # Symlink into /usr/lib (force if it already exists)
+          ln -sf "${PWD}/libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
 
       - name: Download xlsynth binaries
         run: |
