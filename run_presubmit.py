@@ -540,10 +540,10 @@ def verify_tool_binaries(tools_dir: str, version: str, *, platform: str = 'ubunt
             print(f"Verified SHA256 for {art} matches release v{version}.")
 
     # Verify the libxls DSO if present next to the repository root.
-    dso_name = f"libxls-v{version}-{platform}.so"
+    dso_name = f"libxls-{platform}.so.gz"
     dso_path = find_dso(dso_name, [os.getcwd(), '/usr/lib', '/usr/local/lib'])
     if dso_path:
-        remote_sha_url = f"{base_url}/libxls-{platform}.so.sha256"
+        remote_sha_url = f"{base_url}/libxls-{platform}.so.gz.sha256"
         expected = _fetch_remote_sha256(remote_sha_url)
         actual = _sha256_of_file(dso_path)
         if actual != expected:
