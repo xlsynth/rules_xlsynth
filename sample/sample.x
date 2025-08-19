@@ -3,6 +3,7 @@
 // Note: this path is relative to repository root.
 import sample.imported;
 
+// nothing has changed
 fn main() -> u32 { (imported::MOL << 1) >> 1 }
 
 #[test]
