@@ -57,7 +57,7 @@ jobs:
       - name: Download and rename libxls
         run: |
           XLSYNTH_VERSION=${{ env.DSO_VERSION }}
-          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
+          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/v${XLSYNTH_VERSION}"
           GZ_FILE="libxls-ubuntu2004.so.gz"
           SHA_FILE="${GZ_FILE}.sha256"
           LIB_FILE="libxls-ubuntu2004.so"
@@ -110,7 +110,7 @@ jobs:
       - name: Download and unpack DSLX standard library
         run: |
           XLSYNTH_VERSION=${{ env.DSO_VERSION }}
-          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
+          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/v${XLSYNTH_VERSION}"
           STD_LIB_FILE="dslx_stdlib.tar.gz"
           echo "Downloading ${BASE_URL}/${STD_LIB_FILE}"
           curl -L -o "${STD_LIB_FILE}" "${BASE_URL}/${STD_LIB_FILE}"
@@ -187,7 +187,7 @@ jobs:
       - name: Download and rename libxls
         run: |
           XLSYNTH_VERSION=${{ env.DSO_VERSION }}
-          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
+          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/v${XLSYNTH_VERSION}"
           GZ_FILE="libxls-ubuntu2004.so.gz"
           SHA_FILE="${GZ_FILE}.sha256"
           LIB_FILE="libxls-ubuntu2004.so"
@@ -244,7 +244,7 @@ jobs:
       - name: Download and unpack DSLX standard library
         run: |
           XLSYNTH_VERSION=${{ env.DSO_VERSION }}
-          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
+          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/v${XLSYNTH_VERSION}"
           STD_LIB_FILE="dslx_stdlib.tar.gz"
           echo "Downloading ${BASE_URL}/${STD_LIB_FILE}"
           curl -L -o "${STD_LIB_FILE}" "${BASE_URL}/${STD_LIB_FILE}"
