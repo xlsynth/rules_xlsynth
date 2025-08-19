@@ -119,6 +119,12 @@ dslx_test(
     deps = [":sample"],
 )
 
+dslx_test(
+    name = "sample_src_test",
+    src = "sample_src_test.x",
+    deps = [":sample"],
+)
+
 # -- one-stage pipeline w/valid signals
 
 dslx_to_pipeline(
