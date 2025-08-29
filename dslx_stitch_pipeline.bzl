@@ -42,11 +42,12 @@ def _dslx_stitch_pipeline_impl(ctx):
         flags_str += " --{}={}".format(flag, str(value).lower())
 
     ctx.actions.run_shell(
-        inputs = srcs + [ctx.file._runner],
+        inputs = srcs,
+        tools = [ctx.executable._runner],
         outputs = [ctx.outputs.sv_file],
-        command = "/usr/bin/env python3 \"$1\" driver dslx-stitch-pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\"" + flags_str + " > \"$4\"",
+        command = "\"$1\" driver dslx-stitch-pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\"" + flags_str + " > \"$4\"",
         arguments = [
-            ctx.file._runner.path,
+            ctx.executable._runner.path,
             main_src.path,
             ctx.attr.top,
             ctx.outputs.sv_file.path,
@@ -101,8 +102,9 @@ dslx_stitch_pipeline = rule(
             default = True,
         ),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
     outputs = {

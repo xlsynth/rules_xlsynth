@@ -20,11 +20,12 @@ def _dslx_to_ir_impl(ctx):
 
     # Stage 1: dslx2ir
     ctx.actions.run_shell(
-        inputs = all_transitive_srcs + [ctx.file._runner],
+        inputs = all_transitive_srcs,
+        tools = [ctx.executable._runner],
         outputs = [ctx.outputs.ir_file],
-        command = "/usr/bin/env python3 \"$1\" driver dslx2ir --dslx_input_file=\"$2\" --dslx_top=\"$3\" > \"$4\"",
+        command = "\"$1\" driver dslx2ir --dslx_input_file=\"$2\" --dslx_top=\"$3\" > \"$4\"",
         arguments = [
-            ctx.file._runner.path,
+            ctx.executable._runner.path,
             main_src.path,
             ctx.attr.top,
             ctx.outputs.ir_file.path,
@@ -38,11 +39,12 @@ def _dslx_to_ir_impl(ctx):
 
     # Stage 2: ir2opt
     ctx.actions.run_shell(
-        inputs = [ctx.outputs.ir_file, ctx.file._runner],
+        inputs = [ctx.outputs.ir_file],
+        tools = [ctx.executable._runner],
         outputs = [ctx.outputs.opt_ir_file],
-        command = "/usr/bin/env python3 \"$1\" driver ir2opt \"$2\" --top \"$3\" > \"$4\"",
+        command = "\"$1\" driver ir2opt \"$2\" --top \"$3\" > \"$4\"",
         arguments = [
-            ctx.file._runner.path,
+            ctx.executable._runner.path,
             ctx.outputs.ir_file.path,
             ir_top,
             ctx.outputs.opt_ir_file.path,
@@ -71,8 +73,9 @@ dslx_to_ir = rule(
             mandatory = True,
         ),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
     outputs = {

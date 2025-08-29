@@ -60,11 +60,12 @@ def _dslx_to_pipeline_impl(ctx):
     output_opt_ir_file = ctx.outputs.opt_ir_file
 
     ctx.actions.run_shell(
-        inputs = srcs + [ctx.file._runner],
+        inputs = srcs,
+        tools = [ctx.executable._runner],
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
-        command = "/usr/bin/env python3 \"$1\" driver dslx2pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\" --output_unopt_ir=\"$4\" --output_opt_ir=\"$5\"" + flags_str + " > \"$6\"",
+        command = "\"$1\" driver dslx2pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\" --output_unopt_ir=\"$4\" --output_opt_ir=\"$5\"" + flags_str + " > \"$6\"",
         arguments = [
-            ctx.file._runner.path,
+            ctx.executable._runner.path,
             srcs[0].path,
             top_entry,
             output_unopt_ir_file.path,
@@ -135,8 +136,9 @@ DslxToPipelineAttrs = {
         mandatory = True,
     ),
     "_runner": attr.label(
-        default = Label("//:xlsynth_runner.py"),
-        allow_single_file = [".py"],
+        default = Label("//:xlsynth_runner"),
+        executable = True,
+        cfg = "exec",
     ),
 }
 

@@ -1,1 +1,5 @@
-exports_files(["xlsynth_runner.py"])
+py_binary(
+    name = "xlsynth_runner",
+    srcs = ["xlsynth_runner.py"],
+    main = "xlsynth_runner.py",
+)

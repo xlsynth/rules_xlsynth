@@ -13,14 +13,14 @@ def _dslx_prove_quickcheck_test_impl(ctx):
 
     srcs = get_srcs_from_lib(ctx)
 
-    cmd = "/usr/bin/env python3 {} tool prove_quickcheck_main {}".format(
-        ctx.file._runner.short_path,
+    cmd = "{} tool prove_quickcheck_main {}".format(
+        ctx.executable._runner.short_path,
         lib_src.short_path,
     )
     if ctx.attr.top:
         cmd += " --test_filter=" + ctx.attr.top
 
-    runfiles = ctx.runfiles(srcs + [ctx.file._runner])
+    runfiles = ctx.runfiles(srcs + [ctx.executable._runner])
     executable_file = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
@@ -46,8 +46,9 @@ dslx_prove_quickcheck_test = rule(
             doc = "The quickcheck function to be tested. If none is provided, all quickcheck functions in the library will be tested.",
         ),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
     test = True,

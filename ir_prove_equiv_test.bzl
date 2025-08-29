@@ -14,8 +14,8 @@ def _ir_prove_equiv_test_impl(ctx):
     lhs_file = list(lhs_files)[0]
     rhs_file = list(rhs_files)[0]
 
-    cmd = "/usr/bin/env python3 {} driver ir-equiv --top={} {} {}".format(
-        ctx.file._runner.short_path,
+    cmd = "{} driver ir-equiv --top={} {} {}".format(
+        ctx.executable._runner.short_path,
         ctx.attr.top,
         lhs_file.short_path,
         rhs_file.short_path,
@@ -28,7 +28,7 @@ def _ir_prove_equiv_test_impl(ctx):
     return DefaultInfo(
         files = depset(direct = [run_script]),
         runfiles = ctx.runfiles(
-            files = [lhs_file, rhs_file, ctx.file._runner],
+            files = [lhs_file, rhs_file, ctx.executable._runner],
         ),
         executable = run_script,
     )
@@ -53,8 +53,9 @@ ir_prove_equiv_test = rule(
             doc = "The top entity to check in the IR files.",
         ),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
     executable = True,

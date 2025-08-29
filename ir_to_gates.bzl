@@ -10,11 +10,12 @@ def _ir_to_gates_impl(ctx):
     metrics_file = ctx.outputs.metrics_json
 
     ctx.actions.run_shell(
-        inputs = [ir_file_to_use, ctx.file._runner],
+        inputs = [ir_file_to_use],
+        tools = [ctx.executable._runner],
         outputs = [gates_file, metrics_file],
-        command = "/usr/bin/env python3 \"$1\" driver ir2gates --fraig=\"$2\" --output_json=\"$3\" \"$4\" > \"$5\"",
+        command = "\"$1\" driver ir2gates --fraig=\"$2\" --output_json=\"$3\" \"$4\" > \"$5\"",
         arguments = [
-            ctx.file._runner.path,
+            ctx.executable._runner.path,
             ("true" if ctx.attr.fraig else "false"),
             metrics_file.path,
             ir_file_to_use.path,
@@ -44,8 +45,9 @@ ir_to_gates = rule(
             default = True,
         ),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
     outputs = {

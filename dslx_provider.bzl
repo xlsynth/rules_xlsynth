@@ -60,12 +60,10 @@ def _dslx_library_impl(ctx):
 
     # Run typechecking via the runner so env is read at action runtime, not in Starlark.
     ctx.actions.run(
-        inputs = srcs + [ctx.file._runner],
+        inputs = srcs,
         outputs = [typecheck_output],
-        executable = "/usr/bin/env",
+        executable = ctx.executable._runner,
         arguments = [
-            "python3",
-            ctx.file._runner.path,
             "tool",
             "typecheck_main",
             srcs[-1].path,
@@ -96,8 +94,9 @@ dslx_library = rule(
             allow_files = [".x"],
         ),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
 )

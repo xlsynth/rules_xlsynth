@@ -10,11 +10,12 @@ def _dslx_to_sv_types_impl(ctx):
     output_sv_file = ctx.outputs.sv_file
 
     ctx.actions.run_shell(
-        inputs = srcs + [ctx.file._runner],
+        inputs = srcs,
+        tools = [ctx.executable._runner],
         outputs = [output_sv_file],
-        command = "/usr/bin/env python3 \"$1\" driver dslx2sv-types --dslx_input_file=\"$2\" > \"$3\"",
+        command = "\"$1\" driver dslx2sv-types --dslx_input_file=\"$2\" > \"$3\"",
         arguments = [
-            ctx.file._runner.path,
+            ctx.executable._runner.path,
             srcs[0].path,
             output_sv_file.path,
         ],
@@ -35,8 +36,9 @@ dslx_to_sv_types = rule(
             providers = [DslxInfo],
         ),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
     outputs = {

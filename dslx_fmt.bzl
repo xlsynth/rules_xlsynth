@@ -13,11 +13,12 @@ def _dslx_format_impl(ctx):
         formatted_files.append(formatted_file)
 
         ctx.actions.run_shell(
-            inputs=[input_file, ctx.file._runner],
+            inputs=[input_file],
+            tools=[ctx.executable._runner],
             outputs=[formatted_file],
-            command="/usr/bin/env python3 \"$1\" tool dslx_fmt \"$2\" > \"$3\"",
+            command="\"$1\" tool dslx_fmt \"$2\" > \"$3\"",
             arguments=[
-                ctx.file._runner.path,
+                ctx.executable._runner.path,
                 input_file.path,
                 formatted_file.path,
             ],
@@ -47,8 +48,9 @@ dslx_fmt_test = rule(
     attrs={
         "srcs": attr.label_list(allow_files=[".x"], allow_empty=False, doc="Source files to check formatting"),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
     doc="A rule that checks if the given DSLX files are properly formatted.",

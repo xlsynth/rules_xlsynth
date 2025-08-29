@@ -8,11 +8,12 @@ def _ir_to_delay_info_impl(ctx):
     output_file = ctx.outputs.delay_info
 
     ctx.actions.run_shell(
-        inputs = [opt_ir_file, ctx.file._runner],
+        inputs = [opt_ir_file],
+        tools = [ctx.executable._runner],
         outputs = [output_file],
-        command = "/usr/bin/env python3 \"$1\" driver ir2delayinfo --delay_model=\"$2\" \"$3\" \"$4\" > \"$5\"",
+        command = "\"$1\" driver ir2delayinfo --delay_model=\"$2\" \"$3\" \"$4\" > \"$5\"",
         arguments = [
-            ctx.file._runner.path,
+            ctx.executable._runner.path,
             ctx.attr.delay_model,
             opt_ir_file.path,
             ctx.attr.top,
@@ -47,8 +48,9 @@ ir_to_delay_info = rule(
             default = False,
         ),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
     outputs = {

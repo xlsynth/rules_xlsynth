@@ -33,12 +33,12 @@ def _dslx_test_impl(ctx):
     # The order of the srcs matters. dslx_interpreter_main runs tests from the first file.
     srcs = test_src + srcs_from_deps
 
-    cmd = "/usr/bin/env python3 {} tool dslx_interpreter_main {}".format(
-        ctx.file._runner.short_path,
+    cmd = "{} tool dslx_interpreter_main {}".format(
+        ctx.executable._runner.short_path,
         " ".join([src.short_path for src in srcs]),
     )
 
-    runfiles = ctx.runfiles(srcs + [ctx.file._runner])
+    runfiles = ctx.runfiles(srcs + [ctx.executable._runner])
     executable_file = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
@@ -68,8 +68,9 @@ dslx_test = rule(
             providers = [DslxInfo],
         ),
         "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
+            default = Label("//:xlsynth_runner"),
+            executable = True,
+            cfg = "exec",
         ),
     },
     test = True,
