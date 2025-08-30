@@ -1,5 +1,1 @@
-py_binary(
-    name = "xlsynth_runner",
-    srcs = ["xlsynth_runner.py"],
-    main = "xlsynth_runner.py",
-)
+# This repository embeds the Python runner at action time; no top-level targets.

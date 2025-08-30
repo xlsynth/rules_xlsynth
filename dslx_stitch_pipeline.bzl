@@ -2,6 +2,7 @@
 
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_lib")
+load(":env_helpers.bzl", "python_runner_source")
 
 
 def _dslx_stitch_pipeline_impl(ctx):
@@ -41,13 +42,16 @@ def _dslx_stitch_pipeline_impl(ctx):
         value = getattr(ctx.attr, flag)
         flags_str += " --{}={}".format(flag, str(value).lower())
 
+    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
+    ctx.actions.write(output = runner, content = python_runner_source())
+
     ctx.actions.run_shell(
         inputs = srcs,
-        tools = [ctx.executable._runner],
+        tools = [runner],
         outputs = [ctx.outputs.sv_file],
         command = "\"$1\" driver dslx-stitch-pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\"" + flags_str + " > \"$4\"",
         arguments = [
-            ctx.executable._runner.path,
+            runner.path,
             main_src.path,
             ctx.attr.top,
             ctx.outputs.sv_file.path,
@@ -100,11 +104,6 @@ dslx_stitch_pipeline = rule(
         "flop_outputs": attr.bool(
             doc = "Whether to insert flops on outputs (true) or not (false).",
             default = True,
-        ),
-        "_runner": attr.label(
-            default = Label("//:xlsynth_runner"),
-            executable = True,
-            cfg = "exec",
         ),
     },
     outputs = {

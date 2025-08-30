@@ -1,4 +1,13 @@
-#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
+def python_runner_source():
+    """Returns the embedded xlsynth_runner.py source.
+
+    The returned program reads XLSYNTH_* from the action execution environment
+    and invokes either the driver (via the 'driver' subcommand) or a tool
+    (via the 'tool' subcommand), forwarding passthrough flags accordingly.
+    """
+    return """#!/usr/bin/env python3
 
 import argparse
 import os
@@ -157,10 +166,10 @@ def _build_toolchain_toml(tool_dir: str) -> str:
 
     lines: List[str] = []
     lines.append("[toolchain]")
-    lines.append(f"tool_path = \"{tool_dir}\"")
+    lines.append(f'tool_path = "{tool_dir}"')
     lines.append("")
     lines.append("[toolchain.dslx]")
-    lines.append(f"dslx_stdlib_path = \"{dslx_stdlib_path}\"")
+    lines.append(f'dslx_stdlib_path = "{dslx_stdlib_path}"')
     lines.append(f"dslx_path = {repr(additional_dslx_paths_list)}")
     lines.append(f"enable_warnings = {repr(enable_warnings_list)}")
     lines.append(f"disable_warnings = {repr(disable_warnings_list)}")
@@ -170,7 +179,8 @@ def _build_toolchain_toml(tool_dir: str) -> str:
     lines.extend(_toml_lines_from_regular_envs(codegen_regular_envs))
     lines.extend(_toml_lines_from_bool_envs(codegen_bool_envs))
 
-    return "\n".join(lines) + "\n"
+    # Use escaped newlines so the generated Python remains single-line literals.
+    return "\\n".join(lines) + "\\n"
 
 def _driver(args: argparse.Namespace) -> int:
     tools_dir = _require_env("XLSYNTH_TOOLS")
@@ -233,3 +243,4 @@ def main(argv: List[str]) -> int:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
+"""

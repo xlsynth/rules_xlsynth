@@ -3,6 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_lib", "mangle_dslx_name")
 load(":ir_provider.bzl", "IrInfo")
+load(":env_helpers.bzl", "python_runner_source")
 
 def _dslx_to_ir_impl(ctx):
     # Get the DslxInfo from the direct library target
@@ -18,14 +19,17 @@ def _dslx_to_ir_impl(ctx):
 
     all_transitive_srcs = get_srcs_from_lib(ctx)
 
+    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
+    ctx.actions.write(output = runner, content = python_runner_source())
+
     # Stage 1: dslx2ir
     ctx.actions.run_shell(
         inputs = all_transitive_srcs,
-        tools = [ctx.executable._runner],
+        tools = [runner],
         outputs = [ctx.outputs.ir_file],
         command = "\"$1\" driver dslx2ir --dslx_input_file=\"$2\" --dslx_top=\"$3\" > \"$4\"",
         arguments = [
-            ctx.executable._runner.path,
+            runner.path,
             main_src.path,
             ctx.attr.top,
             ctx.outputs.ir_file.path,
@@ -40,11 +44,11 @@ def _dslx_to_ir_impl(ctx):
     # Stage 2: ir2opt
     ctx.actions.run_shell(
         inputs = [ctx.outputs.ir_file],
-        tools = [ctx.executable._runner],
+        tools = [runner],
         outputs = [ctx.outputs.opt_ir_file],
         command = "\"$1\" driver ir2opt \"$2\" --top \"$3\" > \"$4\"",
         arguments = [
-            ctx.executable._runner.path,
+            runner.path,
             ctx.outputs.ir_file.path,
             ir_top,
             ctx.outputs.opt_ir_file.path,
@@ -71,11 +75,6 @@ dslx_to_ir = rule(
         "top": attr.string(
             doc = "The top-level DSLX module to be converted to IR.",
             mandatory = True,
-        ),
-        "_runner": attr.label(
-            default = Label("//:xlsynth_runner"),
-            executable = True,
-            cfg = "exec",
         ),
     },
     outputs = {

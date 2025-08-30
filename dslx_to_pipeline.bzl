@@ -2,6 +2,7 @@
 
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_deps")
+load(":env_helpers.bzl", "python_runner_source")
 
 def _dslx_to_pipeline_impl(ctx):
     srcs = get_srcs_from_deps(ctx)
@@ -59,13 +60,16 @@ def _dslx_to_pipeline_impl(ctx):
     output_unopt_ir_file = ctx.outputs.unopt_ir_file
     output_opt_ir_file = ctx.outputs.opt_ir_file
 
+    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
+    ctx.actions.write(output = runner, content = python_runner_source())
+
     ctx.actions.run_shell(
         inputs = srcs,
-        tools = [ctx.executable._runner],
+        tools = [runner],
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
         command = "\"$1\" driver dslx2pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\" --output_unopt_ir=\"$4\" --output_opt_ir=\"$5\"" + flags_str + " > \"$6\"",
         arguments = [
-            ctx.executable._runner.path,
+            runner.path,
             srcs[0].path,
             top_entry,
             output_unopt_ir_file.path,
@@ -134,11 +138,6 @@ DslxToPipelineAttrs = {
     "top": attr.string(
         doc = "The top entry function within the dependency module.",
         mandatory = True,
-    ),
-    "_runner": attr.label(
-        default = Label("//:xlsynth_runner"),
-        executable = True,
-        cfg = "exec",
     ),
 }
 

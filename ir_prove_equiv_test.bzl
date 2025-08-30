@@ -2,6 +2,7 @@
 
 load(":helpers.bzl", "write_executable_shell_script")
 load(":ir_provider.bzl", "IrInfo")
+load(":env_helpers.bzl", "python_runner_source")
 
 
 def _ir_prove_equiv_test_impl(ctx):
@@ -14,8 +15,10 @@ def _ir_prove_equiv_test_impl(ctx):
     lhs_file = list(lhs_files)[0]
     rhs_file = list(rhs_files)[0]
 
-    cmd = "{} driver ir-equiv --top={} {} {}".format(
-        ctx.executable._runner.short_path,
+    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
+    ctx.actions.write(output = runner, content = python_runner_source())
+    cmd = "/usr/bin/env python3 {} driver ir-equiv --top={} {} {}".format(
+        runner.short_path,
         ctx.attr.top,
         lhs_file.short_path,
         rhs_file.short_path,
@@ -28,7 +31,7 @@ def _ir_prove_equiv_test_impl(ctx):
     return DefaultInfo(
         files = depset(direct = [run_script]),
         runfiles = ctx.runfiles(
-            files = [lhs_file, rhs_file, ctx.executable._runner],
+            files = [lhs_file, rhs_file, runner],
         ),
         executable = run_script,
     )
@@ -51,11 +54,6 @@ ir_prove_equiv_test = rule(
         "top": attr.string(
             mandatory = True,
             doc = "The top entity to check in the IR files.",
-        ),
-        "_runner": attr.label(
-            default = Label("//:xlsynth_runner"),
-            executable = True,
-            cfg = "exec",
         ),
     },
     executable = True,
