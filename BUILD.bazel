@@ -1,1 +1,9 @@
-# This repository embeds the Python runner at action time; no top-level targets.
+py_test(
+    name = "make_env_helpers_test",
+    srcs = ["make_env_helpers_test.py"],
+    data = [
+        "env_helpers.bzl",
+        "env_helpers.py",
+        "make_env_helpers.py",
+    ],
+)

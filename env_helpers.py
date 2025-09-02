@@ -1,12 +1,4 @@
-def python_runner_source():
-    """Returns the embedded xlsynth_runner.py source.
-
-    The returned program reads XLSYNTH_* from the action execution environment
-    and invokes either the driver (via the 'driver' subcommand) or a tool
-    (via the 'tool' subcommand), forwarding passthrough flags accordingly.
-
-    """
-    return """#!/usr/bin/env python3
+#!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
@@ -256,4 +248,3 @@ def main(argv: List[str]) -> int:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
-    """
