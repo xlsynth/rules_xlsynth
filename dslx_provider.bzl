@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
+load(":env_helpers.bzl", "python_runner_source")
+
 DslxInfo = provider(
     doc = "Contains DAG info per node in a struct.",
     fields = {
@@ -58,14 +60,14 @@ def _dslx_library_impl(ctx):
     for src in ctx.files.srcs:
         srcs.append(src)
 
-    # Run typechecking via the runner so env is read at action runtime, not in Starlark.
+    # Run typechecking via the embedded runner so env is read at action runtime.
+    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
+    ctx.actions.write(output = runner, content = python_runner_source())
     ctx.actions.run(
-        inputs = srcs + [ctx.file._runner],
+        inputs = srcs,
         outputs = [typecheck_output],
-        executable = "/usr/bin/env",
+        executable = runner,
         arguments = [
-            "python3",
-            ctx.file._runner.path,
             "tool",
             "typecheck_main",
             srcs[-1].path,
@@ -94,10 +96,6 @@ dslx_library = rule(
         "srcs": attr.label_list(
             doc = "DSLX sources.",
             allow_files = [".x"],
-        ),
-        "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
         ),
     },
 )

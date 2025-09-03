@@ -1,10 +1,14 @@
 load(":helpers.bzl", "write_executable_shell_script")
+load(":env_helpers.bzl", "python_runner_source")
 
 def _dslx_format_impl(ctx):
     src_depset_files = ctx.attr.srcs
 
     input_files = []
     formatted_files = []
+
+    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
+    ctx.actions.write(output = runner, content = python_runner_source())
 
     for src in src_depset_files:
         input_file = src[DefaultInfo].files.to_list()[0]
@@ -13,11 +17,12 @@ def _dslx_format_impl(ctx):
         formatted_files.append(formatted_file)
 
         ctx.actions.run_shell(
-            inputs=[input_file, ctx.file._runner],
+            inputs=[input_file],
+            tools=[runner],
             outputs=[formatted_file],
-            command="/usr/bin/env python3 \"$1\" tool dslx_fmt \"$2\" > \"$3\"",
+            command="\"$1\" tool dslx_fmt \"$2\" > \"$3\"",
             arguments=[
-                ctx.file._runner.path,
+                runner.path,
                 input_file.path,
                 formatted_file.path,
             ],
@@ -46,10 +51,6 @@ dslx_fmt_test = rule(
     implementation=_dslx_format_impl,
     attrs={
         "srcs": attr.label_list(allow_files=[".x"], allow_empty=False, doc="Source files to check formatting"),
-        "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
-        ),
     },
     doc="A rule that checks if the given DSLX files are properly formatted.",
     test=True,

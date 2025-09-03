@@ -2,6 +2,7 @@
 
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_deps", "get_srcs_from_lib", "write_executable_shell_script")
+load(":env_helpers.bzl", "python_runner_source")
 
 
 def _dslx_test_impl(ctx):
@@ -33,12 +34,14 @@ def _dslx_test_impl(ctx):
     # The order of the srcs matters. dslx_interpreter_main runs tests from the first file.
     srcs = test_src + srcs_from_deps
 
+    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
+    ctx.actions.write(output = runner, content = python_runner_source())
     cmd = "/usr/bin/env python3 {} tool dslx_interpreter_main {}".format(
-        ctx.file._runner.short_path,
+        runner.short_path,
         " ".join([src.short_path for src in srcs]),
     )
 
-    runfiles = ctx.runfiles(srcs + [ctx.file._runner])
+    runfiles = ctx.runfiles(srcs + [runner])
     executable_file = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
@@ -66,10 +69,6 @@ dslx_test = rule(
         "deps": attr.label_list(
             doc = "The DSLX library dependencies for the test.",
             providers = [DslxInfo],
-        ),
-        "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
         ),
     },
     test = True,

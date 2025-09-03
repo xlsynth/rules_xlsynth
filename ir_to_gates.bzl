@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":ir_provider.bzl", "IrInfo")
+load(":env_helpers.bzl", "python_runner_source")
 
 
 def _ir_to_gates_impl(ctx):
@@ -9,12 +10,16 @@ def _ir_to_gates_impl(ctx):
     gates_file = ctx.outputs.gates_file
     metrics_file = ctx.outputs.metrics_json
 
+    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
+    ctx.actions.write(output = runner, content = python_runner_source())
+
     ctx.actions.run_shell(
-        inputs = [ir_file_to_use, ctx.file._runner],
+        inputs = [ir_file_to_use],
+        tools = [runner],
         outputs = [gates_file, metrics_file],
-        command = "/usr/bin/env python3 \"$1\" driver ir2gates --fraig=\"$2\" --output_json=\"$3\" \"$4\" > \"$5\"",
+        command = "\"$1\" driver ir2gates --fraig=\"$2\" --output_json=\"$3\" \"$4\" > \"$5\"",
         arguments = [
-            ctx.file._runner.path,
+            runner.path,
             ("true" if ctx.attr.fraig else "false"),
             metrics_file.path,
             ir_file_to_use.path,
@@ -42,10 +47,6 @@ ir_to_gates = rule(
         "fraig": attr.bool(
             doc = "If true, perform \"fraig\" optimization; can be slow when gate graph is large.",
             default = True,
-        ),
-        "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
         ),
     },
     outputs = {

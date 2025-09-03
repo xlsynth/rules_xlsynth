@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 
 import argparse
 import os
@@ -97,10 +98,14 @@ class EnvFlagSpec(NamedTuple):
 
 # Declarative mapping from env var to flag-building behavior
 _ENV_FLAG_SPECS: Dict[str, EnvFlagSpec] = {
-    "XLSYNTH_DSLX_PATH": EnvFlagSpec("dslx_path", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
-    "XLSYNTH_DSLX_ENABLE_WARNINGS": EnvFlagSpec("enable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
-    "XLSYNTH_DSLX_DISABLE_WARNINGS": EnvFlagSpec("disable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
-    "XLSYNTH_TYPE_INFERENCE_V2": EnvFlagSpec("type_inference_v2", EnvFlagMode.TRUE_ONLY),
+    "XLSYNTH_DSLX_PATH":
+    EnvFlagSpec("dslx_path", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
+    "XLSYNTH_DSLX_ENABLE_WARNINGS":
+    EnvFlagSpec("enable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
+    "XLSYNTH_DSLX_DISABLE_WARNINGS":
+    EnvFlagSpec("disable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
+    "XLSYNTH_TYPE_INFERENCE_V2":
+    EnvFlagSpec("type_inference_v2", EnvFlagMode.TRUE_ONLY),
 }
 
 
@@ -117,7 +122,8 @@ def _env_flag_builder(env_name: str, value: str) -> List[str]:
             return [f"--{spec.flag_name}=true"]
         if value in ("", "false"):
             return []
-        raise ValueError("Invalid value for XLSYNTH_TYPE_INFERENCE_V2: " + value)
+        raise ValueError("Invalid value for XLSYNTH_TYPE_INFERENCE_V2: " +
+                         value)
 
     return []
 
@@ -144,7 +150,8 @@ def _build_toolchain_toml(tool_dir: str) -> str:
 
     tiv2_env = _get_env("XLSYNTH_TYPE_INFERENCE_V2")
     # Default to false when unset
-    type_inference_v2_toml = _bool_env_to_toml("XLSYNTH_TYPE_INFERENCE_V2", tiv2_env if tiv2_env != "" else "false")
+    type_inference_v2_toml = _bool_env_to_toml(
+        "XLSYNTH_TYPE_INFERENCE_V2", tiv2_env if tiv2_env != "" else "false")
 
     codegen_regular_envs: List[Tuple[str, str]] = [
         ("XLSYNTH_GATE_FORMAT", "gate_format"),
@@ -157,10 +164,10 @@ def _build_toolchain_toml(tool_dir: str) -> str:
 
     lines: List[str] = []
     lines.append("[toolchain]")
-    lines.append(f"tool_path = \"{tool_dir}\"")
+    lines.append(f'tool_path = "{tool_dir}"')
     lines.append("")
     lines.append("[toolchain.dslx]")
-    lines.append(f"dslx_stdlib_path = \"{dslx_stdlib_path}\"")
+    lines.append(f'dslx_stdlib_path = "{dslx_stdlib_path}"')
     lines.append(f"dslx_path = {repr(additional_dslx_paths_list)}")
     lines.append(f"enable_warnings = {repr(enable_warnings_list)}")
     lines.append(f"disable_warnings = {repr(disable_warnings_list)}")
@@ -170,7 +177,9 @@ def _build_toolchain_toml(tool_dir: str) -> str:
     lines.extend(_toml_lines_from_regular_envs(codegen_regular_envs))
     lines.extend(_toml_lines_from_bool_envs(codegen_bool_envs))
 
-    return "\n".join(lines) + "\n"
+    # Use escaped newlines so the generated Python remains single-line literals.
+    return "\\n".join(lines) + "\\n"
+
 
 def _driver(args: argparse.Namespace) -> int:
     tools_dir = _require_env("XLSYNTH_TOOLS")
@@ -178,11 +187,17 @@ def _driver(args: argparse.Namespace) -> int:
     driver_path = os.path.join(driver_dir, "xlsynth-driver")
     passthrough = list(args.passthrough)
     toml = _build_toolchain_toml(tools_dir)
-    with tempfile.NamedTemporaryFile("w", delete=False, prefix="xlsynth_toolchain_", suffix=".toml") as tf:
+    with tempfile.NamedTemporaryFile("w",
+                                     delete=False,
+                                     prefix="xlsynth_toolchain_",
+                                     suffix=".toml") as tf:
         tf.write(toml)
         toolchain_path = tf.name
     try:
-        cmd = [driver_path, f"--toolchain={toolchain_path}", args.subcommand, *passthrough]
+        cmd = [
+            driver_path, f"--toolchain={toolchain_path}", args.subcommand,
+            *passthrough
+        ]
         proc = subprocess.run(cmd, check=False)
         return proc.returncode
     finally:

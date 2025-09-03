@@ -2,6 +2,7 @@
 
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_deps")
+load(":env_helpers.bzl", "python_runner_source")
 
 
 def _dslx_to_sv_types_impl(ctx):
@@ -9,12 +10,16 @@ def _dslx_to_sv_types_impl(ctx):
 
     output_sv_file = ctx.outputs.sv_file
 
+    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
+    ctx.actions.write(output = runner, content = python_runner_source())
+
     ctx.actions.run_shell(
-        inputs = srcs + [ctx.file._runner],
+        inputs = srcs,
+        tools = [runner],
         outputs = [output_sv_file],
-        command = "/usr/bin/env python3 \"$1\" driver dslx2sv-types --dslx_input_file=\"$2\" > \"$3\"",
+        command = "\"$1\" driver dslx2sv-types --dslx_input_file=\"$2\" > \"$3\"",
         arguments = [
-            ctx.file._runner.path,
+            runner.path,
             srcs[0].path,
             output_sv_file.path,
         ],
@@ -33,10 +38,6 @@ dslx_to_sv_types = rule(
         "deps": attr.label_list(
             doc = "The list of DSLX libraries to be tested.",
             providers = [DslxInfo],
-        ),
-        "_runner": attr.label(
-            default = Label("//:xlsynth_runner.py"),
-            allow_single_file = [".py"],
         ),
     },
     outputs = {
