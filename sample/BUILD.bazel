@@ -10,6 +10,7 @@ load(
     "dslx_fmt_test",
     "dslx_library",
     "dslx_prove_quickcheck_test",
+    "dslx_stitch_pipeline",
     "dslx_test",
     "dslx_to_ir",
     "dslx_to_pipeline",
@@ -18,9 +19,7 @@ load(
     "ir_to_delay_info",
     "ir_to_gates",
     "mangle_dslx_name",
-    "dslx_stitch_pipeline",
 )
-load("//:sha256sum_test.bzl", "sha256sum_test")
 
 dslx_library(
     name = "imported",
@@ -90,8 +89,8 @@ ir_to_gates(
 # As above but with fraiging disabled so it runs faster.
 ir_to_gates(
     name = "sample_gates_analysis_nofraig",
-    ir_src = ":sample_ir",
     fraig = False,
+    ir_src = ":sample_ir",
 )
 
 build_test(
@@ -117,6 +116,12 @@ build_test(
 
 dslx_test(
     name = "sample_test",
+    deps = [":sample"],
+)
+
+dslx_test(
+    name = "sample_src_test",
+    src = "sample_src_test.x",
     deps = [":sample"],
 )
 
@@ -239,12 +244,12 @@ diff_test(
 
 dslx_stitch_pipeline(
     name = "pipeline_stages_pipeline_with_valid_reset",
-    lib = ":pipeline_stages_lib",
-    top = "foo",
     input_valid_signal = "input_valid",
+    lib = ":pipeline_stages_lib",
     output_valid_signal = "output_valid",
     reset = "rst",
     reset_active_low = False,
+    top = "foo",
 )
 
 diff_test(
@@ -257,14 +262,14 @@ diff_test(
 
 dslx_stitch_pipeline(
     name = "pipeline_stages_pipeline_flop_inputs",
-    lib = ":pipeline_stages_lib",
-    top = "foo",
-    stages = ["foo_cycle0"],
-    input_valid_signal = "input_valid",
-    output_valid_signal = "output_valid",
-    reset = "rst",
     flop_inputs = True,
     flop_outputs = False,
+    input_valid_signal = "input_valid",
+    lib = ":pipeline_stages_lib",
+    output_valid_signal = "output_valid",
+    reset = "rst",
+    stages = ["foo_cycle0"],
+    top = "foo",
 )
 
 diff_test(
@@ -277,14 +282,14 @@ diff_test(
 
 dslx_stitch_pipeline(
     name = "pipeline_stages_pipeline_flop_outputs",
-    lib = ":pipeline_stages_lib",
-    top = "foo",
-    stages = ["foo_cycle0"],
-    input_valid_signal = "input_valid",
-    output_valid_signal = "output_valid",
-    reset = "rst",
     flop_inputs = False,
     flop_outputs = True,
+    input_valid_signal = "input_valid",
+    lib = ":pipeline_stages_lib",
+    output_valid_signal = "output_valid",
+    reset = "rst",
+    stages = ["foo_cycle0"],
+    top = "foo",
 )
 
 diff_test(
