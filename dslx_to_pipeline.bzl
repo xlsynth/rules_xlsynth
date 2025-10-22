@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "get_srcs_from_deps")
 load(":env_helpers.bzl", "python_runner_source")
+load(":helpers.bzl", "get_srcs_from_deps")
 
 def _dslx_to_pipeline_impl(ctx):
     srcs = get_srcs_from_deps(ctx)
@@ -56,6 +56,10 @@ def _dslx_to_pipeline_impl(ctx):
     if ctx.attr.reset:
         flags_str += " --reset={}".format(ctx.attr.reset)
 
+    extra_flags = ""
+    if len(ctx.attr.xlsynth_flags) > 0:
+        extra_flags = " " + " ".join(ctx.attr.xlsynth_flags)
+
     output_sv_file = ctx.outputs.sv_file
     output_unopt_ir_file = ctx.outputs.unopt_ir_file
     output_opt_ir_file = ctx.outputs.opt_ir_file
@@ -67,7 +71,7 @@ def _dslx_to_pipeline_impl(ctx):
         inputs = srcs,
         tools = [runner],
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
-        command = "\"$1\" driver dslx2pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\" --output_unopt_ir=\"$4\" --output_opt_ir=\"$5\"" + flags_str + " > \"$6\"",
+        command = "\"$1\" driver dslx2pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\" --output_unopt_ir=\"$4\" --output_opt_ir=\"$5\"" + flags_str + extra_flags + " > \"$6\"",
         arguments = [
             runner.path,
             srcs[0].path,
@@ -139,6 +143,10 @@ DslxToPipelineAttrs = {
         doc = "The top entry function within the dependency module.",
         mandatory = True,
     ),
+    "xlsynth_flags": attr.string_list(
+        doc = "Flags passed directly down to the xlsynth driver",
+        default = [],
+    ),
 }
 
 # Keep the public rule signature stable
@@ -147,7 +155,6 @@ DslxToPipelineOutputs = {
     "unopt_ir_file": "%{name}.unopt.ir",
     "opt_ir_file": "%{name}.opt.ir",
 }
-
 
 dslx_to_pipeline = rule(
     doc = "Convert a DSLX file to SystemVerilog type definitions",

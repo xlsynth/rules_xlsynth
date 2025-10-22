@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
+load(":env_helpers.bzl", "python_runner_source")
 load(":helpers.bzl", "get_srcs_from_lib", "mangle_dslx_name")
 load(":ir_provider.bzl", "IrInfo")
-load(":env_helpers.bzl", "python_runner_source")
 
 def _dslx_to_ir_impl(ctx):
     # Get the DslxInfo from the direct library target
     lib_info = ctx.attr.lib[DslxInfo]
+
     # Convert the DAG depset to a list. The last element corresponds to the direct target due to postorder traversal.
     lib_dag_list = lib_info.dag.to_list()
     if not lib_dag_list:
@@ -21,13 +22,16 @@ def _dslx_to_ir_impl(ctx):
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source())
+    extra_flags = ""
+    if len(ctx.attr.xlsynth_flags) > 0:
+        extra_flags = " " + " ".join(ctx.attr.xlsynth_flags)
 
     # Stage 1: dslx2ir
     ctx.actions.run_shell(
         inputs = all_transitive_srcs,
         tools = [runner],
         outputs = [ctx.outputs.ir_file],
-        command = "\"$1\" driver dslx2ir --dslx_input_file=\"$2\" --dslx_top=\"$3\" > \"$4\"",
+        command = "\"$1\" driver dslx2ir --dslx_input_file=\"$2\" --dslx_top=\"$3\"" + extra_flags + " > \"$4\"",
         arguments = [
             runner.path,
             main_src.path,
@@ -46,7 +50,7 @@ def _dslx_to_ir_impl(ctx):
         inputs = [ctx.outputs.ir_file],
         tools = [runner],
         outputs = [ctx.outputs.opt_ir_file],
-        command = "\"$1\" driver ir2opt \"$2\" --top \"$3\" > \"$4\"",
+        command = "\"$1\" driver ir2opt \"$2\" --top \"$3\"" + extra_flags + " > \"$4\"",
         arguments = [
             runner.path,
             ctx.outputs.ir_file.path,
@@ -75,6 +79,10 @@ dslx_to_ir = rule(
         "top": attr.string(
             doc = "The top-level DSLX module to be converted to IR.",
             mandatory = True,
+        ),
+        "xlsynth_flags": attr.string_list(
+            doc = "Flags passed directly down to the xlsynth driver",
+            default = [],
         ),
     },
     outputs = {

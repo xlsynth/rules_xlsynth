@@ -60,6 +60,10 @@ def _dslx_to_pipeline_eco_impl(ctx):
     if ctx.attr.reset:
         flags_str += " --reset={}".format(ctx.attr.reset)
 
+    extra_flags = ""
+    if len(ctx.attr.xlsynth_flags) > 0:
+        extra_flags = " " + " ".join(ctx.attr.xlsynth_flags)
+
     output_sv_file = ctx.outputs.sv_file
     output_unopt_ir_file = ctx.outputs.unopt_ir_file
     output_opt_ir_file = ctx.outputs.opt_ir_file
@@ -74,7 +78,7 @@ def _dslx_to_pipeline_eco_impl(ctx):
         inputs = srcs,
         tools = [runner],
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file, output_baseline_verilog_file, output_eco_edit_file],
-        command = "\"$1\" driver dslx2pipeline-eco --dslx_input_file=\"$2\" --dslx_top=\"$3\" --baseline_unopt_ir=\"$4\" --output_unopt_ir=\"$5\" --output_opt_ir=\"$6\" --output_baseline_verilog_path=\"$7\" --edits_debug_out=\"$9\"" + flags_str + " > \"$8\"",
+        command = "\"$1\" driver dslx2pipeline-eco --dslx_input_file=\"$2\" --dslx_top=\"$3\" --baseline_unopt_ir=\"$4\" --output_unopt_ir=\"$5\" --output_opt_ir=\"$6\" --output_baseline_verilog_path=\"$7\" --edits_debug_out=\"$9\"" + flags_str + extra_flags + " > \"$8\"",
         arguments = [
             runner.path,
             srcs[0].path,
@@ -153,6 +157,10 @@ DslxToPipelineEcoAttrs = {
         doc = "The unoptimized IR file of the ECO baseline.",
         mandatory = True,
         allow_single_file = [".ir"],
+    ),
+    "xlsynth_flags": attr.string_list(
+        doc = "Flags passed directly down to the xlsynth driver",
+        default = [],
     ),
 }
 

@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "get_srcs_from_lib")
 load(":env_helpers.bzl", "python_runner_source")
-
+load(":helpers.bzl", "get_srcs_from_lib")
 
 def _dslx_stitch_pipeline_impl(ctx):
     lib_info = ctx.attr.lib[DslxInfo]
@@ -18,7 +17,7 @@ def _dslx_stitch_pipeline_impl(ctx):
     srcs = get_srcs_from_lib(ctx)
 
     flags_str = " --use_system_verilog={}".format(
-        str(ctx.attr.use_system_verilog).lower()
+        str(ctx.attr.use_system_verilog).lower(),
     )
     if ctx.attr.stages:
         flags_str += " --stages=" + ",".join(ctx.attr.stages)
@@ -44,12 +43,15 @@ def _dslx_stitch_pipeline_impl(ctx):
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source())
+    extra_flags = ""
+    if len(ctx.attr.xlsynth_flags) > 0:
+        extra_flags = " " + " ".join(ctx.attr.xlsynth_flags)
 
     ctx.actions.run_shell(
         inputs = srcs,
         tools = [runner],
         outputs = [ctx.outputs.sv_file],
-        command = "\"$1\" driver dslx-stitch-pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\"" + flags_str + " > \"$4\"",
+        command = "\"$1\" driver dslx-stitch-pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\"" + flags_str + extra_flags + " > \"$4\"",
         arguments = [
             runner.path,
             main_src.path,
@@ -62,7 +64,6 @@ def _dslx_stitch_pipeline_impl(ctx):
     return DefaultInfo(
         files = depset(direct = [ctx.outputs.sv_file]),
     )
-
 
 dslx_stitch_pipeline = rule(
     doc = "Stitch pipeline stage functions into a wrapper module",
@@ -104,6 +105,10 @@ dslx_stitch_pipeline = rule(
         "flop_outputs": attr.bool(
             doc = "Whether to insert flops on outputs (true) or not (false).",
             default = True,
+        ),
+        "xlsynth_flags": attr.string_list(
+            doc = "Flags passed directly down to the xlsynth driver",
+            default = [],
         ),
     },
     outputs = {
