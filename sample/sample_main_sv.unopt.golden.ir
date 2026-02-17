@@ -4,8 +4,8 @@ file_number 0 "sample/sample.x"
 
 top fn __sample__main() -> bits[32] {
   MOL: bits[32] = literal(value=42, id=1, pos=[(0,4,16)])
-  literal.2: bits[1] = literal(value=1, id=2, pos=[(0,5,37)])
-  shll.3: bits[32] = shll(MOL, literal.2, id=3, pos=[(0,5,20)])
-  literal.4: bits[1] = literal(value=1, id=4, pos=[(0,5,43)])
-  ret shrl.5: bits[32] = shrl(shll.3, literal.4, id=5, pos=[(0,5,20)])
+  literal.2: bits[1] = literal(value=1, id=2, pos=[(0,5,41)])
+  shll.3: bits[32] = shll(MOL, literal.2, id=3, pos=[(0,5,24)])
+  literal.4: bits[1] = literal(value=1, id=4, pos=[(0,5,47)])
+  ret shrl.5: bits[32] = shrl(shll.3, literal.4, id=5, pos=[(0,5,24)])
 }
