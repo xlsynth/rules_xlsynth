@@ -3,5 +3,5 @@ package sample
 file_number 0 "sample/sample.x"
 
 top fn __sample__main() -> bits[32] {
-  ret literal.7: bits[32] = literal(value=42, id=7, pos=[(0,5,20)])
+  ret literal.7: bits[32] = literal(value=42, id=7, pos=[(0,5,24)])
 }
