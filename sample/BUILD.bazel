@@ -33,6 +33,7 @@ dslx_test(
 
 dslx_to_sv_types(
     name = "imported_pkg",
+    sv_enum_case_naming_policy = "unqualified",
     deps = [":imported"],
 )
 

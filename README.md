@@ -69,8 +69,11 @@ load("@rules_xlsynth//:rules.bzl", "dslx_to_sv_types")
 dslx_to_sv_types(
     name = "my_dslx_library_pkg",
     deps = [":my_dslx_library"],
+    sv_enum_case_naming_policy = "unqualified",
 )
 ```
+
+`sv_enum_case_naming_policy` is required. Allowed values (matching `xlsynth-driver`) are `unqualified` and `enum_qualified`.
 
 ### `dslx_to_ir` — convert DSLX to optimized IR
 
