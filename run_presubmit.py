@@ -172,33 +172,6 @@ def run_sample_with_formats(path_data: PathData):
     )
 
 @register
-def run_sample_type_inference_v2(path_data: PathData):
-    print('== Running type inference v2 mismatch test...')
-    test_target = '//sample_type_inference_v2:slice_at_limit_test'
-    build_target = '//sample_type_inference_v2:slice_at_limit_ir'
-
-    # First, with XLSYNTH_TYPE_INFERENCE_V2 enabled we expect failures.
-    for tgt, is_test in ((test_target, True), (build_target, False)):
-        try:
-            if is_test:
-                bazel_test_opt((tgt,), path_data, capture_output=True, more_action_env={'XLSYNTH_TYPE_INFERENCE_V2': 'true'})
-            else:
-                bazel_build_opt((tgt,), path_data, capture_output=True, more_action_env={'XLSYNTH_TYPE_INFERENCE_V2': 'true'})
-        except subprocess.CalledProcessError as e:
-            combined = (e.stdout + e.stderr).lower()
-            if 'slice' in combined or 'out of range' in combined:
-                print(f'Got expected type-inference error for {tgt} with XLSYNTH_TYPE_INFERENCE_V2=true')
-            else:
-                raise ValueError(f'Unexpected error output for {tgt}; stdout: {repr(e.stdout)} stderr: {repr(e.stderr)}')
-        else:
-            raise ValueError(f'Expected type inference v2 to fail for {tgt} but it succeeded')
-
-    # Now run without the flag – should succeed.
-    print('== Running with default type inference v1 (should succeed)...')
-    bazel_test_opt((test_target,), path_data)
-    bazel_build_opt((build_target,), path_data)
-
-@register
 def run_readme_sample_snippets(path_data: PathData):
     """Ensures that the Starlark BUILD snippets in the README can be loaded by Bazel.
 

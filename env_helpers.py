@@ -66,7 +66,6 @@ _TOOL_CONFIG = {
             "XLSYNTH_DSLX_PATH",
             "XLSYNTH_DSLX_ENABLE_WARNINGS",
             "XLSYNTH_DSLX_DISABLE_WARNINGS",
-            "XLSYNTH_TYPE_INFERENCE_V2",
         ],
     },
     "prove_quickcheck_main": {
@@ -88,7 +87,6 @@ _TOOL_CONFIG = {
 
 class EnvFlagMode(Enum):
     PASSTHROUGH_IF_NONEMPTY = "passthrough_if_nonempty"
-    TRUE_ONLY = "true_only"
 
 
 class EnvFlagSpec(NamedTuple):
@@ -104,8 +102,6 @@ _ENV_FLAG_SPECS: Dict[str, EnvFlagSpec] = {
     EnvFlagSpec("enable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
     "XLSYNTH_DSLX_DISABLE_WARNINGS":
     EnvFlagSpec("disable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
-    "XLSYNTH_TYPE_INFERENCE_V2":
-    EnvFlagSpec("type_inference_v2", EnvFlagMode.TRUE_ONLY),
 }
 
 
@@ -116,14 +112,6 @@ def _env_flag_builder(env_name: str, value: str) -> List[str]:
 
     if spec.mode == EnvFlagMode.PASSTHROUGH_IF_NONEMPTY:
         return [f"--{spec.flag_name}={value}"] if value else []
-
-    if spec.mode == EnvFlagMode.TRUE_ONLY:
-        if value == "true":
-            return [f"--{spec.flag_name}=true"]
-        if value in ("", "false"):
-            return []
-        raise ValueError("Invalid value for XLSYNTH_TYPE_INFERENCE_V2: " +
-                         value)
 
     return []
 
@@ -148,11 +136,6 @@ def _build_toolchain_toml(tool_dir: str) -> str:
     enable_warnings_list = _get_env_list("XLSYNTH_DSLX_ENABLE_WARNINGS", ",")
     disable_warnings_list = _get_env_list("XLSYNTH_DSLX_DISABLE_WARNINGS", ",")
 
-    tiv2_env = _get_env("XLSYNTH_TYPE_INFERENCE_V2")
-    # Default to false when unset
-    type_inference_v2_toml = _bool_env_to_toml(
-        "XLSYNTH_TYPE_INFERENCE_V2", tiv2_env if tiv2_env != "" else "false")
-
     codegen_regular_envs: List[Tuple[str, str]] = [
         ("XLSYNTH_GATE_FORMAT", "gate_format"),
         ("XLSYNTH_ASSERT_FORMAT", "assert_format"),
@@ -171,7 +154,6 @@ def _build_toolchain_toml(tool_dir: str) -> str:
     lines.append(f"dslx_path = {repr(additional_dslx_paths_list)}")
     lines.append(f"enable_warnings = {repr(enable_warnings_list)}")
     lines.append(f"disable_warnings = {repr(disable_warnings_list)}")
-    lines.append(f"type_inference_v2 = {type_inference_v2_toml}")
     lines.append("")
     lines.append("[toolchain.codegen]")
     lines.extend(_toml_lines_from_regular_envs(codegen_regular_envs))
