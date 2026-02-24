@@ -17,7 +17,7 @@ def _dslx_to_sv_types_impl(ctx):
         inputs = srcs,
         tools = [runner],
         outputs = [output_sv_file],
-        command = "\"$1\" driver dslx2sv-types --dslx_input_file=\"$2\" --sv_enum_case_naming_policy=enum_qualified > \"$3\"",
+        command = "\"$1\" driver dslx2sv-types --dslx_input_file=\"$2\" --sv_enum_case_naming_policy=unqualified > \"$3\"",
         arguments = [
             runner.path,
             srcs[0].path,
@@ -32,7 +32,7 @@ def _dslx_to_sv_types_impl(ctx):
 
 
 dslx_to_sv_types = rule(
-    doc = "Convert a DSLX file to SystemVerilog type definitions with qualified enum case names",
+    doc = "Convert a DSLX file to SystemVerilog type definitions with unqualified enum case names",
     implementation = _dslx_to_sv_types_impl,
     attrs = {
         "deps": attr.label_list(
