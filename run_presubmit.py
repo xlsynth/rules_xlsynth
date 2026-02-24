@@ -112,7 +112,10 @@ def run_sample_failing_quickcheck(path_data: PathData):
     try:
         bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_proof_test',), path_data, capture_output=True)
     except subprocess.CalledProcessError as e:
-        m = re.search(r'ProofError: Failed to prove the property! counterexample: \(bits\[1\]:\d+, bits\[2\]:\d+\)', e.stdout)
+        m = re.search(
+            r'ProofError: Failed to prove the property! counterexample: bits\[1\]:\d+, bits\[2\]:\d+',
+            e.stdout,
+        )
         if m:
             print('Found proof error as expected: ' + m.group(0))
             pass
