@@ -2,11 +2,11 @@
 
 #![feature(use_syntax)]
 
-use sample_failing_quickcheck::simple_dependency_a::MyTupleA;
-use sample_failing_quickcheck::simple_dependency_b::MyTupleB;
-
 #[quickcheck]
 fn always_fail_nullary() -> bool { false }
 
 #[quickcheck]
-fn always_fail(a: MyTupleA, b: MyTupleB) -> bool { false }
+fn always_fail(a: u1, b: u2) -> bool {
+    let _touch_args = (a, b);
+    false
+}

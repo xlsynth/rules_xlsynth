@@ -20,8 +20,13 @@ def _dslx_stitch_pipeline_impl(ctx):
     flags_str = " --use_system_verilog={}".format(
         str(ctx.attr.use_system_verilog).lower()
     )
-    if ctx.attr.stages:
+    use_explicit_stages = len(ctx.attr.stages) > 0
+    if use_explicit_stages:
         flags_str += " --stages=" + ",".join(ctx.attr.stages)
+        # xlsynth-driver v0.33.0+ requires output_module_name when --stages is used
+        # and rejects --dslx_top in that mode. Reuse the existing `top` attr as the
+        # wrapper module name to preserve rule callsites.
+        flags_str += " --output_module_name=" + ctx.attr.top
 
     string_flags = [
         "input_valid_signal",
@@ -45,15 +50,21 @@ def _dslx_stitch_pipeline_impl(ctx):
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source())
 
+    dslx_top_flag = ""
+    dslx_top_arg = ""
+    if not use_explicit_stages:
+        dslx_top_flag = " --dslx_top=\"$3\""
+        dslx_top_arg = ctx.attr.top
+
     ctx.actions.run_shell(
         inputs = srcs,
         tools = [runner],
         outputs = [ctx.outputs.sv_file],
-        command = "\"$1\" driver dslx-stitch-pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\"" + flags_str + " > \"$4\"",
+        command = "\"$1\" driver dslx-stitch-pipeline --dslx_input_file=\"$2\"" + dslx_top_flag + flags_str + " > \"$4\"",
         arguments = [
             runner.path,
             main_src.path,
-            ctx.attr.top,
+            dslx_top_arg,
             ctx.outputs.sv_file.path,
         ],
         use_default_shell_env = True,
@@ -74,7 +85,7 @@ dslx_stitch_pipeline = rule(
             mandatory = True,
         ),
         "top": attr.string(
-            doc = "Prefix for the pipeline stage functions (e.g. foo for foo_cycleN).",
+            doc = "Prefix for implicit stage discovery (e.g. foo for foo_cycleN); when `stages` is set, used as the output wrapper module name.",
             mandatory = True,
         ),
         "stages": attr.string_list(
