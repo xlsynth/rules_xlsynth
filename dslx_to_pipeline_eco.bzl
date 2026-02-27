@@ -98,8 +98,7 @@ def _dslx_to_pipeline_eco_impl(ctx):
             "--output_opt_ir=" + output_opt_ir_file.path,
             "--output_baseline_verilog_path=" + output_baseline_verilog_file.path,
             "--edits_debug_out=" + output_eco_edit_file.path,
-            *passthrough,
-        ],
+        ] + passthrough,
         use_default_shell_env = False,
     )
 

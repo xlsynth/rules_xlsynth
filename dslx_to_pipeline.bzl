@@ -88,8 +88,7 @@ def _dslx_to_pipeline_impl(ctx):
             "--dslx_top=" + top_entry,
             "--output_unopt_ir=" + output_unopt_ir_file.path,
             "--output_opt_ir=" + output_opt_ir_file.path,
-            *passthrough,
-        ],
+        ] + passthrough,
         use_default_shell_env = False,
     )
 
