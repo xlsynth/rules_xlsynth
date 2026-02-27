@@ -12,6 +12,7 @@ reading XLS configuration from the action environment.
 The most important build settings are:
 
 - `@rules_xlsynth//config:driver_path`
+- `@rules_xlsynth//config:driver_supports_sv_enum_case_naming_policy`
 - `@rules_xlsynth//config:tools_path`
 - `@rules_xlsynth//config:runtime_library_path`
 - `@rules_xlsynth//config:dslx_stdlib_path`
@@ -28,6 +29,7 @@ These can be set in `.bazelrc` like this:
 
 ```
 build --@rules_xlsynth//config:driver_path=/path/to/xlsynth-driver
+build --@rules_xlsynth//config:driver_supports_sv_enum_case_naming_policy=true
 build --@rules_xlsynth//config:tools_path=/path/to/xlsynth/tools
 build --@rules_xlsynth//config:runtime_library_path=/path/to/libxls/dir
 build --@rules_xlsynth//config:dslx_stdlib_path=/path/to/xls/dslx/stdlib
@@ -81,7 +83,15 @@ dslx_to_sv_types(
 )
 ```
 
-`sv_enum_case_naming_policy` is required. Allowed values (matching `xlsynth-driver`) are `unqualified` and `enum_qualified`.
+`sv_enum_case_naming_policy` is required. Allowed values (matching
+`xlsynth-driver`) are `unqualified` and `enum_qualified`.
+
+When the configured driver is new enough to accept the
+`--sv_enum_case_naming_policy` CLI flag, set
+`--@rules_xlsynth//config:driver_supports_sv_enum_case_naming_policy=true`.
+Older drivers still work with `sv_enum_case_naming_policy = "unqualified"`;
+the rule omits the flag in that compatibility mode and rejects
+`enum_qualified` explicitly.
 
 ### `dslx_to_ir` — convert DSLX to optimized IR
 

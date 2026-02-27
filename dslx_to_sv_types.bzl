@@ -19,26 +19,32 @@ def _dslx_to_sv_types_impl(ctx):
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
     toolchain = require_driver_toolchain(ctx)
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_to_sv_types")
+    arguments = [
+        "driver",
+        "--driver_path",
+        toolchain.driver_path,
+        "--runtime_library_path",
+        toolchain.runtime_library_path,
+        "--toolchain",
+        toolchain_file.path,
+        "--stdout_path",
+        output_sv_file.path,
+        "dslx2sv-types",
+        "--dslx_input_file",
+        srcs[0].path,
+    ]
+
+    if toolchain.driver_supports_sv_enum_case_naming_policy:
+        arguments.append("--sv_enum_case_naming_policy=" + ctx.attr.sv_enum_case_naming_policy)
+    else:
+        if ctx.attr.sv_enum_case_naming_policy != "unqualified":
+            fail("sv_enum_case_naming_policy={} requires @rules_xlsynth//config:driver_supports_sv_enum_case_naming_policy=true".format(ctx.attr.sv_enum_case_naming_policy))
 
     ctx.actions.run(
         inputs = srcs + [toolchain_file],
         executable = runner,
         outputs = [output_sv_file],
-        arguments = [
-            "driver",
-            "--driver_path",
-            toolchain.driver_path,
-            "--runtime_library_path",
-            toolchain.runtime_library_path,
-            "--toolchain",
-            toolchain_file.path,
-            "--stdout_path",
-            output_sv_file.path,
-            "dslx2sv-types",
-            "--dslx_input_file",
-            srcs[0].path,
-            "--sv_enum_case_naming_policy=" + ctx.attr.sv_enum_case_naming_policy,
-        ],
+        arguments = arguments,
         use_default_shell_env = False,
     )
 
