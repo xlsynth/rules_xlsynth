@@ -22,18 +22,22 @@ _TOOL_CONFIG = {
     "dslx_interpreter_main": {
         "base_flags": ["--compare=jit", "--alsologtostderr"],
         "dslx_config": True,
+        "dslx_scalar_settings": [],
     },
     "prove_quickcheck_main": {
         "base_flags": ["--alsologtostderr"],
         "dslx_config": True,
+        "dslx_scalar_settings": [],
     },
     "typecheck_main": {
         "base_flags": [],
         "dslx_config": True,
+        "dslx_scalar_settings": [],
     },
     "dslx_fmt": {
         "base_flags": [],
         "dslx_config": False,
+        "dslx_scalar_settings": [],
     },
 }
 
@@ -125,12 +129,13 @@ def _build_extra_args_for_tool(tool: str, toolchain_data: Dict[str, Any]) -> Lis
             values = dslx_cfg.get(setting_name, [])
             joined = separator.join(values)
             extra.extend(_setting_flag_builder(setting_name, joined))
-        type_inference_v2 = dslx_cfg.get("type_inference_v2")
-        if type_inference_v2 is not None:
-            extra.extend(_setting_flag_builder(
-                "type_inference_v2",
-                "true" if type_inference_v2 else "false",
-            ))
+        for setting_name in cfg.get("dslx_scalar_settings", []):
+            setting_value = dslx_cfg.get(setting_name)
+            if setting_value is not None:
+                extra.extend(_setting_flag_builder(
+                    setting_name,
+                    "true" if setting_value else "false",
+                ))
     return extra
 
 
