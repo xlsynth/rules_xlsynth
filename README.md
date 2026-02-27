@@ -2,36 +2,44 @@
 
 [![CI](https://github.com/xlsynth/rules_xlsynth/actions/workflows/ci.yml/badge.svg)](https://github.com/xlsynth/rules_xlsynth/actions/workflows/ci.yml)
 
-### `.bazelrc`-settable configuration
+### Toolchain configuration
 
-These environment variables can act as a repository-level configuration for the `rules_xlsynth` rules:
+`rules_xlsynth` registers a default Bazel toolchain that reads its values from
+typed Bazel build settings under `@rules_xlsynth//config`. The rules then
+generate a declared `xlsynth-toolchain.toml` input for each action instead of
+reading XLS configuration from the action environment.
 
-- `XLSYNTH_DRIVER_DIR`: the path to the `xlsynth-driver` directory, i.e. containing the
-  `xlsynth-driver` binary (which can be installed via `cargo` from its Rust crate). Note that this
-  is named with a `_DIR` suffix because that differentiates it from a direct path to the binary.
-- `XLSYNTH_TOOLS`: the path to the xlsynth tool directory, i.e. containing tools from releases
-  such as `dslx_interpreter_main`, `ir_converter_main`, `codegen_main`, etc. (This can be used
-  by the `xlsynth-driver` program instead of it directly calling `libxls` runtime APIs.)
-- `XLSYNTH_DSLX_STDLIB_PATH`: the path to the DSLX stdlib to use. (Note that this refers to a
-  directory that holds all the standard library files.)
-- `XLSYNTH_DSLX_PATH`: a colon-separated list of additional DSLX paths to search for imported files.
-- `XLSYNTH_DSLX_ENABLE_WARNINGS`: a comma-separated list of warnings to enable.
-- `XLSYNTH_DSLX_DISABLE_WARNINGS`: a comma-separated list of warnings to disable.
-- `XLSYNTH_GATE_FORMAT`: format string used when emitting `gate!()` operations; `{input}` and `{output}` placeholders will be substituted with signal names.
-- `XLSYNTH_ASSERT_FORMAT`: format string used when emitting `assert!()` operations; `{condition}` and `{label}` placeholders will be substituted with the assertion expression and label.
-- `XLSYNTH_USE_SYSTEM_VERILOG`: `true|false`; when `true`, SystemVerilog constructs are emitted instead of plain Verilog.
-- `XLSYNTH_ADD_INVARIANT_ASSERTIONS`: `true|false`; when `true`, extra runtime assertions (e.g. one-hot validation checks) are inserted in generated RTL.
+The most important build settings are:
 
-These can be set in your `.bazelrc` file like this:
+- `@rules_xlsynth//config:driver_path`
+- `@rules_xlsynth//config:tools_path`
+- `@rules_xlsynth//config:runtime_library_path`
+- `@rules_xlsynth//config:dslx_stdlib_path`
+- `@rules_xlsynth//config:dslx_path`
+- `@rules_xlsynth//config:enable_warnings`
+- `@rules_xlsynth//config:disable_warnings`
+- `@rules_xlsynth//config:type_inference_v2`
+- `@rules_xlsynth//config:gate_format`
+- `@rules_xlsynth//config:assert_format`
+- `@rules_xlsynth//config:use_system_verilog`
+- `@rules_xlsynth//config:add_invariant_assertions`
+
+These can be set in `.bazelrc` like this:
 
 ```
-...
-build --action_env XLSYNTH_DSLX_PATH="path/to/additional/dslx/files:another/path"
-build --action_env XLSYNTH_DSLX_ENABLE_WARNINGS="warning1,warning2"
-build --action_env XLSYNTH_DSLX_DISABLE_WARNINGS="warning3,warning4"
+build --@rules_xlsynth//config:driver_path=/path/to/xlsynth-driver
+build --@rules_xlsynth//config:tools_path=/path/to/xlsynth/tools
+build --@rules_xlsynth//config:runtime_library_path=/path/to/libxls/dir
+build --@rules_xlsynth//config:dslx_stdlib_path=/path/to/xls/dslx/stdlib
+build --@rules_xlsynth//config:dslx_path=path/to/additional/dslx/files:another/path
+build --@rules_xlsynth//config:enable_warnings=warning1,warning2
+build --@rules_xlsynth//config:disable_warnings=warning3,warning4
 ```
 
-Or by passing `--action_env=` on the bazel command line.
+`dslx_stdlib_path` is optional when `tools_path` already points at an extracted
+XLS release tree with `xls/dslx/stdlib` underneath it.
+
+Or by passing the same flags directly on the Bazel command line.
 
 ### `dslx_library`, `dslx_test` — libraries/tests for DSLX files
 

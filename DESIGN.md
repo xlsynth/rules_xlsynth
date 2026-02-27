@@ -1,16 +1,13 @@
-# Environment Helpers
+# Toolchain Helpers
 
 `env_helpers.py` hosts the Python entry point that Bazel actions use to talk to the xlsynth
-toolchain. When the program starts it harvests a handful of `XLSYNTH_*` variables from the
-action environment. The values drive two behaviours: building a temporary `toolchain.toml` file
-for driver invocations and deriving additional command-line flags for individual tools. Regular
-strings such as `XLSYNTH_GATE_FORMAT` become TOML string fields, while boolean variables like
-`XLSYNTH_USE_SYSTEM_VERILOG` are validated and converted into `true` or `false`. For dslx tools
-the helper injects the path to the bundled standard library and threads through optional warning
-and type-inference settings. The module exposes two subcommands. `driver` shells out to the
-`xlsynth-driver` binary, passing the generated TOML file and forwarding any extra user
-arguments. `tool` directly executes a requested binary from the downloaded toolset after
-pre-pending any extra flags determined from the environment.
+toolchain. Bazel rules materialise a per-action `toolchain.toml` file from the
+registered `rules_xlsynth` toolchain plus any rule-level overrides, then pass
+that declared input to the runner. The runner exposes two subcommands:
+`driver` shells out to the configured `xlsynth-driver` binary with
+`--toolchain=<path>`, while `tool` reads the same TOML file and derives the
+extra DSLX flags needed by direct tool invocations such as
+`dslx_interpreter_main` or `typecheck_main`.
 
 # Generating the Bazel Helper
 
@@ -29,10 +26,10 @@ when the runner changes.
 # Bazel Integration Path
 
 Many Starlark rules load `python_runner_source` and materialise the runner inside the action
-sandbox. Each rule writes the helper script to a temporary output, adds it to the action’s tool
-inputs, and then calls it with either the `driver` or `tool` subcommand depending on the
-workflow. For example, `dslx_to_ir.bzl` composes the runner with `driver dslx2ir` to build
-intermediate representations, then calls `driver ir2opt` for optimisation passes. Because every
-action invokes the same runner binary, rule authors can rely on environment variables (for
-custom DSLX search paths, enabling warnings, or toggling SystemVerilog emission) to behave
-consistently across all tool stages.
+sandbox. Each rule writes the helper script to a temporary output, writes a
+declared TOML file for the configured toolchain, and then calls the helper with
+either the `driver` or `tool` subcommand depending on the workflow. For
+example, `dslx_to_ir.bzl` composes the runner with `driver dslx2ir` to build
+intermediate representations, then calls `driver ir2opt` for optimisation
+passes. Tool selection and repo-wide defaults come from the registered Bazel
+toolchain instead of `XLSYNTH_*` action environment variables.

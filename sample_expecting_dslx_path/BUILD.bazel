@@ -3,8 +3,8 @@
 # Sample BUILD file
 # This example shows how to use the dslx_library and dslx_test rules
 #
-# This particular sample shows how things work when we give a XLSYNTH_DSLX_PATH
-# environment variable.
+# This particular sample shows how things work when
+# `@rules_xlsynth//config:dslx_path` adds an import root with bare module names.
 
 load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_to_pipeline")
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")

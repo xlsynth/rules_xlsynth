@@ -3,6 +3,7 @@
 load(":helpers.bzl", "write_executable_shell_script")
 load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_driver_toolchain")
 
 
 def _ir_prove_equiv_test_impl(ctx):
@@ -16,13 +17,28 @@ def _ir_prove_equiv_test_impl(ctx):
     rhs_file = list(rhs_files)[0]
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source())
-    cmd = "/usr/bin/env python3 {} driver ir-equiv --top={} {} {}".format(
+    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
+    toolchain = require_driver_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "ir_equiv")
+    cmd_parts = [
+        "/usr/bin/env",
+        "python3",
         runner.short_path,
-        ctx.attr.top,
+        "driver",
+        "--driver_path",
+        toolchain.driver_path,
+        "--toolchain",
+        toolchain_file.short_path,
+    ]
+    if toolchain.runtime_library_path:
+        cmd_parts.extend(["--runtime_library_path", toolchain.runtime_library_path])
+    cmd_parts.extend([
+        "ir-equiv",
+        "--top={}".format(ctx.attr.top),
         lhs_file.short_path,
         rhs_file.short_path,
-    )
+    ])
+    cmd = " ".join(["\"{}\"".format(part) for part in cmd_parts])
     run_script = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
@@ -31,7 +47,7 @@ def _ir_prove_equiv_test_impl(ctx):
     return DefaultInfo(
         files = depset(direct = [run_script]),
         runfiles = ctx.runfiles(
-            files = [lhs_file, rhs_file, runner],
+            files = [lhs_file, rhs_file, runner, toolchain_file],
         ),
         executable = run_script,
     )
@@ -58,4 +74,5 @@ ir_prove_equiv_test = rule(
     },
     executable = True,
     test = True,
+    toolchains = ["//:toolchain_type"],
 )

@@ -3,6 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_lib")
 load(":env_helpers.bzl", "python_runner_source")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_driver_toolchain")
 
 
 def _dslx_stitch_pipeline_impl(ctx):
@@ -17,16 +18,16 @@ def _dslx_stitch_pipeline_impl(ctx):
 
     srcs = get_srcs_from_lib(ctx)
 
-    flags_str = " --use_system_verilog={}".format(
-        str(ctx.attr.use_system_verilog).lower()
-    )
+    passthrough = [
+        "--use_system_verilog={}".format(str(ctx.attr.use_system_verilog).lower()),
+    ]
     use_explicit_stages = len(ctx.attr.stages) > 0
     if use_explicit_stages:
-        flags_str += " --stages=" + ",".join(ctx.attr.stages)
+        passthrough.append("--stages=" + ",".join(ctx.attr.stages))
         # xlsynth-driver v0.33.0+ requires output_module_name when --stages is used
         # and rejects --dslx_top in that mode. Reuse the existing `top` attr as the
         # wrapper module name to preserve rule callsites.
-        flags_str += " --output_module_name=" + ctx.attr.top
+        passthrough.append("--output_module_name=" + ctx.attr.top)
 
     string_flags = [
         "input_valid_signal",
@@ -36,7 +37,7 @@ def _dslx_stitch_pipeline_impl(ctx):
     for flag in string_flags:
         value = getattr(ctx.attr, flag)
         if value:
-            flags_str += " --{}={}".format(flag, value)
+            passthrough.append("--{}={}".format(flag, value))
 
     bool_flags = [
         "reset_active_low",
@@ -45,29 +46,40 @@ def _dslx_stitch_pipeline_impl(ctx):
     ]
     for flag in bool_flags:
         value = getattr(ctx.attr, flag)
-        flags_str += " --{}={}".format(flag, str(value).lower())
+        passthrough.append("--{}={}".format(flag, str(value).lower()))
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source())
+    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
+    toolchain = require_driver_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_stitch_pipeline")
 
-    dslx_top_flag = ""
     dslx_top_arg = ""
     if not use_explicit_stages:
-        dslx_top_flag = " --dslx_top=\"$3\""
         dslx_top_arg = ctx.attr.top
 
-    ctx.actions.run_shell(
-        inputs = srcs,
-        tools = [runner],
+    arguments = [
+        "driver",
+        "--driver_path",
+        toolchain.driver_path,
+        "--runtime_library_path",
+        toolchain.runtime_library_path,
+        "--toolchain",
+        toolchain_file.path,
+        "--stdout_path",
+        ctx.outputs.sv_file.path,
+        "dslx-stitch-pipeline",
+        "--dslx_input_file=" + main_src.path,
+    ]
+    if dslx_top_arg:
+        arguments.append("--dslx_top=" + dslx_top_arg)
+    arguments.extend(passthrough)
+
+    ctx.actions.run(
+        inputs = srcs + [toolchain_file],
+        executable = runner,
         outputs = [ctx.outputs.sv_file],
-        command = "\"$1\" driver dslx-stitch-pipeline --dslx_input_file=\"$2\"" + dslx_top_flag + flags_str + " > \"$4\"",
-        arguments = [
-            runner.path,
-            main_src.path,
-            dslx_top_arg,
-            ctx.outputs.sv_file.path,
-        ],
-        use_default_shell_env = True,
+        arguments = arguments,
+        use_default_shell_env = False,
     )
 
     return DefaultInfo(
@@ -120,4 +132,5 @@ dslx_stitch_pipeline = rule(
     outputs = {
         "sv_file": "%{name}.sv",
     },
+    toolchains = ["//:toolchain_type"],
 )

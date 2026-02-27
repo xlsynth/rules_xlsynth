@@ -29,6 +29,39 @@ class PathData:
         self.xlsynth_driver_dir = xlsynth_driver_dir
         self.dslx_path = dslx_path
 
+def _xlsynth_driver_path(path_data: PathData) -> str:
+    return os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')
+
+def _legacy_override_flags(more_action_env: Optional[Dict[str, str]]) -> List[str]:
+    if not more_action_env:
+        return []
+    mapping = {
+        'XLSYNTH_DSLX_PATH': '@rules_xlsynth//config:dslx_path',
+        'XLSYNTH_DSLX_ENABLE_WARNINGS': '@rules_xlsynth//config:enable_warnings',
+        'XLSYNTH_DSLX_DISABLE_WARNINGS': '@rules_xlsynth//config:disable_warnings',
+        'XLSYNTH_TYPE_INFERENCE_V2': '@rules_xlsynth//config:type_inference_v2',
+        'XLSYNTH_GATE_FORMAT': '@rules_xlsynth//config:gate_format',
+        'XLSYNTH_ASSERT_FORMAT': '@rules_xlsynth//config:assert_format',
+        'XLSYNTH_USE_SYSTEM_VERILOG': '@rules_xlsynth//config:use_system_verilog',
+        'XLSYNTH_ADD_INVARIANT_ASSERTIONS': '@rules_xlsynth//config:add_invariant_assertions',
+    }
+    flags: List[str] = []
+    for key, value in more_action_env.items():
+        if key not in mapping:
+            raise ValueError('Unsupported override key: {}'.format(key))
+        flags.append('--{}={}'.format(mapping[key], value))
+    return flags
+
+def _xlsynth_bazel_flags(path_data: PathData, more_action_env: Optional[Dict[str, str]] = None) -> List[str]:
+    flags = [
+        '--@rules_xlsynth//config:tools_path=' + path_data.xlsynth_tools,
+        '--@rules_xlsynth//config:driver_path=' + _xlsynth_driver_path(path_data),
+    ]
+    if path_data.dslx_path is not None:
+        flags.append('--@rules_xlsynth//config:dslx_path=' + ':'.join(path_data.dslx_path))
+    flags.extend(_legacy_override_flags(more_action_env))
+    return flags
+
 def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
     assert isinstance(targets, tuple), targets
     flags = []
@@ -37,17 +70,7 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_out
     #   * --disk_cache=  : overrides any ~/.bazelrc --disk_cache setting with an empty value
     #   * --nocache_test_results : still avoid caching test results inside the build tree
     flags += ['--nocache_test_results', '--disk_cache=', '-c', 'opt', '--test_output=errors']
-    flags += [
-        '--action_env=XLSYNTH_TOOLS=' + path_data.xlsynth_tools,
-        '--action_env=XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir,
-    ]
-    if path_data.dslx_path is not None:
-        flags += [
-            '--action_env=XLSYNTH_DSLX_PATH=' + ':'.join(path_data.dslx_path),
-        ]
-    if more_action_env:
-        for k, v in more_action_env.items():
-            flags += ['--action_env=' + k + '=' + v]
+    flags += _xlsynth_bazel_flags(path_data, more_action_env)
     # Use the caller's default .bazelrc files so presubmit and one-off runs behave consistently.
     cmdline = [
         'bazel', '--bazelrc=/dev/null', 'test',
@@ -66,17 +89,7 @@ def bazel_build_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_ou
     flags = []
     # Disable the shared disk cache for builds as well so we always rebuild fresh.
     flags += ['--disk_cache=', '-c', 'opt']
-    flags += [
-        '--action_env=XLSYNTH_TOOLS=' + path_data.xlsynth_tools,
-        '--action_env=XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir,
-    ]
-    if path_data.dslx_path is not None:
-        flags += [
-            '--action_env=XLSYNTH_DSLX_PATH=' + ':'.join(path_data.dslx_path),
-        ]
-    if more_action_env:
-        for k, v in more_action_env.items():
-            flags += ['--action_env=' + k + '=' + v]
+    flags += _xlsynth_bazel_flags(path_data, more_action_env)
     # Use the caller's default .bazelrc so build behaviour matches regular developer invocations.
     cmdline = [
         'bazel', '--bazelrc=/dev/null', 'build',
@@ -285,20 +298,15 @@ def run_readme_sample_snippets(path_data: PathData):
         rel_pkg = os.path.relpath(temp_pkg_dir, repo_root)
         query_target = f"//{rel_pkg}:all"
 
-        env = os.environ.copy()
-        env["XLSYNTH_TOOLS"] = path_data.xlsynth_tools
-        env["XLSYNTH_DRIVER_DIR"] = path_data.xlsynth_driver_dir
-        if path_data.dslx_path is not None:
-            env["XLSYNTH_DSLX_PATH"] = ":".join(path_data.dslx_path)
-
         print(f"Running bazel query on README snippets: {query_target}\nBUILD file used: {build_path}")
         try:
             result = subprocess.run([
                 "bazel",
                 "query",
+                *_xlsynth_bazel_flags(path_data),
                 "--noshow_progress",
                 query_target,
-            ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", env=env)
+            ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
         except subprocess.CalledProcessError as e:
             print("=== Bazel query failed ===")
             print("STDOUT:\n" + (e.stdout or "<empty>"))
@@ -315,7 +323,7 @@ def run_readme_sample_snippets(path_data: PathData):
 
 @register
 def run_sample_stitch_pipeline_expecting_dslx_path(path_data: PathData):
-    """Runs the pipeline stitching sample that relies on XLSYNTH_DSLX_PATH search paths."""
+    """Runs the pipeline stitching sample that relies on the configured DSLX import paths."""
     path_data.dslx_path = (
         'sample_stitch_expecting_dslx_path',
         'sample_stitch_expecting_dslx_path/subdir',
@@ -358,10 +366,9 @@ def run_sample_invariant_assertions(path_data: PathData):
     count_with_env = count_asserts(sv_with)
     if count_with_env <= count_without:
         raise ValueError(
-            "Expected more assertion machinery when enabling env-var; got {} vs {}".format(count_with_env, count_without)
+            "Expected more assertion machinery when enabling the build setting; got {} vs {}".format(count_with_env, count_without)
         )
-    # Avoid non-ASCII arrow to ensure output is safe under ASCII-only stdout (e.g. Python 3.6 CI)
-    print(f"Env-var toggling works: {count_without} -> {count_with_env} assertions.")
+    print(f"Build-setting toggling works: {count_without} -> {count_with_env} assertions.")
 
     # -- Now verify rule-level override behaviour.
     tgt_attr_false = "//sample_invariant_assertions:array_match_sv_attr_false"
@@ -373,9 +380,9 @@ def run_sample_invariant_assertions(path_data: PathData):
     count_attr_false = count_asserts(sv_attr_false)
     if count_attr_false != count_without:
         raise ValueError(
-            "Rule attribute 'false' did not override env-var 'true'; expected {} asserts but saw {}".format(count_without, count_attr_false)
+            "Rule attribute 'false' did not override build-setting 'true'; expected {} asserts but saw {}".format(count_without, count_attr_false)
         )
-    print("Rule override to 'false' correctly suppressed extra assertions despite env-var=true.")
+    print("Rule override to 'false' correctly suppressed extra assertions despite build-setting=true.")
 
     tgt_attr_true = "//sample_invariant_assertions:array_match_sv_attr_true"
     bazel_build_opt((tgt_attr_true,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
@@ -386,9 +393,9 @@ def run_sample_invariant_assertions(path_data: PathData):
     count_attr_true = count_asserts(sv_attr_true)
     if count_attr_true <= count_without:
         raise ValueError(
-            "Rule attribute 'true' did not override env-var 'false'; counts {} vs baseline {}".format(count_attr_true, count_without)
+            "Rule attribute 'true' did not override build-setting 'false'; counts {} vs baseline {}".format(count_attr_true, count_without)
         )
-    print("Rule override to 'true' correctly enabled assertions despite env-var=false.")
+    print("Rule override to 'true' correctly enabled assertions despite build-setting=false.")
 
 # -----------------------------------------------------------------------------
 
@@ -399,13 +406,13 @@ def run_stitch_invariant_assertions(path_data: PathData):
     repo_root = os.path.dirname(__file__)
     base_tgt = "//sample_stitch_invariant_assertions:stages_pipeline"
 
-    # Build with env-var off, record baseline.
+    # Build with the build setting off, record baseline.
     bazel_build_opt((base_tgt,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
     sv_base = os.path.join(repo_root, "bazel-bin", "sample_stitch_invariant_assertions", "stages_pipeline.sv")
     with open(sv_base, "r", encoding="utf-8") as f:
         sv_without = f.read()
 
-    # Build with env-var on, capture.
+    # Build with the build setting on, capture.
     bazel_build_opt((base_tgt,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "true"})
     with open(sv_base, "r", encoding="utf-8") as f:
         sv_with_env = f.read()
@@ -417,10 +424,10 @@ def run_stitch_invariant_assertions(path_data: PathData):
     env_cnt = cnt(sv_with_env)
 
     if base_cnt != 0:
-        raise ValueError(f"Expected zero assertions with env-var=false; got {base_cnt}")
+        raise ValueError(f"Expected zero assertions with build-setting=false; got {base_cnt}")
 
     if env_cnt == 0:
-        raise ValueError("Expected assertions to be present with env-var=true but count was zero")
+        raise ValueError("Expected assertions to be present with build-setting=true but count was zero")
 
     print(f"Stitch pipeline assertion counts: disabled={base_cnt}, enabled={env_cnt} (ok)")
 
@@ -571,8 +578,8 @@ def main():
 
     verify_tool_binaries(path_data.xlsynth_tools, dso_version)
 
-    assert os.path.exists(os.path.join(path_data.xlsynth_tools, 'dslx_interpreter_main')), 'dslx_interpreter_main not found in XLSYNTH_TOOLS=' + path_data.xlsynth_tools
-    assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found in XLSYNTH_DRIVER_DIR=' + path_data.xlsynth_driver_dir
+    assert os.path.exists(os.path.join(path_data.xlsynth_tools, 'dslx_interpreter_main')), 'dslx_interpreter_main not found under --xlsynth-tools=' + path_data.xlsynth_tools
+    assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found under --xlsynth-driver-dir=' + path_data.xlsynth_driver_dir
 
     to_run = TO_RUN
     if options.keyword:

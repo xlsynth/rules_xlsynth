@@ -3,6 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "write_executable_shell_script", "get_srcs_from_lib")
 load(":env_helpers.bzl", "python_runner_source")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_tools_toolchain")
 
 
 def _dslx_prove_quickcheck_test_impl(ctx):
@@ -15,15 +16,25 @@ def _dslx_prove_quickcheck_test_impl(ctx):
     srcs = get_srcs_from_lib(ctx)
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source())
-    cmd = "/usr/bin/env python3 {} tool prove_quickcheck_main {}".format(
+    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
+    toolchain = require_tools_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "prove_quickcheck")
+    cmd_parts = [
+        "/usr/bin/env",
+        "python3",
         runner.short_path,
-        lib_src.short_path,
-    )
+        "tool",
+        "--toolchain",
+        toolchain_file.short_path,
+    ]
+    if toolchain.runtime_library_path:
+        cmd_parts.extend(["--runtime_library_path", toolchain.runtime_library_path])
+    cmd_parts.extend(["prove_quickcheck_main", lib_src.short_path])
+    cmd = " ".join(["\"{}\"".format(part) for part in cmd_parts])
     if ctx.attr.top:
         cmd += " --test_filter=" + ctx.attr.top
 
-    runfiles = ctx.runfiles(srcs + [runner])
+    runfiles = ctx.runfiles(srcs + [runner]).merge(ctx.runfiles([toolchain_file]))
     executable_file = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
@@ -50,4 +61,5 @@ dslx_prove_quickcheck_test = rule(
         ),
     },
     test = True,
+    toolchains = ["//:toolchain_type"],
 )

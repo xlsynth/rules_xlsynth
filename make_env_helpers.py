@@ -8,9 +8,9 @@ from pathlib import Path
 
 _DOCSTRING = """Returns the embedded xlsynth_runner.py source.
 
-The returned program reads XLSYNTH_* from the action execution environment
-and invokes either the driver (via the 'driver' subcommand) or a tool
-(via the 'tool' subcommand), forwarding passthrough flags accordingly.
+The returned program reads a declared toolchain TOML input and invokes either
+the driver (via the 'driver' subcommand) or a tool (via the 'tool'
+subcommand), forwarding passthrough flags accordingly.
 """
 
 
