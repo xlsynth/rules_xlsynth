@@ -108,13 +108,48 @@ def _toolchain_dslx_config(toolchain_data: Dict[str, Any]) -> Dict[str, Any]:
     return toolchain_section.get("dslx", {})
 
 
+def _runfiles_roots() -> List[str]:
+    roots: List[str] = []
+    for env_var in ["RUNFILES_DIR", "TEST_SRCDIR"]:
+        value = os.environ.get(env_var)
+        if value and value not in roots:
+            roots.append(value)
+    return roots
+
+
+def _runfiles_candidates(path: str) -> List[str]:
+    candidates = [path]
+    for marker in ["external/", "_main/"]:
+        marker_index = path.find(marker)
+        if marker_index != -1:
+            candidate = path[marker_index + len(marker):]
+            if candidate not in candidates:
+                candidates.append(candidate)
+            prefixed = "_main/" + candidate
+            if prefixed not in candidates:
+                candidates.append(prefixed)
+    return candidates
+
+
+def _resolve_runtime_path(path: str) -> str:
+    if not path or os.path.isabs(path):
+        return path
+
+    for root in _runfiles_roots():
+        for candidate in _runfiles_candidates(path):
+            resolved = os.path.join(root, candidate)
+            if os.path.exists(resolved):
+                return resolved
+    return path
+
+
 def _build_extra_args_for_tool(tool: str, toolchain_data: Dict[str, Any]) -> List[str]:
     cfg = _TOOL_CONFIG.get(tool)
     if not cfg:
         return []
     toolchain_section = toolchain_data.get("toolchain", {})
     dslx_cfg = _toolchain_dslx_config(toolchain_data)
-    stdlib = dslx_cfg.get("dslx_stdlib_path")
+    stdlib = _resolve_runtime_path(dslx_cfg.get("dslx_stdlib_path", ""))
     if not stdlib:
         raise RuntimeError("Toolchain TOML is missing toolchain.dslx.dslx_stdlib_path")
     extra: List[str] = [f"--dslx_stdlib_path={stdlib}"]
@@ -145,12 +180,13 @@ def _run_subprocess(
         runtime_library_path: str,
         stdout_path: str) -> int:
     env = os.environ.copy()
-    if runtime_library_path:
+    resolved_runtime_library_path = _resolve_runtime_path(runtime_library_path)
+    if resolved_runtime_library_path:
         existing = env.get("LD_LIBRARY_PATH", "")
         env["LD_LIBRARY_PATH"] = (
-            runtime_library_path
+            resolved_runtime_library_path
             if not existing
-            else runtime_library_path + os.pathsep + existing
+            else resolved_runtime_library_path + os.pathsep + existing
         )
     stdout_handle = None
     stdout_stream = None
@@ -184,7 +220,7 @@ def _tool(args: argparse.Namespace) -> int:
     tool_path_root = toolchain_data.get("toolchain", {}).get("tool_path")
     if not tool_path_root:
         raise RuntimeError("Toolchain TOML is missing toolchain.tool_path")
-    tool_path = os.path.join(tool_path_root, args.tool)
+    tool_path = _resolve_runtime_path(os.path.join(tool_path_root, args.tool))
     passthrough = list(args.passthrough)
     extra = _build_extra_args_for_tool(args.tool, toolchain_data)
     if extra:
