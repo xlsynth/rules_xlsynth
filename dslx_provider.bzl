@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_tools_toolchain")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_toolchain_artifact_inputs", "require_tools_toolchain")
 
 DslxInfo = provider(
     doc = "Contains DAG info per node in a struct.",
@@ -66,8 +66,9 @@ def _dslx_library_impl(ctx):
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
     toolchain = require_tools_toolchain(ctx)
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "typecheck")
+    action_inputs = srcs + [toolchain_file] + get_toolchain_artifact_inputs(toolchain)
     ctx.actions.run(
-        inputs = srcs + [toolchain_file],
+        inputs = action_inputs,
         outputs = [typecheck_output],
         executable = runner,
         arguments = [

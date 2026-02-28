@@ -11,6 +11,39 @@ py_test(
     ],
 )
 
+py_test(
+    name = "artifact_resolution_test",
+    srcs = [
+        "artifact_resolution_test.py",
+        "materialize_xls_bundle.py",
+    ],
+)
+
+py_test(
+    name = "download_release_test",
+    srcs = [
+        "download_release.py",
+        "download_release_test.py",
+    ],
+)
+
+genrule(
+    name = "stdlib_location_probe",
+    srcs = ["@rules_xlsynth_selftest_xls//:dslx_stdlib"],
+    outs = ["stdlib_location.txt"],
+    cmd = "printf '%s\\n' '$(location @rules_xlsynth_selftest_xls//:dslx_stdlib)' > $@",
+)
+
+py_test(
+    name = "external_bundle_exports_test",
+    srcs = ["external_bundle_exports_test.py"],
+    data = [
+        ":stdlib_location_probe",
+        "@rules_xlsynth_selftest_xls//:dslx_stdlib",
+    ],
+    deps = ["@rules_python//python/runfiles"],
+)
+
 toolchain_type(
     name = "toolchain_type",
     visibility = ["//visibility:public"],

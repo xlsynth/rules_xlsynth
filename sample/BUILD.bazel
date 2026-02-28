@@ -37,9 +37,23 @@ dslx_to_sv_types(
     deps = [":imported"],
 )
 
+# Prove the explicit bundle override path on a supported leaf rule.
+dslx_to_sv_types(
+    name = "imported_pkg_explicit_bundle",
+    sv_enum_case_naming_policy = "unqualified",
+    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
+    deps = [":imported"],
+)
+
 diff_test(
     name = "imported_pkg_test",
     file1 = ":imported_pkg",
+    file2 = ":imported_pkg.golden.sv",
+)
+
+diff_test(
+    name = "imported_pkg_explicit_bundle_test",
+    file1 = ":imported_pkg_explicit_bundle",
     file2 = ":imported_pkg.golden.sv",
 )
 

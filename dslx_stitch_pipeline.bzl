@@ -3,7 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_lib")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_driver_toolchain")
+load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_selected_driver_toolchain", "get_toolchain_artifact_inputs")
 
 
 def _dslx_stitch_pipeline_impl(ctx):
@@ -50,8 +50,8 @@ def _dslx_stitch_pipeline_impl(ctx):
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
-    toolchain = require_driver_toolchain(ctx)
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_stitch_pipeline")
+    toolchain = get_selected_driver_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_stitch_pipeline", toolchain = toolchain)
 
     dslx_top_arg = ""
     if not use_explicit_stages:
@@ -75,7 +75,7 @@ def _dslx_stitch_pipeline_impl(ctx):
     arguments.extend(passthrough)
 
     ctx.actions.run(
-        inputs = srcs + [toolchain_file],
+        inputs = srcs + [toolchain_file] + get_toolchain_artifact_inputs(toolchain),
         executable = runner,
         outputs = [ctx.outputs.sv_file],
         arguments = arguments,
@@ -127,6 +127,10 @@ dslx_stitch_pipeline = rule(
         "flop_outputs": attr.bool(
             doc = "Whether to insert flops on outputs (true) or not (false).",
             default = True,
+        ),
+        "xls_bundle": attr.label(
+            doc = "Optional override bundle repo label, for example @legacy_xls//:bundle.",
+            providers = [XlsArtifactBundleInfo],
         ),
     },
     outputs = {

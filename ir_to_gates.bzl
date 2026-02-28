@@ -2,7 +2,7 @@
 
 load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_driver_toolchain")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_toolchain_artifact_inputs", "require_driver_toolchain")
 
 
 def _ir_to_gates_impl(ctx):
@@ -17,7 +17,7 @@ def _ir_to_gates_impl(ctx):
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "ir_to_gates")
 
     ctx.actions.run(
-        inputs = [ir_file_to_use, toolchain_file],
+        inputs = [ir_file_to_use, toolchain_file] + get_toolchain_artifact_inputs(toolchain),
         executable = runner,
         outputs = [gates_file, metrics_file],
         arguments = [

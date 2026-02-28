@@ -1,6 +1,17 @@
 module(name = "rules_xlsynth")
 
 bazel_dep(name = "bazel_skylib", version = "1.6.1")
+bazel_dep(name = "rules_cc", version = "0.2.11")
 bazel_dep(name = "rules_python", version = "1.0.0")
 
-register_toolchains("//:default_xls_toolchain")
+xls = use_extension("//:extensions.bzl", "xls")
+
+xls.toolchain(
+    name = "rules_xlsynth_selftest_xls",
+    xls_version = "0.38.0",
+    xlsynth_driver_version = "0.33.0",
+    artifact_source = "auto",
+)
+
+use_repo(xls, "rules_xlsynth_selftest_xls")
+register_toolchains("@rules_xlsynth_selftest_xls//:all")

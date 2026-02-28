@@ -2,7 +2,7 @@
 
 load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_driver_toolchain")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_toolchain_artifact_inputs", "require_driver_toolchain")
 
 
 def _ir_to_delay_info_impl(ctx):
@@ -15,7 +15,7 @@ def _ir_to_delay_info_impl(ctx):
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "ir_to_delay_info")
 
     ctx.actions.run(
-        inputs = [opt_ir_file, toolchain_file],
+        inputs = [opt_ir_file, toolchain_file] + get_toolchain_artifact_inputs(toolchain),
         executable = runner,
         outputs = [output_file],
         arguments = [

@@ -3,7 +3,7 @@
 load(":helpers.bzl", "write_executable_shell_script")
 load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_driver_toolchain")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_toolchain_artifact_inputs", "require_driver_toolchain")
 
 
 def _ir_prove_equiv_test_impl(ctx):
@@ -47,7 +47,7 @@ def _ir_prove_equiv_test_impl(ctx):
     return DefaultInfo(
         files = depset(direct = [run_script]),
         runfiles = ctx.runfiles(
-            files = [lhs_file, rhs_file, runner, toolchain_file],
+            files = [lhs_file, rhs_file, runner, toolchain_file] + get_toolchain_artifact_inputs(toolchain),
         ),
         executable = run_script,
     )
