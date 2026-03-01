@@ -3,7 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "write_executable_shell_script", "get_srcs_from_lib")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_toolchain_artifact_inputs", "require_tools_toolchain")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_tool_artifact_inputs", "require_tools_toolchain")
 
 
 def _dslx_prove_quickcheck_test_impl(ctx):
@@ -34,7 +34,7 @@ def _dslx_prove_quickcheck_test_impl(ctx):
     if ctx.attr.top:
         cmd += " --test_filter=" + ctx.attr.top
 
-    runfiles = ctx.runfiles(srcs + [runner, toolchain_file] + get_toolchain_artifact_inputs(toolchain))
+    runfiles = ctx.runfiles(srcs + [runner, toolchain_file] + get_tool_artifact_inputs(toolchain, "prove_quickcheck_main"))
     executable_file = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",

@@ -3,7 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_deps", "get_srcs_from_lib", "write_executable_shell_script")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_toolchain_artifact_inputs", "require_tools_toolchain")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_tool_artifact_inputs", "require_tools_toolchain")
 
 
 def _dslx_test_impl(ctx):
@@ -53,7 +53,7 @@ def _dslx_test_impl(ctx):
     cmd_parts.extend([src.short_path for src in srcs])
     cmd = " ".join(["\"{}\"".format(part) for part in cmd_parts])
 
-    runfiles = ctx.runfiles(srcs + [runner, toolchain_file] + get_toolchain_artifact_inputs(toolchain))
+    runfiles = ctx.runfiles(srcs + [runner, toolchain_file] + get_tool_artifact_inputs(toolchain, "dslx_interpreter_main"))
     executable_file = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",

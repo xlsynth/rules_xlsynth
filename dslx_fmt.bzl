@@ -1,6 +1,6 @@
 load(":helpers.bzl", "write_executable_shell_script")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_toolchain_artifact_inputs", "require_tools_toolchain")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_tool_artifact_inputs", "require_tools_toolchain")
 
 def _dslx_format_impl(ctx):
     src_depset_files = ctx.attr.srcs
@@ -12,7 +12,7 @@ def _dslx_format_impl(ctx):
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
     toolchain = require_tools_toolchain(ctx)
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_fmt")
-    toolchain_inputs = [toolchain_file] + get_toolchain_artifact_inputs(toolchain)
+    toolchain_inputs = [toolchain_file] + get_tool_artifact_inputs(toolchain, "dslx_fmt")
 
     for src in src_depset_files:
         input_file = src[DefaultInfo].files.to_list()[0]

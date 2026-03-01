@@ -334,6 +334,39 @@ def get_toolchain_artifact_inputs(toolchain):
     return getattr(toolchain, "artifact_inputs", [])
 
 
+def _bundle_runtime_inputs(toolchain):
+    inputs = []
+    for field_name in ["dslx_stdlib", "libxls"]:
+        artifact = getattr(toolchain, field_name, None)
+        if artifact != None:
+            inputs.append(artifact)
+    return inputs
+
+
+def _bundle_tool_input(toolchain, tool_name):
+    artifact_inputs = get_toolchain_artifact_inputs(toolchain)
+    if not artifact_inputs:
+        return None
+    matches = [artifact for artifact in artifact_inputs if artifact.basename == tool_name]
+    if len(matches) != 1:
+        fail("rules_xlsynth toolchain is missing tool artifact {}".format(tool_name))
+    return matches[0]
+
+
+def get_driver_artifact_inputs(toolchain):
+    driver = getattr(toolchain, "driver", None)
+    if driver == None:
+        return get_toolchain_artifact_inputs(toolchain)
+    return [driver] + _bundle_runtime_inputs(toolchain)
+
+
+def get_tool_artifact_inputs(toolchain, tool_name):
+    tool_input = _bundle_tool_input(toolchain, tool_name)
+    if tool_input == None:
+        return get_toolchain_artifact_inputs(toolchain)
+    return [tool_input] + _bundle_runtime_inputs(toolchain)
+
+
 def _patch_dylib_impl(ctx):
     ctx.actions.run_shell(
         inputs = [ctx.file.src],

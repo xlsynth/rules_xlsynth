@@ -3,7 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":env_helpers.bzl", "python_runner_source")
 load(":helpers.bzl", "get_srcs_from_deps")
-load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_selected_driver_toolchain", "get_toolchain_artifact_inputs")
+load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "get_selected_driver_toolchain")
 
 def _dslx_to_pipeline_eco_impl(ctx):
     srcs = get_srcs_from_deps(ctx)
@@ -78,7 +78,7 @@ def _dslx_to_pipeline_eco_impl(ctx):
     )
 
     ctx.actions.run(
-        inputs = srcs + [toolchain_file] + get_toolchain_artifact_inputs(toolchain),
+        inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(toolchain),
         executable = runner,
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file, output_baseline_verilog_file, output_eco_edit_file],
         arguments = [

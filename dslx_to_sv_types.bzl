@@ -3,7 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":env_helpers.bzl", "python_runner_source")
 load(":helpers.bzl", "get_srcs_from_deps")
-load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_selected_driver_toolchain", "get_toolchain_artifact_inputs")
+load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "get_selected_driver_toolchain")
 
 _SV_ENUM_CASE_NAMING_POLICIES = [
     "unqualified",
@@ -41,7 +41,7 @@ def _dslx_to_sv_types_impl(ctx):
             fail("sv_enum_case_naming_policy={} requires @rules_xlsynth//config:driver_supports_sv_enum_case_naming_policy=true".format(ctx.attr.sv_enum_case_naming_policy))
 
     ctx.actions.run(
-        inputs = srcs + [toolchain_file] + get_toolchain_artifact_inputs(toolchain),
+        inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(toolchain),
         executable = runner,
         outputs = [output_sv_file],
         arguments = arguments,

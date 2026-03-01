@@ -4,7 +4,7 @@ load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_lib", "mangle_dslx_name")
 load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_toolchain_artifact_inputs", "require_driver_toolchain")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "require_driver_toolchain")
 
 def _dslx_to_ir_impl(ctx):
     # Get the DslxInfo from the direct library target
@@ -24,7 +24,7 @@ def _dslx_to_ir_impl(ctx):
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
     toolchain = require_driver_toolchain(ctx)
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_to_ir")
-    toolchain_inputs = [toolchain_file] + get_toolchain_artifact_inputs(toolchain)
+    toolchain_inputs = [toolchain_file] + get_driver_artifact_inputs(toolchain)
 
     # Stage 1: dslx2ir
     ctx.actions.run(

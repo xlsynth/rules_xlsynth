@@ -3,7 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_lib")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_selected_driver_toolchain", "get_toolchain_artifact_inputs")
+load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "get_selected_driver_toolchain")
 
 
 def _dslx_stitch_pipeline_impl(ctx):
@@ -75,7 +75,7 @@ def _dslx_stitch_pipeline_impl(ctx):
     arguments.extend(passthrough)
 
     ctx.actions.run(
-        inputs = srcs + [toolchain_file] + get_toolchain_artifact_inputs(toolchain),
+        inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(toolchain),
         executable = runner,
         outputs = [ctx.outputs.sv_file],
         arguments = arguments,
