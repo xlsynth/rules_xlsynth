@@ -143,6 +143,10 @@ def _resolve_runtime_path(path: str) -> str:
     return path
 
 
+def _resolve_executable_path(path: str) -> str:
+    return _resolve_runtime_path(path)
+
+
 def _build_extra_args_for_tool(tool: str, toolchain_data: Dict[str, Any]) -> List[str]:
     cfg = _TOOL_CONFIG.get(tool)
     if not cfg:
@@ -203,7 +207,7 @@ def _run_subprocess(
 
 def _driver(args: argparse.Namespace) -> int:
     cmd = [
-        args.driver_path,
+        _resolve_executable_path(args.driver_path),
         f"--toolchain={args.toolchain}",
         args.subcommand,
         *list(args.passthrough),

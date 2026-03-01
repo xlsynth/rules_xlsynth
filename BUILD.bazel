@@ -12,6 +12,14 @@ py_test(
 )
 
 py_test(
+    name = "env_helpers_test",
+    srcs = [
+        "env_helpers.py",
+        "env_helpers_test.py",
+    ],
+)
+
+py_test(
     name = "artifact_resolution_test",
     srcs = [
         "artifact_resolution_test.py",
