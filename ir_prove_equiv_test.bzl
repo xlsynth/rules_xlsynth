@@ -47,7 +47,7 @@ def _ir_prove_equiv_test_impl(ctx):
     return DefaultInfo(
         files = depset(direct = [run_script]),
         runfiles = ctx.runfiles(
-            files = [lhs_file, rhs_file, runner, toolchain_file] + get_driver_artifact_inputs(toolchain),
+            files = [lhs_file, rhs_file, runner, toolchain_file] + get_driver_artifact_inputs(toolchain, ["check_ir_equivalence_main"]),
         ),
         executable = run_script,
     )

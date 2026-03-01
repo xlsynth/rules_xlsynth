@@ -18,10 +18,12 @@ class EnvHelpersTest(unittest.TestCase):
             driver_path = runfiles_root / "+xls+rules_xlsynth_selftest_xls" / "xlsynth-driver"
             driver_path.parent.mkdir(parents = True)
             driver_path.write_text("#!/bin/sh\n", encoding = "utf-8")
+            toolchain_path = tmp_path / "toolchain.toml"
+            toolchain_path.write_text("[toolchain]\n", encoding = "utf-8")
 
             argv = mock.Mock(
                 driver_path = "external/+xls+rules_xlsynth_selftest_xls/xlsynth-driver",
-                toolchain = "toolchain.toml",
+                toolchain = str(toolchain_path),
                 subcommand = "--version",
                 passthrough = [],
                 runtime_library_path = "",
