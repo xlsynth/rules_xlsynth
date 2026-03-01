@@ -297,22 +297,70 @@ def build_driver_install_command(rustup_path, install_root, driver_version):
     ]
 
 
+def build_rustup_toolchain_install_command(rustup_path):
+    return [
+        rustup_path,
+        "toolchain",
+        "install",
+        "nightly",
+        "--profile",
+        "minimal",
+    ]
+
+
+def build_driver_install_environment(
+        repo_root,
+        libxls_path,
+        dslx_stdlib_path,
+        environ = None,
+        sys_platform = sys.platform):
+    env = build_driver_environment(
+        libxls_path = libxls_path,
+        dslx_stdlib_path = dslx_stdlib_path,
+        environ = environ,
+        sys_platform = sys_platform,
+    )
+    env["CARGO_HOME"] = str(repo_root / "_cargo_home")
+    env["RUSTUP_HOME"] = str(repo_root / "_rustup_home")
+    env["CARGO_TARGET_DIR"] = str(repo_root / "_cargo_target")
+    return env
+
+
+def ensure_rustup_nightly_toolchain(rustup_path, env):
+    probe = subprocess.run(
+        [rustup_path, "run", "nightly", "cargo", "--version"],
+        check = False,
+        capture_output = True,
+        text = True,
+        env = env,
+    )
+    if probe.returncode == 0:
+        return
+    subprocess.run(
+        build_rustup_toolchain_install_command(rustup_path),
+        check = True,
+        env = env,
+    )
+
+
 def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
     rustup = shutil.which("rustup")
     if rustup is None:
         raise RuntimeError(
-            "rules_xlsynth download fallback requires rustup with a nightly toolchain to install xlsynth-driver {}".format(
+            "rules_xlsynth download fallback requires rustup to install xlsynth-driver {}".format(
                 driver_version
             )
         )
 
     install_root = repo_root / "_cargo_driver"
+    cargo_home = repo_root / "_cargo_home"
+    rustup_home = repo_root / "_rustup_home"
     target_root = repo_root / "_cargo_target"
-    ensure_clean_path(install_root)
-    ensure_clean_path(target_root)
-    install_root.mkdir(parents = True, exist_ok = True)
-    env = build_driver_environment(libxls_path, dslx_stdlib_path)
-    env["CARGO_TARGET_DIR"] = str(target_root)
+    for path in [install_root, cargo_home, rustup_home, target_root]:
+        ensure_clean_path(path)
+        path.mkdir(parents = True, exist_ok = True)
+    env = build_driver_install_environment(repo_root, libxls_path, dslx_stdlib_path)
+    ensure_rustup_nightly_toolchain(rustup, env)
     subprocess.run(
         build_driver_install_command(rustup, install_root, driver_version),
         check = True,

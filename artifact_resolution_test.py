@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+from pathlib import Path
 import sys
 import unittest
 
@@ -119,6 +120,31 @@ class ArtifactResolutionTest(unittest.TestCase):
                 "xlsynth-driver",
             ],
         )
+
+    def test_build_rustup_toolchain_install_command_uses_minimal_profile(self):
+        command = materialize_xls_bundle.build_rustup_toolchain_install_command("/usr/bin/rustup")
+        self.assertEqual(
+            command,
+            [
+                "/usr/bin/rustup",
+                "toolchain",
+                "install",
+                "nightly",
+                "--profile",
+                "minimal",
+            ],
+        )
+
+    def test_build_driver_install_environment_uses_repo_local_cargo_and_rustup_homes(self):
+        libxls_path = "/tmp/xls-bundle/libxls.dylib" if sys.platform == "darwin" else "/tmp/xls-bundle/libxls.so"
+        env = materialize_xls_bundle.build_driver_install_environment(
+            Path("/tmp/xls-bundle-repo"),
+            libxls_path = libxls_path,
+            dslx_stdlib_path = "/tmp/xls-bundle",
+        )
+        self.assertEqual(env["CARGO_HOME"], "/tmp/xls-bundle-repo/_cargo_home")
+        self.assertEqual(env["RUSTUP_HOME"], "/tmp/xls-bundle-repo/_rustup_home")
+        self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target")
 
 
 if __name__ == "__main__":

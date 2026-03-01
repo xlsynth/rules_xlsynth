@@ -51,9 +51,10 @@ The attributes accepted by each mode are strict:
 
 Download-backed modes also have one host prerequisite: when `auto` falls back
 to downloading, or when `download_only` is selected, the repository rule
-installs `xlsynth-driver` with `rustup run nightly cargo install`. That means
-the host running module resolution must have `rustup` available with a nightly
-toolchain installed.
+installs `xlsynth-driver` with `rustup run nightly cargo install`. The host
+running module resolution must have `rustup` available. If the nightly
+toolchain is missing, `rules_xlsynth` bootstraps a repo-local `rustup` home
+before installing the driver.
 
 Each `xls.toolchain(...)` call exports a small repo surface:
 
