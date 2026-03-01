@@ -69,6 +69,20 @@ class EnvHelpersTest(unittest.TestCase):
         self.assertEqual(captured["env"]["DYLD_LIBRARY_PATH"], "/tmp/runtime")
         self.assertNotIn("LD_LIBRARY_PATH", captured["env"])
 
+    def test_dslx_fmt_does_not_receive_stdlib_flag(self) -> None:
+        toolchain_data = {
+            "toolchain": {
+                "dslx": {
+                    "dslx_stdlib_path": "/tmp/stdlib",
+                },
+            },
+        }
+
+        self.assertEqual(
+            env_helpers._build_extra_args_for_tool("dslx_fmt", toolchain_data),
+            [],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

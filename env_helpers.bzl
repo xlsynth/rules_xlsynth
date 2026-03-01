@@ -23,21 +23,25 @@ _TOOL_CONFIG = {
         "base_flags": ["--compare=jit", "--alsologtostderr"],
         "dslx_config": True,
         "dslx_scalar_settings": [],
+        "needs_dslx_stdlib_flag": True,
     },
     "prove_quickcheck_main": {
         "base_flags": ["--alsologtostderr"],
         "dslx_config": True,
         "dslx_scalar_settings": [],
+        "needs_dslx_stdlib_flag": True,
     },
     "typecheck_main": {
         "base_flags": [],
         "dslx_config": True,
         "dslx_scalar_settings": [],
+        "needs_dslx_stdlib_flag": True,
     },
     "dslx_fmt": {
         "base_flags": [],
         "dslx_config": False,
         "dslx_scalar_settings": [],
+        "needs_dslx_stdlib_flag": False,
     },
 }
 
@@ -157,12 +161,13 @@ def _build_extra_args_for_tool(tool: str, toolchain_data: Dict[str, Any]) -> Lis
     cfg = _TOOL_CONFIG.get(tool)
     if not cfg:
         return []
-    toolchain_section = toolchain_data.get("toolchain", {})
     dslx_cfg = _toolchain_dslx_config(toolchain_data)
-    stdlib = _resolve_runtime_path(dslx_cfg.get("dslx_stdlib_path", ""))
-    if not stdlib:
-        raise RuntimeError("Toolchain TOML is missing toolchain.dslx.dslx_stdlib_path")
-    extra: List[str] = [f"--dslx_stdlib_path={stdlib}"]
+    extra: List[str] = []
+    if cfg.get("needs_dslx_stdlib_flag", True):
+        stdlib = _resolve_runtime_path(dslx_cfg.get("dslx_stdlib_path", ""))
+        if not stdlib:
+            raise RuntimeError("Toolchain TOML is missing toolchain.dslx.dslx_stdlib_path")
+        extra.append(f"--dslx_stdlib_path={stdlib}")
     extra.extend(cfg.get("base_flags", []))
     if cfg.get("dslx_config"):
         list_settings = [
