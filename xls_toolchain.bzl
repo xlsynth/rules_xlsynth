@@ -80,25 +80,6 @@ def _bundle_struct_from_provider(bundle):
     )
 
 
-def _artifact_selection_from_flags(ctx):
-    tools_path = ctx.attr._tools_path_flag[BuildSettingInfo].value
-    dslx_stdlib_path = ctx.attr._dslx_stdlib_path_flag[BuildSettingInfo].value
-    if not dslx_stdlib_path and tools_path:
-        dslx_stdlib_path = tools_path + "/xls/dslx/stdlib"
-    return struct(
-        artifact_inputs = [],
-        driver = None,
-        driver_path = ctx.attr._driver_path_flag[BuildSettingInfo].value,
-        driver_supports_sv_enum_case_naming_policy = ctx.attr._driver_supports_sv_enum_case_naming_policy_flag[BuildSettingInfo].value,
-        dslx_stdlib = None,
-        dslx_stdlib_path = dslx_stdlib_path,
-        libxls = None,
-        runtime_library_path = ctx.attr._runtime_library_path_flag[BuildSettingInfo].value,
-        tools_root = None,
-        tools_path = tools_path,
-    )
-
-
 def _toolchain_with_semantics(artifact_selection, ctx):
     type_inference_v2 = _validate_tri_state(
         ctx.attr._type_inference_v2_flag[BuildSettingInfo].value,
@@ -135,22 +116,14 @@ def _toolchain_with_semantics(artifact_selection, ctx):
 
 
 def _xls_toolchain_impl(ctx):
-    if ctx.attr.bundle:
-        artifact_selection = _bundle_struct_from_provider(ctx.attr.bundle[XlsArtifactBundleInfo])
-    else:
-        artifact_selection = _artifact_selection_from_flags(ctx)
+    artifact_selection = _bundle_struct_from_provider(ctx.attr.bundle[XlsArtifactBundleInfo])
     return [_toolchain_with_semantics(artifact_selection, ctx)]
 
 
 xls_toolchain = rule(
     implementation = _xls_toolchain_impl,
     attrs = {
-        "bundle": attr.label(providers = [XlsArtifactBundleInfo]),
-        "_driver_path_flag": attr.label(default = "//config:driver_path"),
-        "_driver_supports_sv_enum_case_naming_policy_flag": attr.label(default = "//config:driver_supports_sv_enum_case_naming_policy"),
-        "_tools_path_flag": attr.label(default = "//config:tools_path"),
-        "_dslx_stdlib_path_flag": attr.label(default = "//config:dslx_stdlib_path"),
-        "_runtime_library_path_flag": attr.label(default = "//config:runtime_library_path"),
+        "bundle": attr.label(mandatory = True, providers = [XlsArtifactBundleInfo]),
         "_dslx_path_flag": attr.label(default = "//config:dslx_path"),
         "_enable_warnings_flag": attr.label(default = "//config:enable_warnings"),
         "_disable_warnings_flag": attr.label(default = "//config:disable_warnings"),

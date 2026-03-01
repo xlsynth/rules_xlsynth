@@ -1,31 +1,6 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 
 package(default_visibility = ["//visibility:public"])
-
-string_flag(
-    name = "driver_path",
-    build_setting_default = "",
-)
-
-string_flag(
-    name = "tools_path",
-    build_setting_default = "",
-)
-
-string_flag(
-    name = "dslx_stdlib_path",
-    build_setting_default = "",
-)
-
-string_flag(
-    name = "runtime_library_path",
-    build_setting_default = "",
-)
-
-bool_flag(
-    name = "driver_supports_sv_enum_case_naming_policy",
-    build_setting_default = False,
-)
 
 string_flag(
     name = "dslx_path",

@@ -38,7 +38,7 @@ def _dslx_to_sv_types_impl(ctx):
         arguments.append("--sv_enum_case_naming_policy=" + ctx.attr.sv_enum_case_naming_policy)
     else:
         if ctx.attr.sv_enum_case_naming_policy != "unqualified":
-            fail("sv_enum_case_naming_policy={} requires @rules_xlsynth//config:driver_supports_sv_enum_case_naming_policy=true".format(ctx.attr.sv_enum_case_naming_policy))
+            fail("sv_enum_case_naming_policy={} requires a selected XLS bundle whose xlsynth-driver supports that flag".format(ctx.attr.sv_enum_case_naming_policy))
 
     ctx.actions.run(
         inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(toolchain),
