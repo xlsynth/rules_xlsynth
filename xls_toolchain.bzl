@@ -353,11 +353,20 @@ def _bundle_tool_input(toolchain, tool_name):
     return matches[0]
 
 
-def get_driver_artifact_inputs(toolchain):
+def _bundle_tool_inputs(toolchain, tool_names):
+    inputs = []
+    for tool_name in tool_names:
+        tool_input = _bundle_tool_input(toolchain, tool_name)
+        if tool_input not in inputs:
+            inputs.append(tool_input)
+    return inputs
+
+
+def get_driver_artifact_inputs(toolchain, tool_names = []):
     driver = getattr(toolchain, "driver", None)
     if driver == None:
         return get_toolchain_artifact_inputs(toolchain)
-    return [driver] + _bundle_runtime_inputs(toolchain)
+    return [driver] + _bundle_tool_inputs(toolchain, tool_names) + _bundle_runtime_inputs(toolchain)
 
 
 def get_tool_artifact_inputs(toolchain, tool_name):

@@ -15,7 +15,7 @@ def _ir_to_delay_info_impl(ctx):
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "ir_to_delay_info")
 
     ctx.actions.run(
-        inputs = [opt_ir_file, toolchain_file] + get_driver_artifact_inputs(toolchain),
+        inputs = [opt_ir_file, toolchain_file] + get_driver_artifact_inputs(toolchain, ["delay_info_main"]),
         executable = runner,
         outputs = [output_file],
         arguments = [

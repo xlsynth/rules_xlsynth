@@ -71,7 +71,10 @@ def _dslx_to_pipeline_impl(ctx):
     )
 
     ctx.actions.run(
-        inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(toolchain),
+        inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(
+            toolchain,
+            ["ir_converter_main", "opt_main", "codegen_main"],
+        ),
         executable = runner,
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
         arguments = [

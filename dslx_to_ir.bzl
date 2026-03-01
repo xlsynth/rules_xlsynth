@@ -24,11 +24,12 @@ def _dslx_to_ir_impl(ctx):
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
     toolchain = require_driver_toolchain(ctx)
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_to_ir")
-    toolchain_inputs = [toolchain_file] + get_driver_artifact_inputs(toolchain)
+    dslx2ir_inputs = [toolchain_file] + get_driver_artifact_inputs(toolchain, ["ir_converter_main"])
+    ir2opt_inputs = [toolchain_file] + get_driver_artifact_inputs(toolchain, ["opt_main"])
 
     # Stage 1: dslx2ir
     ctx.actions.run(
-        inputs = all_transitive_srcs + toolchain_inputs,
+        inputs = all_transitive_srcs + dslx2ir_inputs,
         executable = runner,
         outputs = [ctx.outputs.ir_file],
         arguments = [
@@ -56,7 +57,7 @@ def _dslx_to_ir_impl(ctx):
 
     # Stage 2: ir2opt
     ctx.actions.run(
-        inputs = [ctx.outputs.ir_file] + toolchain_inputs,
+        inputs = [ctx.outputs.ir_file] + ir2opt_inputs,
         executable = runner,
         outputs = [ctx.outputs.opt_ir_file],
         arguments = [
