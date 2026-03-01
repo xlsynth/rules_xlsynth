@@ -139,6 +139,12 @@ def _resolve_executable_path(path: str) -> str:
     return _resolve_runtime_path(path)
 
 
+def _runtime_library_env_var(sys_platform: str) -> str:
+    if sys_platform == "darwin":
+        return "DYLD_LIBRARY_PATH"
+    return "LD_LIBRARY_PATH"
+
+
 def _build_extra_args_for_tool(tool: str, toolchain_data: Dict[str, Any]) -> List[str]:
     cfg = _TOOL_CONFIG.get(tool)
     if not cfg:
@@ -174,12 +180,14 @@ def _run_subprocess(
         cmd: List[str],
         *,
         runtime_library_path: str,
-        stdout_path: str) -> int:
+        stdout_path: str,
+        sys_platform: str = sys.platform) -> int:
     env = os.environ.copy()
     resolved_runtime_library_path = _resolve_runtime_path(runtime_library_path)
     if resolved_runtime_library_path:
-        existing = env.get("LD_LIBRARY_PATH", "")
-        env["LD_LIBRARY_PATH"] = (
+        runtime_env_var = _runtime_library_env_var(sys_platform)
+        existing = env.get(runtime_env_var, "")
+        env[runtime_env_var] = (
             resolved_runtime_library_path
             if not existing
             else resolved_runtime_library_path + os.pathsep + existing

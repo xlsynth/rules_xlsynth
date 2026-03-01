@@ -44,6 +44,31 @@ class EnvHelpersTest(unittest.TestCase):
 
             self.assertEqual(captured["cmd"][0], str(driver_path))
 
+    def test_run_subprocess_uses_darwin_runtime_library_env_var(self) -> None:
+        captured = {}
+
+        def fake_run(cmd, check = False, env = None, stdout = None):
+            captured["env"] = dict(env)
+
+            class Result:
+                returncode = 0
+
+            return Result()
+
+        with mock.patch.object(env_helpers.subprocess, "run", side_effect = fake_run):
+            self.assertEqual(
+                env_helpers._run_subprocess(
+                    ["dummy-tool"],
+                    runtime_library_path = "/tmp/runtime",
+                    stdout_path = "",
+                    sys_platform = "darwin",
+                ),
+                0,
+            )
+
+        self.assertEqual(captured["env"]["DYLD_LIBRARY_PATH"], "/tmp/runtime")
+        self.assertNotIn("LD_LIBRARY_PATH", captured["env"])
+
 
 if __name__ == "__main__":
     unittest.main()
