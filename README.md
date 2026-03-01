@@ -41,6 +41,20 @@ register_toolchains("@workspace_xls//:all")
 - `local_paths` uses `local_tools_path`, `local_dslx_stdlib_path`,
   `local_driver_path`, and `local_libxls_path`.
 
+The attributes accepted by each mode are strict:
+
+- `local_paths` requires all four `local_*` attrs and does not accept
+  `xls_version` or `xlsynth_driver_version`.
+- `auto`, `eda_tools_only`, and `download_only` require both
+  `xls_version` and `xlsynth_driver_version` and do not accept any `local_*`
+  attrs.
+
+Download-backed modes also have one host prerequisite: when `auto` falls back
+to downloading, or when `download_only` is selected, the repository rule
+installs `xlsynth-driver` with `rustup run nightly cargo install`. That means
+the host running module resolution must have `rustup` available with a nightly
+toolchain installed.
+
 Each `xls.toolchain(...)` call exports a small repo surface:
 
 - `@<name>//:all` for `register_toolchains(...)`
