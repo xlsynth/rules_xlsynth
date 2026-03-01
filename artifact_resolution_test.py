@@ -142,7 +142,6 @@ class ArtifactResolutionTest(unittest.TestCase):
             libxls_path = libxls_path,
             dslx_stdlib_path = "/tmp/xls-bundle",
         )
-        self.assertEqual(env["CARGO_HOME"], "/tmp/xls-bundle-repo/_cargo_home")
         self.assertEqual(env["RUSTUP_HOME"], "/tmp/xls-bundle-repo/_rustup_home")
         self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target")
 

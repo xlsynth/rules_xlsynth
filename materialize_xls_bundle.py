@@ -320,7 +320,6 @@ def build_driver_install_environment(
         environ = environ,
         sys_platform = sys_platform,
     )
-    env["CARGO_HOME"] = str(repo_root / "_cargo_home")
     env["RUSTUP_HOME"] = str(repo_root / "_rustup_home")
     env["CARGO_TARGET_DIR"] = str(repo_root / "_cargo_target")
     return env
@@ -353,10 +352,9 @@ def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
         )
 
     install_root = repo_root / "_cargo_driver"
-    cargo_home = repo_root / "_cargo_home"
     rustup_home = repo_root / "_rustup_home"
     target_root = repo_root / "_cargo_target"
-    for path in [install_root, cargo_home, rustup_home, target_root]:
+    for path in [install_root, rustup_home, target_root]:
         ensure_clean_path(path)
         path.mkdir(parents = True, exist_ok = True)
     env = build_driver_install_environment(repo_root, libxls_path, dslx_stdlib_path)
