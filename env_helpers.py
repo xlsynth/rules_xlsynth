@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from enum import Enum
-from typing import Any, Dict, List, NamedTuple
+from typing import Any, Dict, List, NamedTuple, Optional
 
 
 _TOOL_CONFIG = {
@@ -104,6 +104,12 @@ def _toolchain_dslx_config(toolchain_data: Dict[str, Any]) -> Dict[str, Any]:
     return toolchain_section.get("dslx", {})
 
 
+def _toolchain_tool_path(toolchain_data: Dict[str, Any]) -> str:
+    toolchain_section = toolchain_data.get("toolchain", {})
+    tool_path = toolchain_section.get("tool_path", "")
+    return _resolve_runtime_path(tool_path)
+
+
 def _runfiles_roots() -> List[str]:
     roots: List[str] = []
     for env_var in ["RUNFILES_DIR", "TEST_SRCDIR"]:
@@ -184,6 +190,7 @@ def _build_extra_args_for_tool(tool: str, toolchain_data: Dict[str, Any]) -> Lis
 def _run_subprocess(
         cmd: List[str],
         *,
+        extra_env: Optional[Dict[str, str]] = None,
         runtime_library_path: str,
         stdout_path: str,
         sys_platform: str = sys.platform) -> int:
@@ -197,6 +204,10 @@ def _run_subprocess(
             if not existing
             else resolved_runtime_library_path + os.pathsep + existing
         )
+    if extra_env is not None:
+        for key, value in extra_env.items():
+            if value:
+                env[key] = value
     stdout_handle = None
     stdout_stream = None
     if stdout_path:
@@ -211,6 +222,13 @@ def _run_subprocess(
 
 
 def _driver(args: argparse.Namespace) -> int:
+    toolchain_data = _parse_toolchain_toml(args.toolchain)
+    extra_env = {}
+    tool_path = _toolchain_tool_path(toolchain_data)
+    if tool_path:
+        # Older driver releases still discover external prover tools through
+        # XLSYNTH_TOOLS even when --toolchain is provided.
+        extra_env["XLSYNTH_TOOLS"] = tool_path
     cmd = [
         _resolve_executable_path(args.driver_path),
         f"--toolchain={args.toolchain}",
@@ -219,6 +237,7 @@ def _driver(args: argparse.Namespace) -> int:
     ]
     return _run_subprocess(
         cmd,
+        extra_env = extra_env,
         runtime_library_path = args.runtime_library_path,
         stdout_path = args.stdout_path,
     )
@@ -226,7 +245,7 @@ def _driver(args: argparse.Namespace) -> int:
 
 def _tool(args: argparse.Namespace) -> int:
     toolchain_data = _parse_toolchain_toml(args.toolchain)
-    tool_path_root = toolchain_data.get("toolchain", {}).get("tool_path")
+    tool_path_root = _toolchain_tool_path(toolchain_data)
     if not tool_path_root:
         raise RuntimeError("Toolchain TOML is missing toolchain.tool_path")
     tool_path = _resolve_runtime_path(os.path.join(tool_path_root, args.tool))

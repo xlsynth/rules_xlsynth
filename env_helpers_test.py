@@ -15,7 +15,7 @@ class EnvHelpersTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             runfiles_root = tmp_path / "runfiles"
-            driver_path = runfiles_root / "_main" / "external" / "+xls+rules_xlsynth_selftest_xls" / "xlsynth-driver"
+            driver_path = runfiles_root / "+xls+rules_xlsynth_selftest_xls" / "xlsynth-driver"
             driver_path.parent.mkdir(parents = True)
             driver_path.write_text("#!/bin/sh\n", encoding = "utf-8")
 
@@ -43,6 +43,44 @@ class EnvHelpersTest(unittest.TestCase):
                     self.assertEqual(env_helpers._driver(argv), 0)
 
             self.assertEqual(captured["cmd"][0], str(driver_path))
+
+    def test_driver_exports_xlsynth_tools_from_toolchain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runfiles_root = tmp_path / "runfiles"
+            tools_path = runfiles_root / "+xls+rules_xlsynth_selftest_xls" / "tools"
+            tools_path.mkdir(parents = True)
+            toolchain_path = tmp_path / "toolchain.toml"
+            toolchain_path.write_text(
+                "[toolchain]\n"
+                "tool_path = \"external/+xls+rules_xlsynth_selftest_xls/tools\"\n",
+                encoding = "utf-8",
+            )
+
+            argv = mock.Mock(
+                driver_path = "/tmp/xlsynth-driver",
+                toolchain = str(toolchain_path),
+                subcommand = "ir-equiv",
+                passthrough = [],
+                runtime_library_path = "",
+                stdout_path = "",
+            )
+
+            captured = {}
+
+            def fake_run(cmd, check = False, env = None, stdout = None):
+                captured["env"] = dict(env)
+
+                class Result:
+                    returncode = 0
+
+                return Result()
+
+            with mock.patch.dict(os.environ, {"RUNFILES_DIR": str(runfiles_root)}, clear = False):
+                with mock.patch.object(env_helpers.subprocess, "run", side_effect = fake_run):
+                    self.assertEqual(env_helpers._driver(argv), 0)
+
+            self.assertEqual(captured["env"]["XLSYNTH_TOOLS"], str(tools_path))
 
     def test_run_subprocess_uses_darwin_runtime_library_env_var(self) -> None:
         captured = {}
