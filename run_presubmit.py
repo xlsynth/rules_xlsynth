@@ -406,17 +406,19 @@ def _resolve_example_artifacts(config: PresubmitConfig, temp_root: Path) -> Dict
     )
     if plan['mode'] == 'download':
         resolved = materialize_xls_bundle.download_versioned_artifacts(temp_root, plan['xls_version'])
+        normalized_libxls = temp_root / materialize_xls_bundle.normalized_libxls_name(resolved['libxls'])
+        materialize_xls_bundle.copy_path(resolved['libxls'], normalized_libxls)
         driver_path = materialize_xls_bundle.install_driver(
             temp_root,
             plan['driver_version'],
-            resolved['libxls'],
+            normalized_libxls,
             resolved['dslx_stdlib_root'],
         )
         return {
             'tools_root': resolved['tools_root'],
             'dslx_stdlib_root': resolved['dslx_stdlib_root'],
             'driver': driver_path,
-            'libxls': resolved['libxls'],
+            'libxls': normalized_libxls,
         }
     return {
         'tools_root': plan['tools_root'],
