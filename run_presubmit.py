@@ -263,13 +263,33 @@ def run_readme_sample_snippets(config: PresubmitConfig):
     if not snippet_blocks:
         raise RuntimeError("No starlark code blocks found in README.md")
 
+
+    def is_module_snippet(block: str) -> bool:
+        module_markers = (
+            'bazel_dep(',
+            'local_path_override(',
+            'use_extension(',
+            'use_repo(',
+            'register_toolchains(',
+            'xls.toolchain(',
+        )
+        return any(marker in block for marker in module_markers)
+
     # Flatten snippets into a list of lines, stripping trailing whitespace.
     snippet_lines = []
     for idx, block in enumerate(snippet_blocks, 1):
+        if is_module_snippet(block):
+            print("--- Skipping README module snippet {} ---".format(idx))
+            print(block.strip())
+            print("---------------------------------------")
+            continue
         print("--- README snippet {} ---".format(idx))
         print(block.strip())
         print("----------------------")
         snippet_lines.extend([ln.rstrip() for ln in block.splitlines() if ln.strip()])
+
+    if not snippet_lines:
+        raise RuntimeError('No BUILD-compatible starlark snippets found in README.md')
 
     # Determine which rule symbols are used so we can create a single load(...).
     rule_name_pattern = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\(")
@@ -415,13 +435,13 @@ def _stage_local_dev_example_tree(config: PresubmitConfig) -> Path:
         stage_root.mkdir(parents = True, exist_ok = True)
         (stage_root / 'bin').mkdir(parents = True, exist_ok = True)
         (stage_root / 'xls' / 'dslx').mkdir(parents = True, exist_ok = True)
-        materialize_xls_bundle.symlink_or_copy(resolved['driver'], stage_root / 'bin' / 'xlsynth-driver')
-        materialize_xls_bundle.symlink_or_copy(resolved['tools_root'], stage_root / 'tools')
-        materialize_xls_bundle.symlink_or_copy(
+        materialize_xls_bundle.copy_path(resolved['driver'], stage_root / 'bin' / 'xlsynth-driver')
+        materialize_xls_bundle.copy_path(resolved['tools_root'], stage_root / 'tools')
+        materialize_xls_bundle.copy_path(
             resolved['dslx_stdlib_root'],
             stage_root / 'xls' / 'dslx' / 'stdlib',
         )
-        materialize_xls_bundle.symlink_or_copy(
+        materialize_xls_bundle.copy_path(
             resolved['libxls'],
             stage_root / materialize_xls_bundle.normalized_libxls_name(resolved['libxls']),
         )
