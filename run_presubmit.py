@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
+from dataclasses import dataclass
 from typing import Optional, Tuple, List, Callable, Dict, Set
 import subprocess
 import optparse
@@ -9,30 +10,26 @@ import re
 import tempfile
 import shutil
 import sys
-import hashlib
-import urllib.request
 
-Runnable = Callable[['PathData'], None]
+import materialize_xls_bundle
+
+Runnable = Callable[['PresubmitConfig'], None]
 TO_RUN: List[Runnable] = []
 
 def register(f: Runnable):
     TO_RUN.append(f)
     return f
 
-class PathData:
-    xlsynth_tools: str
-    xlsynth_driver_dir: str
+
+@dataclass(frozen = True)
+class PresubmitConfig:
+    repo_root: Path
     dslx_path: Optional[Tuple[str, ...]]
+    xlsynth_driver_version: str
+    xls_version: str
 
-    def __init__(self, xlsynth_tools: str, xlsynth_driver_dir: str, dslx_path: Optional[Tuple[str, ...]]):
-        self.xlsynth_tools = xlsynth_tools
-        self.xlsynth_driver_dir = xlsynth_driver_dir
-        self.dslx_path = dslx_path
 
-def _xlsynth_driver_path(path_data: PathData) -> str:
-    return os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')
-
-def _legacy_override_flags(more_action_env: Optional[Dict[str, str]]) -> List[str]:
+def _build_setting_override_flags(more_action_env: Optional[Dict[str, str]]) -> List[str]:
     if not more_action_env:
         return []
     mapping = {
@@ -52,17 +49,56 @@ def _legacy_override_flags(more_action_env: Optional[Dict[str, str]]) -> List[st
         flags.append('--{}={}'.format(mapping[key], value))
     return flags
 
-def _xlsynth_bazel_flags(path_data: PathData, more_action_env: Optional[Dict[str, str]] = None) -> List[str]:
-    flags = [
-        '--@rules_xlsynth//config:tools_path=' + path_data.xlsynth_tools,
-        '--@rules_xlsynth//config:driver_path=' + _xlsynth_driver_path(path_data),
-    ]
-    if path_data.dslx_path is not None:
-        flags.append('--@rules_xlsynth//config:dslx_path=' + ':'.join(path_data.dslx_path))
-    flags.extend(_legacy_override_flags(more_action_env))
+
+def _dslx_path_flags(dslx_path: Optional[Tuple[str, ...]]) -> List[str]:
+    if dslx_path is None:
+        return []
+    return ['--@rules_xlsynth//config:dslx_path=' + ':'.join(dslx_path)]
+
+
+def _presubmit_bazel_flags(
+        config: PresubmitConfig,
+        *,
+        dslx_path: Optional[Tuple[str, ...]] = None,
+        more_action_env: Optional[Dict[str, str]] = None) -> List[str]:
+    resolved_dslx_path = config.dslx_path if dslx_path is None else dslx_path
+    flags = _dslx_path_flags(resolved_dslx_path)
+    flags.extend(_build_setting_override_flags(more_action_env))
     return flags
 
-def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
+
+def _run_bazel(
+        workspace_dir: Path,
+        subcommand: str,
+        targets: Tuple[str, ...],
+        flags: List[str],
+        *,
+        capture_output: bool) -> subprocess.CompletedProcess[str]:
+    cmdline = [
+        'bazel',
+        '--bazelrc=/dev/null',
+        subcommand,
+        '--subcommands',
+    ] + flags + ['--', *targets]
+    print('Running command: ' + subprocess.list2cmdline(cmdline))
+    return subprocess.run(
+        cmdline,
+        check = True,
+        cwd = str(workspace_dir),
+        stderr = subprocess.PIPE if capture_output else None,
+        stdout = subprocess.PIPE if capture_output else None,
+        encoding = 'utf-8' if capture_output else None,
+    )
+
+
+def bazel_test_opt(
+        targets: Tuple[str, ...],
+        config: PresubmitConfig,
+        *,
+        workspace_dir: Optional[Path] = None,
+        capture_output: bool = False,
+        dslx_path: Optional[Tuple[str, ...]] = None,
+        more_action_env: Optional[Dict[str, str]] = None):
     assert isinstance(targets, tuple), targets
     flags = []
     # Force Bazel to rebuild rather than reusing the local shared disk cache so that
@@ -70,50 +106,54 @@ def bazel_test_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_out
     #   * --disk_cache=  : overrides any ~/.bazelrc --disk_cache setting with an empty value
     #   * --nocache_test_results : still avoid caching test results inside the build tree
     flags += ['--nocache_test_results', '--disk_cache=', '-c', 'opt', '--test_output=errors']
-    flags += _xlsynth_bazel_flags(path_data, more_action_env)
-    # Use the caller's default .bazelrc files so presubmit and one-off runs behave consistently.
-    cmdline = [
-        'bazel', '--bazelrc=/dev/null', 'test',
-        '--test_output=errors',
-        '--subcommands',
-    ] + flags + ['--', *targets]
-    print('Running command: ' + subprocess.list2cmdline(cmdline))
-    if capture_output:
-        subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
-    else:
-        subprocess.run(cmdline, check=True)
+    flags += _presubmit_bazel_flags(
+        config,
+        dslx_path = dslx_path,
+        more_action_env = more_action_env,
+    )
+    resolved_workspace_dir = config.repo_root if workspace_dir is None else workspace_dir
+    _run_bazel(resolved_workspace_dir, 'test', targets, flags, capture_output = capture_output)
 
-def bazel_build_opt(targets: Tuple[str, ...], path_data: PathData, *, capture_output: bool = False, more_action_env: Optional[Dict[str, str]] = None):
+
+def bazel_build_opt(
+        targets: Tuple[str, ...],
+        config: PresubmitConfig,
+        *,
+        workspace_dir: Optional[Path] = None,
+        capture_output: bool = False,
+        dslx_path: Optional[Tuple[str, ...]] = None,
+        more_action_env: Optional[Dict[str, str]] = None):
     """Run a `bazel build` over the given targets with the standard flags."""
     assert isinstance(targets, tuple), targets
     flags = []
     # Disable the shared disk cache for builds as well so we always rebuild fresh.
     flags += ['--disk_cache=', '-c', 'opt']
-    flags += _xlsynth_bazel_flags(path_data, more_action_env)
-    # Use the caller's default .bazelrc so build behaviour matches regular developer invocations.
-    cmdline = [
-        'bazel', '--bazelrc=/dev/null', 'build',
-        '--subcommands',
-    ] + flags + ['--', *targets]
-    print('Running command: ' + subprocess.list2cmdline(cmdline))
-    if capture_output:
-        subprocess.run(cmdline, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')
-    else:
-        subprocess.run(cmdline, check=True)
+    flags += _presubmit_bazel_flags(
+        config,
+        dslx_path = dslx_path,
+        more_action_env = more_action_env,
+    )
+    resolved_workspace_dir = config.repo_root if workspace_dir is None else workspace_dir
+    _run_bazel(resolved_workspace_dir, 'build', targets, flags, capture_output = capture_output)
 
 @register
-def run_sample(path_data: PathData):
-    bazel_test_opt(('//sample/...',), path_data)
+def run_sample(config: PresubmitConfig):
+    bazel_test_opt(('//sample/...',), config)
+
 
 @register
-def run_sample_expecting_dslx_path(path_data: PathData):
-    path_data.dslx_path = ('sample_expecting_dslx_path', 'sample_expecting_dslx_path/subdir')
-    bazel_test_opt(('//sample_expecting_dslx_path:main_test', '//sample_expecting_dslx_path:add_mol_pipeline_sv_test'), path_data)
+def run_sample_expecting_dslx_path(config: PresubmitConfig):
+    bazel_test_opt(
+        ('//sample_expecting_dslx_path:main_test', '//sample_expecting_dslx_path:add_mol_pipeline_sv_test'),
+        config,
+        dslx_path = ('sample_expecting_dslx_path', 'sample_expecting_dslx_path/subdir'),
+    )
+
 
 @register
-def run_sample_failing_quickcheck(path_data: PathData):
+def run_sample_failing_quickcheck(config: PresubmitConfig):
     try:
-        bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_test',), path_data, capture_output=True)
+        bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_test',), config, capture_output = True)
     except subprocess.CalledProcessError as e:
         if 'Found falsifying example after 1 tests' in e.stdout:
             pass
@@ -123,7 +163,7 @@ def run_sample_failing_quickcheck(path_data: PathData):
         raise ValueError('Expected quickcheck to fail')
 
     try:
-        bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_proof_test',), path_data, capture_output=True)
+        bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_proof_test',), config, capture_output = True)
     except subprocess.CalledProcessError as e:
         m = re.search(
             r'ProofError: Failed to prove the property! counterexample: bits\[1\]:\d+, bits\[2\]:\d+',
@@ -136,10 +176,10 @@ def run_sample_failing_quickcheck(path_data: PathData):
             raise ValueError('Unexpected error proving quickcheck: stdout: ' + e.stdout + ' stderr: ' + e.stderr)
 
 @register
-def run_sample_disabling_warning(path_data: PathData):
+def run_sample_disabling_warning(config: PresubmitConfig):
     try:
         print('Running with warnings as default...')
-        bazel_test_opt(('//sample_disabling_warning/...',), path_data, capture_output=True)
+        bazel_test_opt(('//sample_disabling_warning/...',), config, capture_output = True)
     except subprocess.CalledProcessError as e:
         want_warnings = [
             'is an empty range',
@@ -155,17 +195,22 @@ def run_sample_disabling_warning(path_data: PathData):
 
     # Now we disable the warning and it should be ok.
     print('== Now running with warnings disabled...')
-    bazel_test_opt(('//sample_disabling_warning/...',), path_data, more_action_env={
-        'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition,empty_range_literal'
-    })
+    bazel_test_opt(
+        ('//sample_disabling_warning/...',),
+        config,
+        more_action_env = {
+            'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition,empty_range_literal',
+        },
+    )
+
 
 @register
-def run_sample_nonequiv_ir(path_data: PathData):
+def run_sample_nonequiv_ir(config: PresubmitConfig):
     print('== Running yes-equivalent IR test...')
-    bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_test',), path_data, capture_output=True)
+    bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_test',), config, capture_output = True)
     print('== Running no-not-equivalent IR test...')
     try:
-        bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_expect_failure_test',), path_data, capture_output=True)
+        bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_expect_failure_test',), config, capture_output = True)
     except subprocess.CalledProcessError as e:
         if 'Verified NOT equivalent' in e.stdout:
             print('IRs are not equivalent as expected; bazel stdout: ' + repr(e.stdout) + ' bazel stderr: ' + repr(e.stderr))
@@ -175,20 +220,22 @@ def run_sample_nonequiv_ir(path_data: PathData):
     else:
         raise ValueError('Expected nonequiv IR to fail')
 
+
 @register
-def run_sample_with_formats(path_data: PathData):
+def run_sample_with_formats(config: PresubmitConfig):
     bazel_test_opt(
         ('//sample_with_formats:gate_assert_minimal_sv_test',),
-        path_data,
-        more_action_env={
+        config,
+        more_action_env = {
             'XLSYNTH_GATE_FORMAT': 'br_gate_buf gated_{output}(.in({input}), .out({output}))',
             'XLSYNTH_ASSERT_FORMAT': '`BR_ASSERT({label}, {condition})',
             'XLSYNTH_USE_SYSTEM_VERILOG': 'true',
         },
     )
 
+
 @register
-def run_readme_sample_snippets(path_data: PathData):
+def run_readme_sample_snippets(config: PresubmitConfig):
     """Ensures that the Starlark BUILD snippets in the README can be loaded by Bazel.
 
     The strategy is:
@@ -202,13 +249,13 @@ def run_readme_sample_snippets(path_data: PathData):
          names used in the snippets are valid.
     """
 
-    repo_root = os.path.dirname(__file__)
-    readme_path = os.path.join(repo_root, "README.md")
+    repo_root = config.repo_root
+    readme_path = repo_root / 'README.md'
 
-    if not os.path.exists(readme_path):
+    if not readme_path.exists():
         raise RuntimeError(f"README.md not found at {readme_path}")
 
-    with open(readme_path, "r", encoding="utf-8") as f:
+    with open(readme_path, "r", encoding = "utf-8") as f:
         readme_text = f.read()
 
     # Extract ```starlark``` blocks.
@@ -234,10 +281,10 @@ def run_readme_sample_snippets(path_data: PathData):
 
     # Inspect rules.bzl to know what symbols it actually exports so we only
     # attempt to load valid ones (e.g. we do NOT load `glob`).
-    rules_bzl_path = os.path.join(repo_root, "rules.bzl")
+    rules_bzl_path = repo_root / 'rules.bzl'
     exported_rule_names: Set[str] = set()
-    if os.path.exists(rules_bzl_path):
-        with open(rules_bzl_path, "r", encoding="utf-8") as rbzl:
+    if rules_bzl_path.exists():
+        with open(rules_bzl_path, "r", encoding = "utf-8") as rbzl:
             for line in rbzl:
                 m = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=", line)
                 if m:
@@ -249,9 +296,9 @@ def run_readme_sample_snippets(path_data: PathData):
     xfile_names = set(re.findall(r"['\"]([^'\"]+\.x)['\"]", "\n".join(snippet_lines)))
 
     # Create a temporary package under the repository root.
-    temp_pkg_dir = tempfile.mkdtemp(prefix="readme_snippets_", dir=repo_root)
+    temp_pkg_dir = tempfile.mkdtemp(prefix = 'readme_snippets_', dir = str(repo_root))
     try:
-        build_path = os.path.join(temp_pkg_dir, "BUILD.bazel")
+        build_path = os.path.join(temp_pkg_dir, 'BUILD.bazel')
 
         with open(build_path, "w", encoding="utf-8") as bf:
             bf.write("# Auto-generated test BUILD file for README snippets.\n")
@@ -301,12 +348,12 @@ def run_readme_sample_snippets(path_data: PathData):
         print(f"Running bazel query on README snippets: {query_target}\nBUILD file used: {build_path}")
         try:
             result = subprocess.run([
-                "bazel",
-                "query",
-                *_xlsynth_bazel_flags(path_data),
-                "--noshow_progress",
+                'bazel',
+                'query',
+                *_presubmit_bazel_flags(config),
+                '--noshow_progress',
                 query_target,
-            ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
+            ], check = True, cwd = str(repo_root), stdout = subprocess.PIPE, stderr = subprocess.PIPE, encoding = 'utf-8')
         except subprocess.CalledProcessError as e:
             print("=== Bazel query failed ===")
             print("STDOUT:\n" + (e.stdout or "<empty>"))
@@ -321,38 +368,113 @@ def run_readme_sample_snippets(path_data: PathData):
         else:
             shutil.rmtree(temp_pkg_dir)
 
+
 @register
-def run_sample_stitch_pipeline_expecting_dslx_path(path_data: PathData):
-    """Runs the pipeline stitching sample that relies on the configured DSLX import paths."""
-    path_data.dslx_path = (
-        'sample_stitch_expecting_dslx_path',
-        'sample_stitch_expecting_dslx_path/subdir',
+def run_workspace_toolchain_smoke_example(config: PresubmitConfig):
+    bazel_build_opt(
+        ('//:smoke_sv_types', '//:smoke_pipeline'),
+        config,
+        workspace_dir = config.repo_root / 'examples' / 'workspace_toolchain_smoke',
     )
+
+
+def _resolve_example_artifacts(config: PresubmitConfig, temp_root: Path) -> Dict[str, Path]:
+    plan = materialize_xls_bundle.resolve_artifact_plan(
+        artifact_source = 'auto',
+        xls_version = config.xls_version,
+        driver_version = config.xlsynth_driver_version,
+    )
+    if plan['mode'] == 'download':
+        resolved = materialize_xls_bundle.download_versioned_artifacts(temp_root, plan['xls_version'])
+        driver_path = materialize_xls_bundle.install_driver(
+            temp_root,
+            plan['driver_version'],
+            resolved['libxls'],
+            resolved['dslx_stdlib_root'],
+        )
+        return {
+            'tools_root': resolved['tools_root'],
+            'dslx_stdlib_root': resolved['dslx_stdlib_root'],
+            'driver': driver_path,
+            'libxls': resolved['libxls'],
+        }
+    return {
+        'tools_root': plan['tools_root'],
+        'dslx_stdlib_root': plan['dslx_stdlib_root'],
+        'driver': plan['driver'],
+        'libxls': plan['libxls'],
+    }
+
+
+def _stage_local_dev_example_tree(config: PresubmitConfig) -> Path:
+    stage_root = Path('/tmp/xls-local-dev')
+    with tempfile.TemporaryDirectory(prefix = 'xls_local_dev_stage_', dir = str(config.repo_root)) as temp_dir:
+        temp_root = Path(temp_dir)
+        resolved = _resolve_example_artifacts(config, temp_root)
+        materialize_xls_bundle.ensure_clean_path(stage_root)
+        stage_root.mkdir(parents = True, exist_ok = True)
+        (stage_root / 'bin').mkdir(parents = True, exist_ok = True)
+        (stage_root / 'xls' / 'dslx').mkdir(parents = True, exist_ok = True)
+        materialize_xls_bundle.symlink_or_copy(resolved['driver'], stage_root / 'bin' / 'xlsynth-driver')
+        materialize_xls_bundle.symlink_or_copy(resolved['tools_root'], stage_root / 'tools')
+        materialize_xls_bundle.symlink_or_copy(
+            resolved['dslx_stdlib_root'],
+            stage_root / 'xls' / 'dslx' / 'stdlib',
+        )
+        materialize_xls_bundle.symlink_or_copy(
+            resolved['libxls'],
+            stage_root / materialize_xls_bundle.normalized_libxls_name(resolved['libxls']),
+        )
+    return stage_root
+
+
+@register
+def run_workspace_toolchain_local_dev_example(config: PresubmitConfig):
+    if sys.platform != 'linux':
+        print('Skipping local_paths example on non-Linux hosts; MODULE.bazel is pinned to libxls.so')
+        return
+    staged_root = _stage_local_dev_example_tree(config)
+    print('Staged local_paths example inputs at {}'.format(staged_root))
+    bazel_build_opt(
+        ('//:smoke_sv_types', '//:smoke_pipeline'),
+        config,
+        workspace_dir = config.repo_root / 'examples' / 'workspace_toolchain_local_dev',
+    )
+
+
+@register
+def run_sample_stitch_pipeline_expecting_dslx_path(config: PresubmitConfig):
+    """Runs the pipeline stitching sample that relies on the configured DSLX import paths."""
     bazel_test_opt(
         (
             '//sample_stitch_expecting_dslx_path:pipeline_stages_pipeline_build_test',
         ),
-        path_data,
+        config,
+        dslx_path = (
+            'sample_stitch_expecting_dslx_path',
+            'sample_stitch_expecting_dslx_path/subdir',
+        ),
     )
 
+
 @register
-def run_sample_invariant_assertions(path_data: PathData):
+def run_sample_invariant_assertions(config: PresubmitConfig):
     """Builds a tiny design twice – with and without invariant assertions –
     and checks that the flag actually toggles assertion emission in the
     generated SystemVerilog.
     """
     target = "//sample_invariant_assertions:array_match_sv"
-    repo_root = os.path.dirname(__file__)
+    repo_root = str(config.repo_root)
 
     # First, build with the flag *disabled* (explicit "false") and record the
     # produced Verilog so we know what the baseline looks like.
-    bazel_build_opt((target,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
+    bazel_build_opt((target,), config, more_action_env = {"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
     sv_path = os.path.join(repo_root, "bazel-bin", "sample_invariant_assertions", "array_match_sv.sv")
     with open(sv_path, "r", encoding="utf-8") as f:
         sv_without = f.read()
 
     # Now, build again but with the flag enabled.
-    bazel_build_opt((target,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "true"})
+    bazel_build_opt((target,), config, more_action_env = {"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "true"})
     with open(sv_path, "r", encoding="utf-8") as f:
         sv_with = f.read()
 
@@ -372,7 +494,7 @@ def run_sample_invariant_assertions(path_data: PathData):
 
     # -- Now verify rule-level override behaviour.
     tgt_attr_false = "//sample_invariant_assertions:array_match_sv_attr_false"
-    bazel_build_opt((tgt_attr_false,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "true"})
+    bazel_build_opt((tgt_attr_false,), config, more_action_env = {"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "true"})
     sv_path_attr_false = os.path.join(repo_root, "bazel-bin", "sample_invariant_assertions", "array_match_sv_attr_false.sv")
     with open(sv_path_attr_false, "r", encoding="utf-8") as f:
         sv_attr_false = f.read()
@@ -385,7 +507,7 @@ def run_sample_invariant_assertions(path_data: PathData):
     print("Rule override to 'false' correctly suppressed extra assertions despite build-setting=true.")
 
     tgt_attr_true = "//sample_invariant_assertions:array_match_sv_attr_true"
-    bazel_build_opt((tgt_attr_true,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
+    bazel_build_opt((tgt_attr_true,), config, more_action_env = {"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
     sv_path_attr_true = os.path.join(repo_root, "bazel-bin", "sample_invariant_assertions", "array_match_sv_attr_true.sv")
     with open(sv_path_attr_true, "r", encoding="utf-8") as f:
         sv_attr_true = f.read()
@@ -400,20 +522,20 @@ def run_sample_invariant_assertions(path_data: PathData):
 # -----------------------------------------------------------------------------
 
 @register
-def run_stitch_invariant_assertions(path_data: PathData):
+def run_stitch_invariant_assertions(config: PresubmitConfig):
     """Analogous checks for dslx_stitch_pipeline rule overrides."""
 
-    repo_root = os.path.dirname(__file__)
+    repo_root = str(config.repo_root)
     base_tgt = "//sample_stitch_invariant_assertions:stages_pipeline"
 
     # Build with the build setting off, record baseline.
-    bazel_build_opt((base_tgt,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
+    bazel_build_opt((base_tgt,), config, more_action_env = {"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "false"})
     sv_base = os.path.join(repo_root, "bazel-bin", "sample_stitch_invariant_assertions", "stages_pipeline.sv")
     with open(sv_base, "r", encoding="utf-8") as f:
         sv_without = f.read()
 
     # Build with the build setting on, capture.
-    bazel_build_opt((base_tgt,), path_data, more_action_env={"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "true"})
+    bazel_build_opt((base_tgt,), config, more_action_env = {"XLSYNTH_ADD_INVARIANT_ASSERTIONS": "true"})
     with open(sv_base, "r", encoding="utf-8") as f:
         sv_with_env = f.read()
 
@@ -431,6 +553,7 @@ def run_stitch_invariant_assertions(path_data: PathData):
 
     print(f"Stitch pipeline assertion counts: disabled={base_cnt}, enabled={env_cnt} (ok)")
 
+
 def parse_versions_toml(path):
     crate_version = None
     dso_version = None
@@ -447,139 +570,28 @@ def parse_versions_toml(path):
         raise RuntimeError(f'Could not parse crate or dso version from {path}')
     return crate_version, dso_version
 
-def find_dso(dso_filename, search_dirs):
-    for d in search_dirs:
-        candidate = os.path.join(d, dso_filename)
-        if os.path.exists(candidate):
-            return candidate
-    # Use ldconfig to find shared library paths
-    try:
-        output = subprocess.check_output(['ldconfig', '-p'], encoding='utf-8', stderr=subprocess.DEVNULL)
-        for line in output.splitlines():
-            line = line.strip()
-            if dso_filename in line:
-                parts = line.split('=>')
-                if len(parts) == 2:
-                    candidate = parts[1].strip()
-                    if os.path.exists(candidate):
-                        return candidate
-    except Exception:
-        pass  # ldconfig may not be available (e.g. on macOS)
-    return None
 
-def _fetch_remote_sha256(url: str) -> str:
-    """Fetches the expected SHA-256 (first token) from a .sha256 URL."""
-    try:
-        with urllib.request.urlopen(url, timeout=15) as response:
-            text = response.read().decode('utf-8')
-    except Exception as e:
-        raise RuntimeError(f'Failed to fetch SHA256 from {url}: {e}')
-    first_token = text.strip().split()[0]
-    if not re.fullmatch(r'[0-9a-fA-F]{64}', first_token):
-        raise RuntimeError(f'Unexpected SHA256 file contents from {url}: {text}')
-    return first_token
+def build_presubmit_config(repo_root: Path, dslx_path: Optional[Tuple[str, ...]]) -> PresubmitConfig:
+    versions_path = repo_root / 'xlsynth-versions.toml'
+    xlsynth_driver_version, xls_version = parse_versions_toml(versions_path)
+    return PresubmitConfig(
+        repo_root = repo_root,
+        dslx_path = dslx_path,
+        xlsynth_driver_version = xlsynth_driver_version,
+        xls_version = xls_version,
+    )
 
-
-def _sha256_of_file(path: str) -> str:
-    """Computes the SHA-256 digest of the given file and returns it as hex."""
-    h = hashlib.sha256()
-    with open(path, 'rb') as f:
-        for chunk in iter(lambda: f.read(8192), b''):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def verify_tool_binaries(tools_dir: str, version: str, *, platform: str = 'ubuntu2004') -> None:
-    """Verifies that each tool binary's SHA-256 matches the released checksum.
-
-    Raises RuntimeError on mismatch.
-    """
-    base_url = f"https://github.com/xlsynth/xlsynth/releases/download/v{version}"
-    artifacts = [
-        'dslx_interpreter_main',
-        'ir_converter_main',
-        'codegen_main',
-        'opt_main',
-        'prove_quickcheck_main',
-        'typecheck_main',
-        'dslx_fmt',
-        'delay_info_main',
-        'check_ir_equivalence_main',
-    ]
-
-    for art in artifacts:
-        local_path = os.path.join(tools_dir, art)
-        if not os.path.exists(local_path):
-            raise RuntimeError(f'Expected tool binary not found at {local_path}')
-        remote_asset = f"{art}-{platform}"
-        remote_sha_url = f"{base_url}/{remote_asset}.sha256"
-        expected = _fetch_remote_sha256(remote_sha_url)
-        actual = _sha256_of_file(local_path)
-        if actual != expected:
-            raise RuntimeError(
-                f'SHA256 mismatch for {art}: local {actual} != expected {expected} (from {remote_sha_url})'
-            )
-        else:
-            print(f"Verified SHA256 for {art} matches release v{version}.")
-
-    # Verify the libxls DSO if present next to the repository root.
-    dso_name = f"libxls-{platform}.so.gz"
-    dso_path = find_dso(dso_name, [os.getcwd(), '/usr/lib', '/usr/local/lib'])
-    if dso_path:
-        remote_sha_url = f"{base_url}/libxls-{platform}.so.gz.sha256"
-        expected = _fetch_remote_sha256(remote_sha_url)
-        actual = _sha256_of_file(dso_path)
-        if actual != expected:
-            raise RuntimeError(
-                f'SHA256 mismatch for {dso_name}: local {actual} != expected {expected} (from {remote_sha_url})'
-            )
-        else:
-            print(f"Verified SHA256 for {dso_name} matches release v{version}.")
-    else:
-        print(f"WARNING: Could not find local libxls DSO ({dso_name}); skipping checksum verification.")
 
 def main():
     parser = optparse.OptionParser()
-    parser.add_option('--xlsynth-tools', type='string', help='Path to xlsynth tools')
-    parser.add_option('--xlsynth-driver-dir', type='string', help='Path to xlsynth driver directory')
-    parser.add_option('--dslx-path', type='string', help='Path to DSLX standard library')
+    parser.add_option('--dslx-path', type = 'string', help = 'Colon-separated extra DSLX import roots for steps that need them')
     parser.add_option('-k', '--keyword', type='string', help='Only run tests whose function name contains this keyword')
     (options, args) = parser.parse_args()
-    if options.xlsynth_tools is None or options.xlsynth_driver_dir is None:
-        parser.error('Missing required argument(s): --xlsynth-tools, --xlsynth-driver-dir, --dslx-path')
+    if args:
+        parser.error('Unexpected positional arguments: {}'.format(' '.join(args)))
         return
     dslx_path = options.dslx_path.split(':') if options.dslx_path else None
-    # Canonicalize directories (remove redundant slashes, resolve '..') so that
-    # downstream path concatenations do not introduce double-slash artefacts.
-    tools_dir = str(Path(options.xlsynth_tools).expanduser().resolve())
-    driver_dir = str(Path(options.xlsynth_driver_dir).expanduser().resolve())
-
-    path_data = PathData(
-        xlsynth_tools=tools_dir,
-        xlsynth_driver_dir=driver_dir,
-        dslx_path=dslx_path,
-    )
-
-    # Version check for xlsynth-driver and DSO
-    versions_path = os.path.join(os.path.dirname(__file__), 'xlsynth-versions.toml')
-    crate_version, dso_version = parse_versions_toml(versions_path)
-    driver_path = os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')
-    try:
-        version_out = subprocess.check_output([driver_path, '--version'], encoding='utf-8').strip()
-    except Exception as e:
-        raise RuntimeError(f'Could not run xlsynth-driver at {driver_path}: {e}')
-    m = re.search(r'(\d+\.\d+\.\d+)', version_out)
-    if not m:
-        raise RuntimeError(f'Could not parse version from xlsynth-driver --version output: {version_out}')
-    actual_version = m.group(1)
-    if actual_version != crate_version:
-        raise RuntimeError(f'xlsynth-driver version {actual_version} does not match required {crate_version}. Please update your xlsynth-driver.')
-    # DSO existence check removed; assume xlsynth-driver can run if version matches
-
-    verify_tool_binaries(path_data.xlsynth_tools, dso_version)
-
-    assert os.path.exists(os.path.join(path_data.xlsynth_tools, 'dslx_interpreter_main')), 'dslx_interpreter_main not found under --xlsynth-tools=' + path_data.xlsynth_tools
-    assert os.path.exists(os.path.join(path_data.xlsynth_driver_dir, 'xlsynth-driver')), 'xlsynth-driver not found under --xlsynth-driver-dir=' + path_data.xlsynth_driver_dir
+    config = build_presubmit_config(Path(__file__).resolve().parent, tuple(dslx_path) if dslx_path else None)
 
     to_run = TO_RUN
     if options.keyword:
@@ -591,10 +603,8 @@ def main():
         print('Executing', f.__name__)
         print('-' * 80)
 
-        print(f"xlsynth-driver version: {version_out}")
-
         try:
-            f(path_data)
+            f(config)
         except Exception as e:
             err_msg = str(e)
             failures.append((f.__name__, err_msg))
