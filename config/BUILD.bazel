@@ -1,0 +1,43 @@
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+
+package(default_visibility = ["//visibility:public"])
+
+string_flag(
+    name = "dslx_path",
+    build_setting_default = "",
+)
+
+string_flag(
+    name = "enable_warnings",
+    build_setting_default = "",
+)
+
+string_flag(
+    name = "disable_warnings",
+    build_setting_default = "",
+)
+
+string_flag(
+    name = "type_inference_v2",
+    build_setting_default = "",
+)
+
+string_flag(
+    name = "gate_format",
+    build_setting_default = "",
+)
+
+string_flag(
+    name = "assert_format",
+    build_setting_default = "",
+)
+
+string_flag(
+    name = "use_system_verilog",
+    build_setting_default = "",
+)
+
+string_flag(
+    name = "add_invariant_assertions",
+    build_setting_default = "",
+)

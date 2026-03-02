@@ -1,0 +1,20 @@
+module(name = "workspace_toolchain_local_dev")
+
+bazel_dep(name = "rules_xlsynth", version = "0.0.0")
+local_path_override(
+    module_name = "rules_xlsynth",
+    path = "../..",
+)
+
+xls = use_extension("@rules_xlsynth//:extensions.bzl", "xls")
+xls.toolchain(
+    name = "xls_local_dev",
+    artifact_source = "local_paths",
+    local_driver_path = "/tmp/xls-local-dev/bin/xlsynth-driver",
+    local_dslx_stdlib_path = "/tmp/xls-local-dev/xls/dslx/stdlib",
+    local_libxls_path = "/tmp/xls-local-dev/libxls.so",
+    local_tools_path = "/tmp/xls-local-dev/tools",
+)
+use_repo(xls, "xls_local_dev")
+
+register_toolchains("@xls_local_dev//:all")

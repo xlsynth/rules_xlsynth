@@ -1,0 +1,27 @@
+module(name = "workspace_toolchain_smoke")
+
+bazel_dep(name = "rules_xlsynth", version = "0.0.0")
+local_path_override(
+    module_name = "rules_xlsynth",
+    path = "../..",
+)
+
+xls = use_extension("@rules_xlsynth//:extensions.bzl", "xls")
+xls.toolchain(
+    name = "workspace_default_xls",
+    artifact_source = "download_only",
+    xls_version = "0.38.0",
+    xlsynth_driver_version = "0.33.0",
+)
+
+# Keep the override bundle on the same versions so this smoke workspace proves
+# the explicit override path without adding version-skew maintenance.
+xls.toolchain(
+    name = "workspace_override_xls",
+    artifact_source = "download_only",
+    xls_version = "0.38.0",
+    xlsynth_driver_version = "0.33.0",
+)
+use_repo(xls, "workspace_default_xls", "workspace_override_xls")
+
+register_toolchains("@workspace_default_xls//:all")

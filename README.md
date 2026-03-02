@@ -2,38 +2,101 @@
 
 [![CI](https://github.com/xlsynth/rules_xlsynth/actions/workflows/ci.yml/badge.svg)](https://github.com/xlsynth/rules_xlsynth/actions/workflows/ci.yml)
 
-### `.bazelrc`-settable configuration
+### Workspace toolchains
 
-These environment variables can act as a repository-level configuration for the `rules_xlsynth` rules:
+`rules_xlsynth` now selects XLS artifacts from `MODULE.bazel` through the `xls`
+module extension. A workspace instantiates one or more named bundles with
+`xls.toolchain(...)`, exposes them with `use_repo(...)`, and registers one
+default bundle with `register_toolchains("@<name>//:all")`.
 
-- `XLSYNTH_DRIVER_DIR`: the path to the `xlsynth-driver` directory, i.e. containing the
-  `xlsynth-driver` binary (which can be installed via `cargo` from its Rust crate). Note that this
-  is named with a `_DIR` suffix because that differentiates it from a direct path to the binary.
-- `XLSYNTH_TOOLS`: the path to the xlsynth tool directory, i.e. containing tools from releases
-  such as `dslx_interpreter_main`, `ir_converter_main`, `codegen_main`, etc. (This can be used
-  by the `xlsynth-driver` program instead of it directly calling `libxls` runtime APIs.)
-- `XLSYNTH_DSLX_STDLIB_PATH`: the path to the DSLX stdlib to use. (Note that this refers to a
-  directory that holds all the standard library files.)
-- `XLSYNTH_DSLX_PATH`: a colon-separated list of additional DSLX paths to search for imported files.
-- `XLSYNTH_DSLX_ENABLE_WARNINGS`: a comma-separated list of warnings to enable.
-- `XLSYNTH_DSLX_DISABLE_WARNINGS`: a comma-separated list of warnings to disable.
-- `XLSYNTH_GATE_FORMAT`: format string used when emitting `gate!()` operations; `{input}` and `{output}` placeholders will be substituted with signal names.
-- `XLSYNTH_ASSERT_FORMAT`: format string used when emitting `assert!()` operations; `{condition}` and `{label}` placeholders will be substituted with the assertion expression and label.
-- `XLSYNTH_USE_SYSTEM_VERILOG`: `true|false`; when `true`, SystemVerilog constructs are emitted instead of plain Verilog.
-- `XLSYNTH_ADD_INVARIANT_ASSERTIONS`: `true|false`; when `true`, extra runtime assertions (e.g. one-hot validation checks) are inserted in generated RTL.
+```starlark
+bazel_dep(name = "rules_xlsynth", version = "<release>")
 
-These can be set in your `.bazelrc` file like this:
+xls = use_extension("@rules_xlsynth//:extensions.bzl", "xls")
 
+xls.toolchain(
+    name = "workspace_xls",
+    xls_version = "0.38.0",
+    xlsynth_driver_version = "0.33.0",
+    artifact_source = "auto",
+)
+
+xls.toolchain(
+    name = "legacy_xls",
+    xls_version = "0.37.0",
+    xlsynth_driver_version = "0.32.0",
+    artifact_source = "download_only",
+)
+
+use_repo(xls, "workspace_xls", "legacy_xls")
+register_toolchains("@workspace_xls//:all")
 ```
-...
-build --action_env XLSYNTH_DSLX_PATH="path/to/additional/dslx/files:another/path"
-build --action_env XLSYNTH_DSLX_ENABLE_WARNINGS="warning1,warning2"
-build --action_env XLSYNTH_DSLX_DISABLE_WARNINGS="warning3,warning4"
+
+`artifact_source` chooses how each bundle repo is materialized:
+
+- `auto` uses the exact versioned `/eda-tools` install when it exists and
+  otherwise downloads the release artifacts.
+- `eda_tools_only` requires the exact versioned `/eda-tools` install.
+- `download_only` always downloads the release artifacts.
+- `local_paths` uses `local_tools_path`, `local_dslx_stdlib_path`,
+  `local_driver_path`, and `local_libxls_path`.
+
+The attributes accepted by each mode are strict:
+
+- `local_paths` requires all four `local_*` attrs and does not accept
+  `xls_version` or `xlsynth_driver_version`.
+- `auto`, `eda_tools_only`, and `download_only` require both
+  `xls_version` and `xlsynth_driver_version` and do not accept any `local_*`
+  attrs.
+
+Download-backed modes also have one host prerequisite: when `auto` falls back
+to downloading, or when `download_only` is selected, the repository rule
+installs `xlsynth-driver` with `rustup run nightly cargo install`. The host
+running module resolution must have `rustup` available. If the nightly
+toolchain is missing, `rules_xlsynth` bootstraps a repo-local `rustup` home
+before installing the driver.
+
+Each `xls.toolchain(...)` call exports a small repo surface:
+
+- `@<name>//:all` for `register_toolchains(...)`
+- `@<name>//:bundle` for explicit `xls_bundle` overrides
+- `@<name>//:libxls` and `@<name>//:libxls_link` for native consumers
+- `@<name>//:dslx_stdlib` for packages that need the standard library tree
+
+Supported DSLX rules may opt out of the registered default bundle with
+`xls_bundle = "@<name>//:bundle"`. Today that escape hatch is available on
+`dslx_library`, `dslx_test`, `dslx_to_ir`, `dslx_prove_quickcheck_test`,
+`dslx_to_sv_types`, `dslx_to_pipeline`, `dslx_to_pipeline_eco`, and
+`dslx_stitch_pipeline`.
+
+```starlark
+dslx_to_pipeline(
+    name = "legacy_pipeline",
+    delay_model = "asap7",
+    pipeline_stages = 1,
+    top = "main",
+    deps = [":my_dslx_library"],
+    xls_bundle = "@legacy_xls//:bundle",
+)
 ```
 
-Or by passing `--action_env=` on the bazel command line.
+Artifact-path build settings such as
+`--@rules_xlsynth//config:driver_path=...`,
+`--@rules_xlsynth//config:tools_path=...`,
+`--@rules_xlsynth//config:runtime_library_path=...`, and
+`--@rules_xlsynth//config:dslx_stdlib_path=...` are no longer supported.
+Artifact selection lives only in `MODULE.bazel`. The remaining
+`@rules_xlsynth//config:*` settings are behavior knobs, such as extra DSLX
+search paths or warning toggles.
 
-### `dslx_library`, `dslx_test` — libraries/tests for DSLX files
+Self-hosted examples in this repo:
+
+- `examples/workspace_toolchain_smoke/` shows one registered default bundle and
+  one explicit `xls_bundle` override without any `.bazelrc` artifact flags.
+- `examples/workspace_toolchain_local_dev/` shows a `local_paths` workspace
+  rooted at `/tmp/xls-local-dev/`.
+
+### `dslx_library`, `dslx_test` - libraries/tests for DSLX files
 
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "dslx_library", "dslx_test")
@@ -50,7 +113,7 @@ dslx_test(
 )
 ```
 
-### `dslx_fmt_test` — format DSLX files
+### `dslx_fmt_test` - format DSLX files
 
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "dslx_fmt_test")
@@ -61,7 +124,7 @@ dslx_fmt_test(
 )
 ```
 
-### `dslx_to_sv_types` — create `_pkg.sv` file
+### `dslx_to_sv_types` - create `_pkg.sv` file
 
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "dslx_to_sv_types")
@@ -73,9 +136,15 @@ dslx_to_sv_types(
 )
 ```
 
-`sv_enum_case_naming_policy` is required. Allowed values (matching `xlsynth-driver`) are `unqualified` and `enum_qualified`.
+`sv_enum_case_naming_policy` is required. Allowed values (matching
+`xlsynth-driver`) are `unqualified` and `enum_qualified`.
 
-### `dslx_to_ir` — convert DSLX to optimized IR
+The selected bundle records whether its `xlsynth-driver` supports the
+`--sv_enum_case_naming_policy` CLI flag. Older bundles still work with
+`sv_enum_case_naming_policy = "unqualified"`; `enum_qualified` only works when
+the chosen workspace bundle or explicit `xls_bundle` advertises support.
+
+### `dslx_to_ir` - convert DSLX to optimized IR
 
 Given a DSLX library target as a dependency, this rule will generate:
 
@@ -94,7 +163,7 @@ dslx_to_ir(
 )
 ```
 
-### `ir_to_delay_info` — convert IR to delay info
+### `ir_to_delay_info` - convert IR to delay info
 
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "ir_to_delay_info")
@@ -107,7 +176,7 @@ ir_to_delay_info(
 )
 ```
 
-### `dslx_prove_quickcheck_test` — prove quickcheck holds for entire input domain
+### `dslx_prove_quickcheck_test` - prove quickcheck holds for entire input domain
 
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "dslx_prove_quickcheck_test")
@@ -120,7 +189,7 @@ dslx_prove_quickcheck_test(
 )
 ```
 
-### `ir_to_gates` — convert IR to gate-level analysis
+### `ir_to_gates` - convert IR to gate-level analysis
 
 Given an IR target (typically from `dslx_to_ir`) as input via `ir_src`, this rule runs the `ir2gates` tool to produce a text file containing gate-level analysis (e.g., gate counts, depth).
 
@@ -145,7 +214,7 @@ ir_to_gates(
 )
 ```
 
-### `dslx_stitch_pipeline` — stitch pipeline stage functions
+### `dslx_stitch_pipeline` - stitch pipeline stage functions
 
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "dslx_stitch_pipeline")
@@ -159,16 +228,16 @@ dslx_stitch_pipeline(
 
 #### Attributes (non-exhaustive)
 
-* `stages` — optional explicit list of stage function names to stitch when auto-discovery is not desired.
-* `input_valid_signal` / `output_valid_signal` — when provided, additional `valid` handshaking logic is generated.
-* `reset` — name of the reset signal to thread through the generated wrapper. Use together with `reset_active_low` to control polarity.
-* `reset_active_low` — `True` when the reset signal is active low (defaults to `False`).
-* `flop_inputs` — `True` to insert an input register stage in front of the first stitched stage (defaults to `True`).
-* `flop_outputs` — `True` to insert an output register stage after the final stage (defaults to `True`).
+* `stages` - optional explicit list of stage function names to stitch when auto-discovery is not desired.
+* `input_valid_signal` / `output_valid_signal` - when provided, additional `valid` handshaking logic is generated.
+* `reset` - name of the reset signal to thread through the generated wrapper. Use together with `reset_active_low` to control polarity.
+* `reset_active_low` - `True` when the reset signal is active low (defaults to `False`).
+* `flop_inputs` - `True` to insert an input register stage in front of the first stitched stage (defaults to `True`).
+* `flop_outputs` - `True` to insert an output register stage after the final stage (defaults to `True`).
 
 The `flop_inputs` and `flop_outputs` flags give fine-grained control over where pipeline registers are placed. For example, the `sample/BUILD.bazel` file contains demonstrations that verify:
 
-* `flop_inputs = True,  flop_outputs = False` — only input side flops.
-* `flop_inputs = False, flop_outputs = True` — only output side flops.
+* `flop_inputs = True,  flop_outputs = False` - only input side flops.
+* `flop_inputs = False, flop_outputs = True` - only output side flops.
 
 Corresponding golden SystemVerilog files live next to the BUILD file so you can observe the emitted RTL.

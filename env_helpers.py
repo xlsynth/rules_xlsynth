@@ -2,85 +2,38 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
+import ast
 import os
 import subprocess
 import sys
-import tempfile
 from enum import Enum
-from typing import List, Optional, Tuple, Dict, NamedTuple
+from typing import Any, Dict, List, NamedTuple, Optional
 
 
-def _bool_env_to_toml(name: str, val: str) -> Optional[str]:
-    v = val.strip()
-    if v == "":
-        return None
-    if v not in ("true", "false"):
-        raise ValueError(f"Invalid value for {name}: {val}")
-    return v
-
-
-def _get_env(name: str) -> str:
-    return os.environ.get(name, "").strip()
-
-
-def _require_env(name: str) -> str:
-    v = _get_env(name)
-    if not v:
-        raise RuntimeError(f"Please set {name} environment variable")
-    return v
-
-
-def _get_env_list(name: str, separator: str) -> List[str]:
-    v = _get_env(name)
-    return v.split(separator) if v else []
-
-
-def _get_bool_toml_from_env(name: str) -> Optional[str]:
-    v = _get_env(name)
-    return _bool_env_to_toml(name, v) if v != "" else None
-
-
-def _toml_lines_from_regular_envs(pairs: List[Tuple[str, str]]) -> List[str]:
-    lines: List[str] = []
-    for env_name, toml_key in pairs:
-        v = _get_env(env_name)
-        if v:
-            lines.append(f"{toml_key} = {repr(v)}")
-    return lines
-
-
-def _toml_lines_from_bool_envs(pairs: List[Tuple[str, str]]) -> List[str]:
-    lines: List[str] = []
-    for env_name, toml_key in pairs:
-        b = _get_bool_toml_from_env(env_name)
-        if b is not None:
-            lines.append(f"{toml_key} = {b}")
-    return lines
-
-
-# Declarative per-tool configuration for extra flags
 _TOOL_CONFIG = {
     "dslx_interpreter_main": {
         "base_flags": ["--compare=jit", "--alsologtostderr"],
-        "env_flags": [
-            "XLSYNTH_DSLX_PATH",
-            "XLSYNTH_DSLX_ENABLE_WARNINGS",
-            "XLSYNTH_DSLX_DISABLE_WARNINGS",
-        ],
+        "dslx_config": True,
+        "dslx_scalar_settings": [],
+        "needs_dslx_stdlib_flag": True,
     },
     "prove_quickcheck_main": {
         "base_flags": ["--alsologtostderr"],
-        "env_flags": [
-            "XLSYNTH_DSLX_PATH",
-        ],
+        "dslx_config": True,
+        "dslx_scalar_settings": [],
+        "needs_dslx_stdlib_flag": True,
     },
     "typecheck_main": {
         "base_flags": [],
-        "env_flags": [
-            "XLSYNTH_DSLX_PATH",
-            "XLSYNTH_DSLX_ENABLE_WARNINGS",
-            "XLSYNTH_DSLX_DISABLE_WARNINGS",
-        ],
+        "dslx_config": True,
+        "dslx_scalar_settings": [],
+        "needs_dslx_stdlib_flag": True,
+    },
+    "dslx_fmt": {
+        "base_flags": [],
+        "dslx_config": False,
+        "dslx_scalar_settings": [],
+        "needs_dslx_stdlib_flag": False,
     },
 }
 
@@ -94,19 +47,20 @@ class EnvFlagSpec(NamedTuple):
     mode: EnvFlagMode
 
 
-# Declarative mapping from env var to flag-building behavior
-_ENV_FLAG_SPECS: Dict[str, EnvFlagSpec] = {
-    "XLSYNTH_DSLX_PATH":
+_DSLX_FLAG_SPECS: Dict[str, EnvFlagSpec] = {
+    "dslx_path":
     EnvFlagSpec("dslx_path", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
-    "XLSYNTH_DSLX_ENABLE_WARNINGS":
+    "enable_warnings":
     EnvFlagSpec("enable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
-    "XLSYNTH_DSLX_DISABLE_WARNINGS":
+    "disable_warnings":
     EnvFlagSpec("disable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
+    "type_inference_v2":
+    EnvFlagSpec("type_inference_v2", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
 }
 
 
-def _env_flag_builder(env_name: str, value: str) -> List[str]:
-    spec = _ENV_FLAG_SPECS.get(env_name)
+def _setting_flag_builder(setting_name: str, value: str) -> List[str]:
+    spec = _DSLX_FLAG_SPECS.get(setting_name)
     if not spec:
         return []
 
@@ -116,90 +70,196 @@ def _env_flag_builder(env_name: str, value: str) -> List[str]:
     return []
 
 
-def _build_extra_args_for_tool(tool: str, tools_dir: str) -> List[str]:
+def _parse_scalar(value_text: str) -> Any:
+    if value_text == "true":
+        return True
+    if value_text == "false":
+        return False
+    return ast.literal_eval(value_text)
+
+
+def _parse_toolchain_toml(path: str) -> Dict[str, Any]:
+    parsed: Dict[str, Any] = {}
+    section_stack: List[str] = []
+    with open(path, "r", encoding = "utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("[") and line.endswith("]"):
+                section_stack = line[1:-1].split(".")
+                continue
+            key, value_text = line.split("=", 1)
+            key = key.strip()
+            value_text = value_text.strip()
+            target = parsed
+            for section_name in section_stack:
+                target = target.setdefault(section_name, {})
+            target[key] = _parse_scalar(value_text)
+    return parsed
+
+
+def _toolchain_dslx_config(toolchain_data: Dict[str, Any]) -> Dict[str, Any]:
+    toolchain_section = toolchain_data.get("toolchain", {})
+    return toolchain_section.get("dslx", {})
+
+
+def _toolchain_tool_path(toolchain_data: Dict[str, Any]) -> str:
+    toolchain_section = toolchain_data.get("toolchain", {})
+    tool_path = toolchain_section.get("tool_path", "")
+    return _resolve_runtime_path(tool_path)
+
+
+def _runfiles_roots() -> List[str]:
+    roots: List[str] = []
+    for env_var in ["RUNFILES_DIR", "TEST_SRCDIR"]:
+        value = os.environ.get(env_var)
+        if value and value not in roots:
+            roots.append(value)
+    return roots
+
+
+def _runfiles_candidates(path: str) -> List[str]:
+    candidates = [path]
+    for marker in ["external/", "_main/"]:
+        marker_index = path.find(marker)
+        if marker_index != -1:
+            candidate = path[marker_index + len(marker):]
+            if candidate not in candidates:
+                candidates.append(candidate)
+            prefixed = "_main/" + candidate
+            if prefixed not in candidates:
+                candidates.append(prefixed)
+    return candidates
+
+
+def _resolve_runtime_path(path: str) -> str:
+    if not path or os.path.isabs(path):
+        return path
+
+    for root in _runfiles_roots():
+        for candidate in _runfiles_candidates(path):
+            resolved = os.path.join(root, candidate)
+            if os.path.exists(resolved):
+                return resolved
+    return path
+
+
+def _resolve_executable_path(path: str) -> str:
+    return _resolve_runtime_path(path)
+
+
+def _runtime_library_env_var(sys_platform: str) -> str:
+    if sys_platform == "darwin":
+        return "DYLD_LIBRARY_PATH"
+    return "LD_LIBRARY_PATH"
+
+
+def _build_extra_args_for_tool(tool: str, toolchain_data: Dict[str, Any]) -> List[str]:
     cfg = _TOOL_CONFIG.get(tool)
     if not cfg:
         return []
-    stdlib = os.path.join(tools_dir, "xls", "dslx", "stdlib")
-    extra: List[str] = [f"--dslx_stdlib_path={stdlib}"]
+    dslx_cfg = _toolchain_dslx_config(toolchain_data)
+    extra: List[str] = []
+    if cfg.get("needs_dslx_stdlib_flag", True):
+        stdlib = _resolve_runtime_path(dslx_cfg.get("dslx_stdlib_path", ""))
+        if not stdlib:
+            raise RuntimeError("Toolchain TOML is missing toolchain.dslx.dslx_stdlib_path")
+        extra.append(f"--dslx_stdlib_path={stdlib}")
     extra.extend(cfg.get("base_flags", []))
-    for env_name in cfg.get("env_flags", []):
-        v = _get_env(env_name) or ""
-        extra.extend(_env_flag_builder(env_name, v))
+    if cfg.get("dslx_config"):
+        list_settings = [
+            ("dslx_path", ":"),
+            ("enable_warnings", ","),
+            ("disable_warnings", ","),
+        ]
+        for setting_name, separator in list_settings:
+            values = dslx_cfg.get(setting_name, [])
+            joined = separator.join(values)
+            extra.extend(_setting_flag_builder(setting_name, joined))
+        for setting_name in cfg.get("dslx_scalar_settings", []):
+            setting_value = dslx_cfg.get(setting_name)
+            if setting_value is not None:
+                extra.extend(_setting_flag_builder(
+                    setting_name,
+                    "true" if setting_value else "false",
+                ))
     return extra
 
 
-def _build_toolchain_toml(tool_dir: str) -> str:
-    dslx_stdlib_path = os.path.join(tool_dir, "xls", "dslx", "stdlib")
-
-    additional_dslx_paths_list = _get_env_list("XLSYNTH_DSLX_PATH", ":")
-    enable_warnings_list = _get_env_list("XLSYNTH_DSLX_ENABLE_WARNINGS", ",")
-    disable_warnings_list = _get_env_list("XLSYNTH_DSLX_DISABLE_WARNINGS", ",")
-
-    codegen_regular_envs: List[Tuple[str, str]] = [
-        ("XLSYNTH_GATE_FORMAT", "gate_format"),
-        ("XLSYNTH_ASSERT_FORMAT", "assert_format"),
-    ]
-    codegen_bool_envs: List[Tuple[str, str]] = [
-        ("XLSYNTH_USE_SYSTEM_VERILOG", "use_system_verilog"),
-        ("XLSYNTH_ADD_INVARIANT_ASSERTIONS", "add_invariant_assertions"),
-    ]
-
-    lines: List[str] = []
-    lines.append("[toolchain]")
-    lines.append(f'tool_path = "{tool_dir}"')
-    lines.append("")
-    lines.append("[toolchain.dslx]")
-    lines.append(f'dslx_stdlib_path = "{dslx_stdlib_path}"')
-    lines.append(f"dslx_path = {repr(additional_dslx_paths_list)}")
-    lines.append(f"enable_warnings = {repr(enable_warnings_list)}")
-    lines.append(f"disable_warnings = {repr(disable_warnings_list)}")
-    lines.append("")
-    lines.append("[toolchain.codegen]")
-    lines.extend(_toml_lines_from_regular_envs(codegen_regular_envs))
-    lines.extend(_toml_lines_from_bool_envs(codegen_bool_envs))
-
-    # Use escaped newlines so the generated Python remains single-line literals.
-    return "\\n".join(lines) + "\\n"
+def _run_subprocess(
+        cmd: List[str],
+        *,
+        extra_env: Optional[Dict[str, str]] = None,
+        runtime_library_path: str,
+        stdout_path: str,
+        sys_platform: str = sys.platform) -> int:
+    env = os.environ.copy()
+    resolved_runtime_library_path = _resolve_runtime_path(runtime_library_path)
+    if resolved_runtime_library_path:
+        runtime_env_var = _runtime_library_env_var(sys_platform)
+        existing = env.get(runtime_env_var, "")
+        env[runtime_env_var] = (
+            resolved_runtime_library_path
+            if not existing
+            else resolved_runtime_library_path + os.pathsep + existing
+        )
+    if extra_env is not None:
+        for key, value in extra_env.items():
+            if value:
+                env[key] = value
+    stdout_handle = None
+    stdout_stream = None
+    if stdout_path:
+        stdout_handle = open(stdout_path, "wb")
+        stdout_stream = stdout_handle
+    try:
+        proc = subprocess.run(cmd, check = False, env = env, stdout = stdout_stream)
+        return proc.returncode
+    finally:
+        if stdout_handle is not None:
+            stdout_handle.close()
 
 
 def _driver(args: argparse.Namespace) -> int:
-    tools_dir = _require_env("XLSYNTH_TOOLS")
-    driver_dir = _require_env("XLSYNTH_DRIVER_DIR")
-    driver_path = os.path.join(driver_dir, "xlsynth-driver")
-    passthrough = list(args.passthrough)
-    toml = _build_toolchain_toml(tools_dir)
-    with tempfile.NamedTemporaryFile("w",
-                                     delete=False,
-                                     prefix="xlsynth_toolchain_",
-                                     suffix=".toml") as tf:
-        tf.write(toml)
-        toolchain_path = tf.name
-    try:
-        cmd = [
-            driver_path, f"--toolchain={toolchain_path}", args.subcommand,
-            *passthrough
-        ]
-        proc = subprocess.run(cmd, check=False)
-        return proc.returncode
-    finally:
-        try:
-            os.unlink(toolchain_path)
-        except OSError:
-            pass
+    toolchain_data = _parse_toolchain_toml(args.toolchain)
+    extra_env = {}
+    tool_path = _toolchain_tool_path(toolchain_data)
+    if tool_path:
+        # Older driver releases still discover external prover tools through
+        # XLSYNTH_TOOLS even when --toolchain is provided.
+        extra_env["XLSYNTH_TOOLS"] = tool_path
+    cmd = [
+        _resolve_executable_path(args.driver_path),
+        f"--toolchain={args.toolchain}",
+        args.subcommand,
+        *list(args.passthrough),
+    ]
+    return _run_subprocess(
+        cmd,
+        extra_env = extra_env,
+        runtime_library_path = args.runtime_library_path,
+        stdout_path = args.stdout_path,
+    )
 
 
 def _tool(args: argparse.Namespace) -> int:
-    tools_dir = _require_env("XLSYNTH_TOOLS")
-    tool_path = os.path.join(tools_dir, args.tool)
+    toolchain_data = _parse_toolchain_toml(args.toolchain)
+    tool_path_root = _toolchain_tool_path(toolchain_data)
+    if not tool_path_root:
+        raise RuntimeError("Toolchain TOML is missing toolchain.tool_path")
+    tool_path = _resolve_runtime_path(os.path.join(tool_path_root, args.tool))
     passthrough = list(args.passthrough)
-    extra = _build_extra_args_for_tool(args.tool, tools_dir)
+    extra = _build_extra_args_for_tool(args.tool, toolchain_data)
     if extra:
         passthrough = extra + passthrough
 
     cmd = [tool_path, *passthrough]
-    proc = subprocess.run(cmd, check=False)
-    return proc.returncode
+    return _run_subprocess(
+        cmd,
+        runtime_library_path = args.runtime_library_path,
+        stdout_path = args.stdout_path,
+    )
 
 
 def main(argv: List[str]) -> int:
@@ -209,10 +269,17 @@ def main(argv: List[str]) -> int:
     # No global arguments; subcommands define their own.
 
     p_driver = sub.add_parser("driver")
+    p_driver.add_argument("--driver_path", required=True)
+    p_driver.add_argument("--runtime_library_path", default="")
+    p_driver.add_argument("--stdout_path", default="")
+    p_driver.add_argument("--toolchain", required=True)
     p_driver.add_argument("subcommand")
     p_driver.set_defaults(func=_driver)
 
     p_tool = sub.add_parser("tool")
+    p_tool.add_argument("--runtime_library_path", default="")
+    p_tool.add_argument("--stdout_path", default="")
+    p_tool.add_argument("--toolchain", required=True)
     p_tool.add_argument("tool")
     p_tool.set_defaults(func=_tool)
 

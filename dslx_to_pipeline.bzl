@@ -3,27 +3,27 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_deps")
 load(":env_helpers.bzl", "python_runner_source")
+load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "get_selected_driver_toolchain")
 
 def _dslx_to_pipeline_impl(ctx):
     srcs = get_srcs_from_deps(ctx)
 
-    # Flags for stdlib path
-    flags_str = ""
+    passthrough = []
 
     # Delay model flag (required)
-    flags_str += " --delay_model=" + ctx.attr.delay_model
+    passthrough.append("--delay_model=" + ctx.attr.delay_model)
 
     # Forward string-valued flags when a non-empty value is provided.
     for flag in ["input_valid_signal", "output_valid_signal", "module_name"]:
         value = getattr(ctx.attr, flag)
         if value:
-            flags_str += " --{}={}".format(flag, value)
+            passthrough.append("--{}={}".format(flag, value))
 
     # Forward integer-valued timing flags when >0.
     if ctx.attr.pipeline_stages > 0:
-        flags_str += " --pipeline_stages={}".format(ctx.attr.pipeline_stages)
+        passthrough.append("--pipeline_stages={}".format(ctx.attr.pipeline_stages))
     if ctx.attr.clock_period_ps > 0:
-        flags_str += " --clock_period_ps={}".format(ctx.attr.clock_period_ps)
+        passthrough.append("--clock_period_ps={}".format(ctx.attr.clock_period_ps))
 
     # Validate that either pipeline_stages or clock_period_ps is specified (>0).
     if ctx.attr.pipeline_stages == 0 and ctx.attr.clock_period_ps == 0:
@@ -40,12 +40,12 @@ def _dslx_to_pipeline_impl(ctx):
     ]
     for flag in bool_flags:
         value = getattr(ctx.attr, flag)
-        flags_str += " --{}={}".format(flag, str(value).lower())
+        passthrough.append("--{}={}".format(flag, str(value).lower()))
 
     # If the attribute is explicitly set ("true" or "false") forward it to
     # override whatever value may be present in the toolchain config.
     if ctx.attr.add_invariant_assertions != "":
-        flags_str += " --add_invariant_assertions={}".format(ctx.attr.add_invariant_assertions)
+        passthrough.append("--add_invariant_assertions={}".format(ctx.attr.add_invariant_assertions))
 
     # Top entry function flag
     if ctx.attr.top:
@@ -54,29 +54,46 @@ def _dslx_to_pipeline_impl(ctx):
         fail("Please specify the 'top' entry function to use")
 
     if ctx.attr.reset:
-        flags_str += " --reset={}".format(ctx.attr.reset)
+        passthrough.append("--reset={}".format(ctx.attr.reset))
 
     output_sv_file = ctx.outputs.sv_file
     output_unopt_ir_file = ctx.outputs.unopt_ir_file
     output_opt_ir_file = ctx.outputs.opt_ir_file
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source())
+    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
+    toolchain = get_selected_driver_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(
+        ctx,
+        name = "dslx_to_pipeline",
+        toolchain = toolchain,
+        add_invariant_assertions = ctx.attr.add_invariant_assertions,
+    )
 
-    ctx.actions.run_shell(
-        inputs = srcs,
-        tools = [runner],
+    ctx.actions.run(
+        inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(
+            toolchain,
+            ["ir_converter_main", "opt_main", "codegen_main"],
+        ),
+        executable = runner,
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
-        command = "\"$1\" driver dslx2pipeline --dslx_input_file=\"$2\" --dslx_top=\"$3\" --output_unopt_ir=\"$4\" --output_opt_ir=\"$5\"" + flags_str + " > \"$6\"",
         arguments = [
-            runner.path,
-            srcs[0].path,
-            top_entry,
-            output_unopt_ir_file.path,
-            output_opt_ir_file.path,
+            "driver",
+            "--driver_path",
+            toolchain.driver_path,
+            "--runtime_library_path",
+            toolchain.runtime_library_path,
+            "--toolchain",
+            toolchain_file.path,
+            "--stdout_path",
             output_sv_file.path,
-        ],
-        use_default_shell_env = True,
+            "dslx2pipeline",
+            "--dslx_input_file=" + srcs[0].path,
+            "--dslx_top=" + top_entry,
+            "--output_unopt_ir=" + output_unopt_ir_file.path,
+            "--output_opt_ir=" + output_opt_ir_file.path,
+        ] + passthrough,
+        use_default_shell_env = False,
     )
 
     return DefaultInfo(
@@ -119,9 +136,9 @@ DslxToPipelineAttrs = {
         default = True,
     ),
     # Tri-state: "true" / "false" / "" (unspecified). When non-empty the
-    # provided value overrides the setting in the TOML (which may come from
-    # XLSYNTH_ADD_INVARIANT_ASSERTIONS). Using a string lets us detect the
-    # unspecified case, which is not possible with attr.bool.
+    # provided value overrides the setting in the generated TOML. Using a
+    # string lets us detect the unspecified case, which is not possible with
+    # attr.bool.
     "add_invariant_assertions": attr.string(
         doc = "Override for invariant assertions generation: 'true', 'false', or leave empty to use toolchain default.",
         default = "",
@@ -139,6 +156,10 @@ DslxToPipelineAttrs = {
         doc = "The top entry function within the dependency module.",
         mandatory = True,
     ),
+    "xls_bundle": attr.label(
+        doc = "Optional override bundle repo label, for example @legacy_xls//:bundle.",
+        providers = [XlsArtifactBundleInfo],
+    ),
 }
 
 # Keep the public rule signature stable
@@ -154,4 +175,5 @@ dslx_to_pipeline = rule(
     implementation = _dslx_to_pipeline_impl,
     attrs = DslxToPipelineAttrs,
     outputs = DslxToPipelineOutputs,
+    toolchains = ["//:toolchain_type"],
 )
