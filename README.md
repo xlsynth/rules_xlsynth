@@ -63,8 +63,9 @@ Each `xls.toolchain(...)` call exports a small repo surface:
 - `@<name>//:libxls` and `@<name>//:libxls_link` for native consumers
 - `@<name>//:dslx_stdlib` for packages that need the standard library tree
 
-Supported leaf rules may opt out of the registered default bundle with
+Supported DSLX rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>//:bundle"`. Today that escape hatch is available on
+`dslx_library`, `dslx_test`, `dslx_to_ir`, `dslx_prove_quickcheck_test`,
 `dslx_to_sv_types`, `dslx_to_pipeline`, `dslx_to_pipeline_eco`, and
 `dslx_stitch_pipeline`.
 

@@ -63,15 +63,39 @@ dslx_library(
     deps = [":imported"],
 )
 
+dslx_library(
+    name = "sample_explicit_bundle",
+    srcs = ["sample.x"],
+    deps = [":imported"],
+    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
+)
+
+build_test(
+    name = "sample_explicit_bundle_typecheck_test",
+    targets = [":sample_explicit_bundle"],
+)
+
 dslx_to_ir(
     name = "sample_ir",
     lib = ":sample",
     top = "main",
 )
 
+dslx_to_ir(
+    name = "sample_ir_explicit_bundle",
+    lib = ":sample_explicit_bundle",
+    top = "main",
+    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
+)
+
 build_test(
     name = "sample_ir_test",
     targets = [":sample_ir"],
+)
+
+build_test(
+    name = "sample_ir_explicit_bundle_test",
+    targets = [":sample_ir_explicit_bundle"],
 )
 
 # Prove the unoptimized and optimized IRs are equivalent.
@@ -132,6 +156,12 @@ build_test(
 dslx_test(
     name = "sample_test",
     deps = [":sample"],
+)
+
+dslx_test(
+    name = "sample_explicit_bundle_test",
+    deps = [":sample_explicit_bundle"],
+    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
 )
 
 dslx_test(
@@ -234,6 +264,13 @@ dslx_prove_quickcheck_test(
     name = "sample_prove_quickcheck_test",
     lib = ":sample",
     top = "quickcheck_main",
+)
+
+dslx_prove_quickcheck_test(
+    name = "sample_prove_quickcheck_explicit_bundle_test",
+    lib = ":sample_explicit_bundle",
+    top = "quickcheck_main",
+    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
 )
 
 # Pipeline stitching example

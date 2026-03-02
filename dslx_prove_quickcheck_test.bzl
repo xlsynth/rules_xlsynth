@@ -3,7 +3,13 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "write_executable_shell_script", "get_srcs_from_lib")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_tool_artifact_inputs", "require_tools_toolchain")
+load(
+    ":xls_toolchain.bzl",
+    "XlsArtifactBundleInfo",
+    "declare_xls_toolchain_toml",
+    "get_selected_tools_toolchain",
+    "get_tool_artifact_inputs",
+)
 
 
 def _dslx_prove_quickcheck_test_impl(ctx):
@@ -17,8 +23,8 @@ def _dslx_prove_quickcheck_test_impl(ctx):
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
-    toolchain = require_tools_toolchain(ctx)
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = "prove_quickcheck")
+    toolchain = get_selected_tools_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "prove_quickcheck", toolchain = toolchain)
     cmd_parts = [
         "/usr/bin/env",
         "python3",
@@ -58,6 +64,10 @@ dslx_prove_quickcheck_test = rule(
         ),
         "top": attr.string(
             doc = "The quickcheck function to be tested. If none is provided, all quickcheck functions in the library will be tested.",
+        ),
+        "xls_bundle": attr.label(
+            doc = "Optional XLS bundle override.",
+            providers = [XlsArtifactBundleInfo],
         ),
     },
     test = True,
