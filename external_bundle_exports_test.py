@@ -18,6 +18,17 @@ class ExternalBundleExportsTest(unittest.TestCase):
         self.assertTrue(stdlib_dir.is_dir())
         self.assertTrue(any(stdlib_dir.glob("*.x")))
 
+    def test_repo_named_alias_exposes_bundle_runfiles(self):
+        runfiles_lookup = runfiles.Create()
+        workspace = os.environ["TEST_WORKSPACE"]
+
+        locations_file = Path(runfiles_lookup.Rlocation("{}/bundle_alias_locations.txt".format(workspace)))
+        self.assertTrue(locations_file.is_file())
+
+        locations = locations_file.read_text(encoding = "utf-8").split()
+        self.assertTrue(any(Path(path).name == "xlsynth-driver" for path in locations))
+        self.assertTrue(any(Path(path).name == "libxls_patched.dylib" for path in locations))
+
 
 if __name__ == "__main__":
     unittest.main()

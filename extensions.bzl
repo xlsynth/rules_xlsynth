@@ -24,7 +24,7 @@ def _metadata_dict(repo_ctx):
     return metadata
 
 
-def _bundle_build_file(libxls_name, driver_supports):
+def _bundle_build_file(repo_alias, libxls_name, driver_supports):
     tool_list = ",\n        ".join(['"{}"'.format(name) for name in _TOOL_BINARIES])
     lib_target = libxls_name
     lib_file_rule = """
@@ -103,6 +103,12 @@ xls_bundle(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "{repo_alias}",
+    actual = ":bundle",
+    visibility = ["//visibility:public"],
+)
+
 xls_toolchain(
     name = "toolchain_impl",
     bundle = ":bundle",
@@ -118,6 +124,7 @@ toolchain(
         tool_list = tool_list,
         libxls_name = libxls_name,
         lib_file_rule = lib_file_rule.strip(),
+        repo_alias = repo_alias,
         driver_supports = "True" if driver_supports else "False",
     )
 
@@ -157,6 +164,7 @@ def _bundle_repo_impl(repo_ctx):
     repo_ctx.file(
         "BUILD.bazel",
         _bundle_build_file(
+            repo_alias = repo_ctx.attr.repo_alias,
             libxls_name = metadata["libxls_name"],
             driver_supports = metadata["driver_supports_sv_enum_case_naming_policy"] == "true",
         ),
@@ -171,6 +179,7 @@ _xls_bundle_repo = repository_rule(
         "local_dslx_stdlib_path": attr.string(),
         "local_libxls_path": attr.string(),
         "local_tools_path": attr.string(),
+        "repo_alias": attr.string(mandatory = True),
         "xls_version": attr.string(),
         "xlsynth_driver_version": attr.string(),
     },
@@ -198,6 +207,7 @@ def _xls_extension_impl(module_ctx):
                 local_dslx_stdlib_path = toolchain.local_dslx_stdlib_path,
                 local_libxls_path = toolchain.local_libxls_path,
                 local_tools_path = toolchain.local_tools_path,
+                repo_alias = toolchain.name,
                 xls_version = toolchain.xls_version,
                 xlsynth_driver_version = toolchain.xlsynth_driver_version,
             )
