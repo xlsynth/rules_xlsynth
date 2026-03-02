@@ -25,12 +25,22 @@ def _metadata_dict(repo_ctx):
 
 
 def _bundle_build_file(repo_alias, libxls_name, driver_supports):
+def _bundle_build_file(repo_alias, libxls_name, runtime_aliases, driver_supports):
     tool_list = ",\n        ".join(['"{}"'.format(name) for name in _TOOL_BINARIES])
+    exported_files = ",\n    ".join(
+        ['"{}"'.format(name) for name in _TOOL_BINARIES + ["xlsynth-driver", libxls_name] + runtime_aliases],
+    )
+    linux_runtime_srcs = ",\n        ".join(['"{}"'.format(name) for name in runtime_aliases])
     lib_target = libxls_name
     lib_file_rule = """
 filegroup(
     name = "libxls_file",
     srcs = ["{lib_target}"],
+    visibility = ["//visibility:public"],
+)
+filegroup(
+    name = "libxls_runtime_files",
+    srcs = [":libxls_file"{runtime_alias_srcs}],
     visibility = ["//visibility:public"],
 )
 cc_import(
@@ -40,10 +50,14 @@ cc_import(
 )
 xls_shared_library_link(
     name = "libxls_link",
+    runtime_files = ":libxls_runtime_files",
     shared_library = ":libxls_file",
     visibility = ["//visibility:public"],
 )
-""".format(lib_target = lib_target)
+""".format(
+        lib_target = lib_target,
+        runtime_alias_srcs = "" if not runtime_aliases else ",\n        {}".format(linux_runtime_srcs),
+    )
     if libxls_name.endswith(".dylib"):
         lib_file_rule = """
 patch_dylib(
@@ -56,6 +70,11 @@ filegroup(
     srcs = [":libxls_patched"],
     visibility = ["//visibility:public"],
 )
+filegroup(
+    name = "libxls_runtime_files",
+    srcs = [":libxls_file"],
+    visibility = ["//visibility:public"],
+)
 cc_import(
     name = "libxls",
     shared_library = ":libxls_file",
@@ -63,6 +82,7 @@ cc_import(
 )
 xls_shared_library_link(
     name = "libxls_link",
+    runtime_files = ":libxls_runtime_files",
     shared_library = ":libxls_file",
     visibility = ["//visibility:public"],
 )
@@ -73,9 +93,7 @@ load("@rules_cc//cc:defs.bzl", "cc_import")
 load("@rules_xlsynth//:xls_toolchain.bzl", "copy_flat_files_to_directory", "patch_dylib", "xls_bundle", "xls_shared_library_link", "xls_toolchain")
 
 exports_files([
-    {tool_list},
-    "xlsynth-driver",
-    "{libxls_name}",
+    {exported_files},
 ])
 
 filegroup(
@@ -121,6 +139,7 @@ toolchain(
     visibility = ["//visibility:public"],
 )
 """.format(
+        exported_files = exported_files,
         tool_list = tool_list,
         libxls_name = libxls_name,
         lib_file_rule = lib_file_rule.strip(),
@@ -161,11 +180,17 @@ def _bundle_repo_impl(repo_ctx):
             result.stderr,
         ))
     metadata = _metadata_dict(repo_ctx)
+    runtime_aliases = [
+        alias
+        for alias in metadata.get("libxls_runtime_aliases", "").split(",")
+        if alias
+    ]
     repo_ctx.file(
         "BUILD.bazel",
         _bundle_build_file(
             repo_alias = repo_ctx.attr.repo_alias,
             libxls_name = metadata["libxls_name"],
+            runtime_aliases = runtime_aliases,
             driver_supports = metadata["driver_supports_sv_enum_case_naming_policy"] == "true",
         ),
     )

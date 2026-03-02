@@ -260,6 +260,50 @@ def patch_macos_dylib_install_name(dylib_path):
         )
 
 
+def parse_readelf_soname(stdout):
+    marker = "Library soname: ["
+    for line in stdout.splitlines():
+        if marker not in line:
+            continue
+        return line.split(marker, 1)[1].split("]", 1)[0]
+    return ""
+
+
+def detect_runtime_library_aliases(libxls_path, sys_platform = sys.platform):
+    if sys_platform != "linux":
+        return []
+    result = subprocess.run(
+        ["readelf", "-d", str(libxls_path)],
+        check = False,
+        capture_output = True,
+        text = True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Failed to inspect ELF SONAME at {}\nstdout:\n{}\nstderr:\n{}".format(
+                libxls_path,
+                result.stdout,
+                result.stderr,
+            )
+        )
+    soname = parse_readelf_soname(result.stdout)
+    if not soname or soname == Path(libxls_path).name:
+        return []
+    return [soname]
+
+
+def materialize_runtime_library_aliases(repo_root, libxls_path, sys_platform = sys.platform):
+    aliases = detect_runtime_library_aliases(libxls_path, sys_platform = sys_platform)
+    for alias in aliases:
+        alias_path = repo_root / alias
+        ensure_clean_path(alias_path)
+        try:
+            os.symlink(libxls_path.name, alias_path)
+        except OSError:
+            shutil.copy2(str(libxls_path), str(alias_path))
+    return aliases
+
+
 def detect_driver_capability(driver_path, libxls_path, dslx_stdlib_path):
     env = build_driver_environment(libxls_path, dslx_stdlib_path)
     result = subprocess.run(
@@ -425,6 +469,7 @@ def materialize_bundle(repo_root, plan):
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
         copy_path(resolved["libxls"], libxls_dest)
         patch_macos_dylib_install_name(libxls_dest)
+        runtime_aliases = materialize_runtime_library_aliases(repo_root, libxls_dest)
 
         driver_path = install_driver(
             repo_root,
@@ -445,6 +490,7 @@ def materialize_bundle(repo_root, plan):
 
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
         symlink_or_copy(resolved["libxls"], libxls_dest)
+        runtime_aliases = materialize_runtime_library_aliases(repo_root, libxls_dest)
 
     driver_supports = detect_driver_capability(driver_dest, libxls_dest, repo_root)
     metadata_path = repo_root / "bundle_metadata.txt"
@@ -454,6 +500,7 @@ def materialize_bundle(repo_root, plan):
                 "true" if driver_supports else "false"
             ),
             "libxls_name={}\n".format(libxls_dest.name),
+            "libxls_runtime_aliases={}\n".format(",".join(runtime_aliases)),
         ]),
         encoding = "utf-8",
     )
