@@ -23,8 +23,6 @@ def _metadata_dict(repo_ctx):
         metadata[key] = value
     return metadata
 
-
-def _bundle_build_file(repo_alias, libxls_name, driver_supports):
 def _bundle_build_file(repo_alias, libxls_name, runtime_aliases, driver_supports):
     tool_list = ",\n        ".join(['"{}"'.format(name) for name in _TOOL_BINARIES])
     exported_files = ",\n    ".join(
