@@ -12,6 +12,7 @@ import sys
 TOOL_BINARIES = [
     "dslx_interpreter_main",
     "ir_converter_main",
+    "block_to_verilog_main",
     "codegen_main",
     "opt_main",
     "prove_quickcheck_main",
