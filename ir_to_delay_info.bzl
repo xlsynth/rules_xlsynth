@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
-load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "require_driver_toolchain")
-
+load(":ir_provider.bzl", "IrInfo")
+load(
+    ":xls_toolchain.bzl",
+    "XlsArtifactBundleInfo",
+    "declare_xls_toolchain_toml",
+    "get_driver_artifact_inputs",
+    "get_selected_driver_toolchain",
+)
 
 def _ir_to_delay_info_impl(ctx):
     opt_ir_file = ctx.attr.ir[IrInfo].ir_file if ctx.attr.use_unopt_ir else ctx.attr.ir[IrInfo].opt_ir_file
@@ -11,8 +16,8 @@ def _ir_to_delay_info_impl(ctx):
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
-    toolchain = require_driver_toolchain(ctx)
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = "ir_to_delay_info")
+    toolchain = get_selected_driver_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "ir_to_delay_info", toolchain = toolchain)
 
     ctx.actions.run(
         inputs = [opt_ir_file, toolchain_file] + get_driver_artifact_inputs(toolchain, ["delay_info_main"]),
@@ -41,7 +46,6 @@ def _ir_to_delay_info_impl(ctx):
         files = depset(direct = [output_file]),
     )
 
-
 ir_to_delay_info = rule(
     doc = "Convert an IR file to delay info",
     implementation = _ir_to_delay_info_impl,
@@ -61,6 +65,10 @@ ir_to_delay_info = rule(
         "use_unopt_ir": attr.bool(
             doc = "Whether to use the unoptimized IR file instead of optimized IR file.",
             default = False,
+        ),
+        "xls_bundle": attr.label(
+            doc = "Optional XLS bundle override.",
+            providers = [XlsArtifactBundleInfo],
         ),
     },
     outputs = {
