@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -136,15 +137,83 @@ class ArtifactResolutionTest(unittest.TestCase):
             ],
         )
 
-    def test_build_driver_install_environment_uses_repo_local_cargo_and_rustup_homes(self):
+    def test_build_driver_install_environment_uses_platform_scoped_cache_dirs(self):
         libxls_path = "/tmp/xls-bundle/libxls.dylib" if sys.platform == "darwin" else "/tmp/xls-bundle/libxls.so"
         env = materialize_xls_bundle.build_driver_install_environment(
             Path("/tmp/xls-bundle-repo"),
             libxls_path = libxls_path,
             dslx_stdlib_path = "/tmp/xls-bundle",
+            host_platform = "arm64",
         )
-        self.assertEqual(env["RUSTUP_HOME"], "/tmp/xls-bundle-repo/_rustup_home")
-        self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target")
+        self.assertEqual(env["RUSTUP_HOME"], "/tmp/xls-bundle-repo/_rustup_home/arm64")
+        self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target/arm64")
+
+    def test_driver_install_root_is_version_and_platform_scoped(self):
+        self.assertEqual(
+            materialize_xls_bundle.driver_install_root(
+                Path("/tmp/xls-bundle-repo"),
+                "0.33.0",
+                "arm64",
+            ),
+            Path("/tmp/xls-bundle-repo/_cargo_driver/arm64/0.33.0"),
+        )
+
+    def test_download_versioned_artifacts_reuses_valid_cache(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            download_root = repo_root / "_downloaded_xls" / "arm64" / "0.38.0"
+            (download_root / "xls" / "dslx" / "stdlib").mkdir(parents = True)
+            (download_root / "xls" / "dslx" / "stdlib" / "std.x").write_text("// stdlib\n", encoding = "utf-8")
+            for binary in materialize_xls_bundle.TOOL_BINARIES:
+                (download_root / binary).write_text("", encoding = "utf-8")
+            (download_root / "libxls-v0.38.0-arm64.dylib").write_text("", encoding = "utf-8")
+
+            with mock.patch.object(materialize_xls_bundle, "detect_host_platform", return_value = "arm64"):
+                with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
+                    resolved = materialize_xls_bundle.download_versioned_artifacts(repo_root, "0.38.0")
+
+            self.assertEqual(resolved["tools_root"], download_root)
+            self.assertEqual(resolved["dslx_stdlib_root"], download_root / "xls" / "dslx" / "stdlib")
+            self.assertEqual(
+                resolved["libxls"],
+                download_root / "libxls-v0.38.0-arm64.dylib",
+            )
+            mock_run.assert_not_called()
+
+    def test_install_driver_reuses_valid_cached_binary(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            driver_path = repo_root / "_cargo_driver" / "arm64" / "0.33.0" / "bin" / "xlsynth-driver"
+            driver_path.parent.mkdir(parents = True)
+            driver_path.write_text("", encoding = "utf-8")
+
+            with mock.patch.object(materialize_xls_bundle, "detect_host_platform", return_value = "arm64"):
+                with mock.patch.object(materialize_xls_bundle.shutil, "which") as mock_which:
+                    with mock.patch.object(
+                        materialize_xls_bundle.subprocess,
+                        "run",
+                        return_value = mock.Mock(
+                            returncode = 0,
+                            stdout = "xlsynth-driver 0.33.0\n",
+                            stderr = "",
+                        ),
+                    ) as mock_run:
+                        resolved = materialize_xls_bundle.install_driver(
+                            repo_root = repo_root,
+                            driver_version = "0.33.0",
+                            libxls_path = "/tmp/xls-bundle/libxls.dylib" if sys.platform == "darwin" else "/tmp/xls-bundle/libxls.so",
+                            dslx_stdlib_path = "/tmp/xls-bundle",
+                        )
+
+            self.assertEqual(resolved, driver_path)
+            mock_which.assert_not_called()
+            mock_run.assert_called_once_with(
+                [str(driver_path), "--version"],
+                check = False,
+                capture_output = True,
+                text = True,
+                env = mock.ANY,
+            )
 
     def test_parse_readelf_soname_finds_soname(self):
         self.assertEqual(

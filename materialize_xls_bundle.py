@@ -171,6 +171,22 @@ def detect_host_platform():
     return "ubuntu2004"
 
 
+def driver_install_root(repo_root, driver_version, host_platform):
+    return repo_root / "_cargo_driver" / host_platform / normalize_version(driver_version)
+
+
+def rustup_home_root(repo_root, host_platform):
+    return repo_root / "_rustup_home" / host_platform
+
+
+def cargo_target_root(repo_root, host_platform):
+    return repo_root / "_cargo_target" / host_platform
+
+
+def downloaded_xls_root(repo_root, xls_version, host_platform):
+    return repo_root / "_downloaded_xls" / host_platform / normalize_version(xls_version)
+
+
 def ensure_clean_path(path):
     if path.is_symlink() or path.is_file():
         path.unlink()
@@ -358,15 +374,17 @@ def build_driver_install_environment(
         libxls_path,
         dslx_stdlib_path,
         environ = None,
-        sys_platform = sys.platform):
+        sys_platform = sys.platform,
+        host_platform = ""):
     env = build_driver_environment(
         libxls_path = libxls_path,
         dslx_stdlib_path = dslx_stdlib_path,
         environ = environ,
         sys_platform = sys_platform,
     )
-    env["RUSTUP_HOME"] = str(repo_root / "_rustup_home")
-    env["CARGO_TARGET_DIR"] = str(repo_root / "_cargo_target")
+    resolved_host_platform = host_platform or detect_host_platform()
+    env["RUSTUP_HOME"] = str(rustup_home_root(repo_root, resolved_host_platform))
+    env["CARGO_TARGET_DIR"] = str(cargo_target_root(repo_root, resolved_host_platform))
     return env
 
 
@@ -387,29 +405,7 @@ def ensure_rustup_nightly_toolchain(rustup_path, env):
     )
 
 
-def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
-    rustup = shutil.which("rustup")
-    if rustup is None:
-        raise RuntimeError(
-            "rules_xlsynth download fallback requires rustup to install xlsynth-driver {}".format(
-                driver_version
-            )
-        )
-
-    install_root = repo_root / "_cargo_driver"
-    rustup_home = repo_root / "_rustup_home"
-    target_root = repo_root / "_cargo_target"
-    for path in [install_root, rustup_home, target_root]:
-        ensure_clean_path(path)
-        path.mkdir(parents = True, exist_ok = True)
-    env = build_driver_install_environment(repo_root, libxls_path, dslx_stdlib_path)
-    ensure_rustup_nightly_toolchain(rustup, env)
-    subprocess.run(
-        build_driver_install_command(rustup, install_root, driver_version),
-        check = True,
-        env = env,
-    )
-    driver_path = install_root / "bin" / "xlsynth-driver"
+def validate_installed_driver(driver_path, env, driver_version):
     result = subprocess.run(
         [str(driver_path), "--version"],
         check = False,
@@ -425,32 +421,65 @@ def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
                 result.stderr,
             )
         )
+    version_text = "{}\n{}".format(result.stdout, result.stderr)
+    expected_version = normalize_version(driver_version)
+    if expected_version not in version_text:
+        raise RuntimeError(
+            "Installed xlsynth-driver at {} reported an unexpected version.\nexpected substring: {}\nstdout:\n{}\nstderr:\n{}".format(
+                driver_path,
+                expected_version,
+                result.stdout,
+                result.stderr,
+            )
+        )
+
+
+def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
+    host_platform = detect_host_platform()
+    install_root = driver_install_root(repo_root, driver_version, host_platform)
+    rustup_home = rustup_home_root(repo_root, host_platform)
+    target_root = cargo_target_root(repo_root, host_platform)
+    env = build_driver_install_environment(
+        repo_root,
+        libxls_path,
+        dslx_stdlib_path,
+        host_platform = host_platform,
+    )
+    for path in [install_root, rustup_home, target_root]:
+        path.mkdir(parents = True, exist_ok = True)
+    driver_path = install_root / "bin" / "xlsynth-driver"
+    if driver_path.exists():
+        try:
+            validate_installed_driver(driver_path, env, driver_version)
+            return driver_path
+        except RuntimeError:
+            ensure_clean_path(install_root)
+            install_root.mkdir(parents = True, exist_ok = True)
+
+    rustup = shutil.which("rustup")
+    if rustup is None:
+        raise RuntimeError(
+            "rules_xlsynth download fallback requires rustup to install xlsynth-driver {}".format(
+                driver_version
+            )
+        )
+    ensure_rustup_nightly_toolchain(rustup, env)
+    subprocess.run(
+        build_driver_install_command(rustup, install_root, driver_version),
+        check = True,
+        env = env,
+    )
+    validate_installed_driver(driver_path, env, driver_version)
     return driver_path
 
 
-def download_versioned_artifacts(repo_root, xls_version):
-    script_path = Path(__file__).with_name("download_release.py")
-    platform = detect_host_platform()
-    download_root = repo_root / "_downloaded_xls"
-    ensure_clean_path(download_root)
-    download_root.mkdir(parents = True, exist_ok = True)
-    subprocess.run(
-        [
-            sys.executable,
-            str(script_path),
-            "--output",
-            str(download_root),
-            "--platform",
-            platform,
-            "--version",
-            version_tag(xls_version),
-            "--dso",
-        ],
-        check = True,
-    )
-
+def resolve_downloaded_artifacts(download_root):
     stdlib_root = download_root / "xls" / "dslx" / "stdlib"
     validate_stdlib_root(stdlib_root)
+    for binary in TOOL_BINARIES:
+        tool_path = download_root / binary
+        if not tool_path.exists():
+            raise RuntimeError("Expected tool binary at {}".format(tool_path))
     libxls_candidates = sorted(download_root.glob("libxls-*.so")) + sorted(download_root.glob("libxls-*.dylib"))
     if len(libxls_candidates) != 1:
         raise RuntimeError("Expected exactly one libxls artifact in {}, found {}".format(download_root, libxls_candidates))
@@ -459,6 +488,33 @@ def download_versioned_artifacts(repo_root, xls_version):
         "dslx_stdlib_root": stdlib_root,
         "libxls": libxls_candidates[0],
     }
+
+
+def download_versioned_artifacts(repo_root, xls_version):
+    script_path = Path(__file__).with_name("download_release.py")
+    host_platform = detect_host_platform()
+    download_root = downloaded_xls_root(repo_root, xls_version, host_platform)
+    if download_root.exists():
+        try:
+            return resolve_downloaded_artifacts(download_root)
+        except (RuntimeError, ValueError):
+            ensure_clean_path(download_root)
+    download_root.mkdir(parents = True, exist_ok = True)
+    subprocess.run(
+        [
+            sys.executable,
+            str(script_path),
+            "--output",
+            str(download_root),
+            "--platform",
+            host_platform,
+            "--version",
+            version_tag(xls_version),
+            "--dso",
+        ],
+        check = True,
+    )
+    return resolve_downloaded_artifacts(download_root)
 
 
 def materialize_bundle(repo_root, plan):
