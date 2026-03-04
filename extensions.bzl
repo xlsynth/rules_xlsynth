@@ -149,7 +149,7 @@ filegroup(
 
 alias(
     name = "xlsynth_sys_link_dep",
-    actual = ":libxls",
+    actual = ":libxls_link",
     visibility = ["//visibility:public"],
 )
 
