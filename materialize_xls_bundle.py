@@ -549,6 +549,15 @@ def materialize_bundle(repo_root, plan):
         symlink_or_copy(resolved["libxls"], libxls_dest)
         runtime_aliases = materialize_runtime_library_aliases(repo_root, libxls_dest)
 
+    artifact_config_path = repo_root / "xlsynth_artifact_config.toml"
+    artifact_config_path.write_text(
+        "".join([
+            "dso_path = \"{}\"\n".format(libxls_dest.name),
+            "dslx_stdlib_path = \".\"\n",
+        ]),
+        encoding = "utf-8",
+    )
+
     driver_supports = detect_driver_capability(driver_dest, libxls_dest, repo_root)
     metadata_path = repo_root / "bundle_metadata.txt"
     metadata_path.write_text(

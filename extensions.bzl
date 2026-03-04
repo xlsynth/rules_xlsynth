@@ -11,7 +11,6 @@ _TOOL_BINARIES = [
     "check_ir_equivalence_main",
 ]
 
-
 def _metadata_dict(repo_ctx):
     metadata = {}
     metadata_path = repo_ctx.path("bundle_metadata.txt")
@@ -89,10 +88,11 @@ xls_shared_library_link(
     return """# SPDX-License-Identifier: Apache-2.0
 
 load("@rules_cc//cc:defs.bzl", "cc_import")
-load("@rules_xlsynth//:xls_toolchain.bzl", "copy_flat_files_to_directory", "patch_dylib", "xls_bundle", "xls_shared_library_link", "xls_toolchain")
+load("@rules_xlsynth//:xls_toolchain.bzl", "copy_flat_files_to_directory", "patch_dylib", "xls_bundle", "xls_shared_library_link", "xls_toolchain", "xlsynth_artifact_config")
 
 exports_files([
     {exported_files},
+    "xlsynth_artifact_config.toml",
 ])
 
 filegroup(
@@ -109,6 +109,16 @@ copy_flat_files_to_directory(
 )
 
 {lib_file_rule}
+
+xlsynth_artifact_config(
+    name = "artifact_config",
+    config = "xlsynth_artifact_config.toml",
+    runtime_files = [
+        ":dslx_stdlib",
+        ":libxls_file",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 xls_bundle(
     name = "bundle",
@@ -145,7 +155,6 @@ toolchain(
         repo_alias = repo_alias,
         driver_supports = "True" if driver_supports else "False",
     )
-
 
 def _bundle_repo_impl(repo_ctx):
     python3 = repo_ctx.which("python3")
@@ -194,7 +203,6 @@ def _bundle_repo_impl(repo_ctx):
         ),
     )
 
-
 _xls_bundle_repo = repository_rule(
     implementation = _bundle_repo_impl,
     attrs = {
@@ -220,7 +228,6 @@ _toolchain_tag = tag_class(attrs = {
     "xlsynth_driver_version": attr.string(),
 })
 
-
 def _xls_extension_impl(module_ctx):
     for module in module_ctx.modules:
         for toolchain in module.tags.toolchain:
@@ -235,7 +242,6 @@ def _xls_extension_impl(module_ctx):
                 xls_version = toolchain.xls_version,
                 xlsynth_driver_version = toolchain.xlsynth_driver_version,
             )
-
 
 xls = module_extension(
     implementation = _xls_extension_impl,
