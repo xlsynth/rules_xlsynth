@@ -18,8 +18,16 @@ matching `libxls` shared library. That repo exports:
 - `@<name>//:libxls`
 - `@<name>//:libxls_link`
 - `@<name>//:dslx_stdlib`
+- `@<name>//:xlsynth_sys_artifact_config`
+- `@<name>//:xlsynth_sys_legacy_stdlib`
+- `@<name>//:xlsynth_sys_legacy_dso`
 - `@<name>//:xlsynth_sys_runtime_files`
-- `@<name>//:artifact_config`
+- `@<name>//:xlsynth_sys_link_dep`
+
+The `xlsynth_sys_*` exports are the intended downstream contract for
+`rules_rust` `crate_extension.annotation(...)` wiring. They let root
+`MODULE.bazel` files choose only a bundle and a build-script mode instead of
+coupling to generic bundle internals.
 
 `artifact_source` controls how those artifacts are resolved:
 

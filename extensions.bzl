@@ -120,12 +120,36 @@ xlsynth_artifact_config(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "xlsynth_sys_artifact_config",
+    actual = ":artifact_config",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "xlsynth_sys_legacy_stdlib",
+    actual = ":dslx_stdlib",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "xlsynth_sys_legacy_dso",
+    actual = ":libxls_file",
+    visibility = ["//visibility:public"],
+)
+
 filegroup(
     name = "xlsynth_sys_runtime_files",
     srcs = [
         ":dslx_stdlib",
         ":libxls_runtime_files",
     ],
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "xlsynth_sys_link_dep",
+    actual = ":libxls",
     visibility = ["//visibility:public"],
 )
 

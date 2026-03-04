@@ -62,9 +62,17 @@ Each `xls.toolchain(...)` call exports a small repo surface:
 - `@<name>//:bundle` for explicit `xls_bundle` overrides
 - `@<name>//:libxls` and `@<name>//:libxls_link` for native consumers
 - `@<name>//:dslx_stdlib` for packages that need the standard library tree
+- `@<name>//:xlsynth_sys_artifact_config` for the modern single-file
+  `xlsynth-sys` build-script contract
+- `@<name>//:xlsynth_sys_legacy_stdlib` and
+  `@<name>//:xlsynth_sys_legacy_dso` for frozen `xlsynth-sys` releases that
+  still use the paired `DSLX_STDLIB_PATH` / `XLS_DSO_PATH` contract
 - `@<name>//:xlsynth_sys_runtime_files` for `xlsynth-sys` runtime data
-- `@<name>//:artifact_config` for the modern single-file `xlsynth-sys`
-  build-script contract
+- `@<name>//:xlsynth_sys_link_dep` for `xlsynth-sys` native linking
+
+`xlsynth-sys` consumers should prefer the `xlsynth_sys_*` labels above rather
+than spelling generic bundle internals like `artifact_config`, `libxls_file`,
+`libxls`, or `dslx_stdlib` directly in downstream `MODULE.bazel` files.
 
 Supported DSLX rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>//:bundle"`. Today that escape hatch is available on

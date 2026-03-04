@@ -55,12 +55,31 @@ genrule(
     cmd = "printf '%s\\n' '$(locations @rules_xlsynth_selftest_xls//:xlsynth_sys_runtime_files)' > $@",
 )
 
+genrule(
+    name = "xlsynth_sys_artifact_config_probe",
+    srcs = ["@rules_xlsynth_selftest_xls//:xlsynth_sys_artifact_config"],
+    outs = ["xlsynth_sys_artifact_config_location.txt"],
+    cmd = "printf '%s\\n' '$(location @rules_xlsynth_selftest_xls//:xlsynth_sys_artifact_config)' > $@",
+)
+
+genrule(
+    name = "xlsynth_sys_legacy_inputs_probe",
+    srcs = [
+        "@rules_xlsynth_selftest_xls//:xlsynth_sys_legacy_dso",
+        "@rules_xlsynth_selftest_xls//:xlsynth_sys_legacy_stdlib",
+    ],
+    outs = ["xlsynth_sys_legacy_input_locations.txt"],
+    cmd = "printf '%s\\n' '$(locations @rules_xlsynth_selftest_xls//:xlsynth_sys_legacy_dso)' '$(locations @rules_xlsynth_selftest_xls//:xlsynth_sys_legacy_stdlib)' > $@",
+)
+
 py_test(
     name = "external_bundle_exports_test",
     srcs = ["external_bundle_exports_test.py"],
     data = [
         ":bundle_alias_probe",
         ":stdlib_location_probe",
+        ":xlsynth_sys_artifact_config_probe",
+        ":xlsynth_sys_legacy_inputs_probe",
         ":xlsynth_sys_runtime_probe",
         "@rules_xlsynth_selftest_xls",
         "@rules_xlsynth_selftest_xls//:dslx_stdlib",
