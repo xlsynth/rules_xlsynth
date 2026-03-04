@@ -62,6 +62,9 @@ Each `xls.toolchain(...)` call exports a small repo surface:
 - `@<name>//:bundle` for explicit `xls_bundle` overrides
 - `@<name>//:libxls` and `@<name>//:libxls_link` for native consumers
 - `@<name>//:dslx_stdlib` for packages that need the standard library tree
+- `@<name>//:xlsynth_sys_runtime_files` for `xlsynth-sys` runtime data
+- `@<name>//:artifact_config` for the modern single-file `xlsynth-sys`
+  build-script contract
 
 Supported DSLX rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>//:bundle"`. Today that escape hatch is available on

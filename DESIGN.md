@@ -18,6 +18,8 @@ matching `libxls` shared library. That repo exports:
 - `@<name>//:libxls`
 - `@<name>//:libxls_link`
 - `@<name>//:dslx_stdlib`
+- `@<name>//:xlsynth_sys_runtime_files`
+- `@<name>//:artifact_config`
 
 `artifact_source` controls how those artifacts are resolved:
 

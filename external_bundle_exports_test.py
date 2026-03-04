@@ -30,6 +30,23 @@ class ExternalBundleExportsTest(unittest.TestCase):
         self.assertTrue(any(Path(path).name == "libxls_patched.dylib" for path in locations))
         self.assertTrue(any(Path(path).name == "block_to_verilog_main" for path in locations))
 
+    def test_xlsynth_sys_runtime_export_is_narrow(self):
+        runfiles_lookup = runfiles.Create()
+        workspace = os.environ["TEST_WORKSPACE"]
+
+        locations_file = Path(
+            runfiles_lookup.Rlocation("{}/xlsynth_sys_runtime_locations.txt".format(workspace)),
+        )
+        self.assertTrue(locations_file.is_file())
+
+        locations = locations_file.read_text(encoding = "utf-8").split()
+        basenames = [Path(path).name for path in locations]
+
+        self.assertIn("dslx_stdlib", basenames)
+        self.assertTrue(any(name.startswith("libxls") for name in basenames))
+        self.assertFalse(any(name == "xlsynth-driver" for name in basenames))
+        self.assertFalse(any(name == "block_to_verilog_main" for name in basenames))
+
 
 if __name__ == "__main__":
     unittest.main()

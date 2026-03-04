@@ -43,9 +43,16 @@ genrule(
 
 genrule(
     name = "bundle_alias_probe",
-    srcs = ["@rules_xlsynth_selftest_xls//:rules_xlsynth_selftest_xls"],
+    srcs = ["@rules_xlsynth_selftest_xls"],
     outs = ["bundle_alias_locations.txt"],
     cmd = "printf '%s\\n' '$(locations @rules_xlsynth_selftest_xls//:rules_xlsynth_selftest_xls)' > $@",
+)
+
+genrule(
+    name = "xlsynth_sys_runtime_probe",
+    srcs = ["@rules_xlsynth_selftest_xls//:xlsynth_sys_runtime_files"],
+    outs = ["xlsynth_sys_runtime_locations.txt"],
+    cmd = "printf '%s\\n' '$(locations @rules_xlsynth_selftest_xls//:xlsynth_sys_runtime_files)' > $@",
 )
 
 py_test(
@@ -54,7 +61,8 @@ py_test(
     data = [
         ":bundle_alias_probe",
         ":stdlib_location_probe",
-        "@rules_xlsynth_selftest_xls//:rules_xlsynth_selftest_xls",
+        ":xlsynth_sys_runtime_probe",
+        "@rules_xlsynth_selftest_xls",
         "@rules_xlsynth_selftest_xls//:dslx_stdlib",
     ],
     deps = ["@rules_python//python/runfiles"],

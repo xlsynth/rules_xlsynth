@@ -120,6 +120,15 @@ xlsynth_artifact_config(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "xlsynth_sys_runtime_files",
+    srcs = [
+        ":dslx_stdlib",
+        ":libxls_runtime_files",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 xls_bundle(
     name = "bundle",
     driver = ":xlsynth-driver",
