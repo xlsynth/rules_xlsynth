@@ -112,11 +112,9 @@ copy_flat_files_to_directory(
 
 xlsynth_artifact_config(
     name = "artifact_config",
-    config = "xlsynth_artifact_config.toml",
-    runtime_files = [
-        ":dslx_stdlib",
-        ":libxls_file",
-    ],
+    dso_name = "{libxls_name}",
+    dslx_stdlib = ":dslx_stdlib",
+    shared_library = ":libxls_file",
     visibility = ["//visibility:public"],
 )
 

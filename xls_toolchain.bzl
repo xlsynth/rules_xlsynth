@@ -372,18 +372,52 @@ copy_flat_files_to_directory = rule(
 )
 
 def _xlsynth_artifact_config_impl(ctx):
-    config = ctx.file.config
-    runtime_files = [config] + ctx.files.runtime_files
+    bundle_root = ctx.label.name
+    config_output = ctx.actions.declare_file("{}/xlsynth_artifact_config.toml".format(bundle_root))
+    dso_output = ctx.actions.declare_file("{}/{}".format(bundle_root, ctx.attr.dso_name))
+    stdlib_output = ctx.actions.declare_directory("{}/dslx_stdlib".format(bundle_root))
+    dslx_stdlib = _single_directory_artifact(ctx.attr.dslx_stdlib, "dslx_stdlib")
+    shared_library = ctx.file.shared_library
+    ctx.actions.run_shell(
+        inputs = [dslx_stdlib, shared_library],
+        outputs = [config_output, dso_output, stdlib_output],
+        arguments = [
+            shared_library.path,
+            dso_output.path,
+            dslx_stdlib.path,
+            stdlib_output.path,
+            config_output.path,
+            ctx.attr.dso_name,
+        ],
+        command = """
+            set -euo pipefail
+            shared_library="$1"
+            dso_output="$2"
+            dslx_stdlib="$3"
+            stdlib_output="$4"
+            config_output="$5"
+            dso_name="$6"
+
+            mkdir -p "$(dirname "$dso_output")" "$(dirname "$config_output")" "$stdlib_output"
+            cp "$shared_library" "$dso_output"
+            cp -R "$dslx_stdlib"/. "$stdlib_output"
+            printf 'dso_path = "%s"\\ndslx_stdlib_path = "dslx_stdlib"\\n' \
+                "$dso_name" > "$config_output"
+        """,
+        progress_message = "Packaging xlsynth artifact config for {}".format(ctx.label),
+    )
+    packaged_files = [config_output, dso_output, stdlib_output]
     return DefaultInfo(
-        files = depset([config]),
-        runfiles = ctx.runfiles(files = runtime_files),
+        files = depset([config_output]),
+        runfiles = ctx.runfiles(files = packaged_files),
     )
 
 xlsynth_artifact_config = rule(
     implementation = _xlsynth_artifact_config_impl,
     attrs = {
-        "config": attr.label(allow_single_file = True, mandatory = True),
-        "runtime_files": attr.label_list(allow_files = True),
+        "dso_name": attr.string(mandatory = True),
+        "dslx_stdlib": attr.label(mandatory = True),
+        "shared_library": attr.label(allow_single_file = True, mandatory = True),
     },
 )
 

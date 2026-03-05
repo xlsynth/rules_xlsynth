@@ -5,6 +5,10 @@ import unittest
 from python.runfiles import runfiles
 
 
+def expected_libxls_name():
+    return "libxls.dylib" if os.uname().sysname == "Darwin" else "libxls.so"
+
+
 class ExternalBundleExportsTest(unittest.TestCase):
     def test_stdlib_target_is_a_single_directory_runfile(self):
         runfiles_lookup = runfiles.Create()
@@ -59,6 +63,26 @@ class ExternalBundleExportsTest(unittest.TestCase):
             Path(location_file.read_text(encoding = "utf-8").strip()).name,
             "xlsynth_artifact_config.toml",
         )
+
+    def test_xlsynth_sys_artifact_config_export_is_self_contained(self):
+        runfiles_lookup = runfiles.Create()
+        config_path = Path(
+            runfiles_lookup.Rlocation(
+                "rules_xlsynth_selftest_xls/artifact_config/xlsynth_artifact_config.toml",
+            ),
+        )
+        self.assertTrue(config_path.is_file())
+
+        config_lines = dict(
+            line.split(" = ", 1)
+            for line in config_path.read_text(encoding = "utf-8").splitlines()
+            if line
+        )
+        expected_dso_name = expected_libxls_name()
+        self.assertEqual(config_lines["dso_path"].strip('"'), expected_dso_name)
+        self.assertEqual(config_lines["dslx_stdlib_path"].strip('"'), "dslx_stdlib")
+        self.assertTrue((config_path.parent / expected_dso_name).is_file())
+        self.assertTrue((config_path.parent / "dslx_stdlib").is_dir())
 
     def test_xlsynth_sys_dep_export_packages_runtime_payload(self):
         runfiles_lookup = runfiles.Create()

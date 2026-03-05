@@ -91,6 +91,7 @@ py_test(
         ":xlsynth_sys_runtime_probe",
         "@rules_xlsynth_selftest_xls",
         "@rules_xlsynth_selftest_xls//:dslx_stdlib",
+        "@rules_xlsynth_selftest_xls//:xlsynth_sys_artifact_config",
     ],
     deps = ["@rules_python//python/runfiles"],
 )
