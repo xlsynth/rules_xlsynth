@@ -147,6 +147,13 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+xls_shared_library_link(
+    name = "xlsynth_sys_dep",
+    runtime_files = ":xlsynth_sys_runtime_files",
+    shared_library = ":libxls_file",
+    visibility = ["//visibility:public"],
+)
+
 alias(
     name = "xlsynth_sys_link_dep",
     actual = ":libxls_link",

@@ -67,12 +67,17 @@ Each `xls.toolchain(...)` call exports a small repo surface:
 - `@<name>//:xlsynth_sys_legacy_stdlib` and
   `@<name>//:xlsynth_sys_legacy_dso` for frozen `xlsynth-sys` releases that
   still use the paired `DSLX_STDLIB_PATH` / `XLS_DSO_PATH` contract
-- `@<name>//:xlsynth_sys_runtime_files` for `xlsynth-sys` runtime data
-- `@<name>//:xlsynth_sys_link_dep` for `xlsynth-sys` native linking
+- `@<name>//:xlsynth_sys_dep` for the preferred `xlsynth-sys`
+  runtime-plus-link contract
+- `@<name>//:xlsynth_sys_runtime_files` and `@<name>//:xlsynth_sys_link_dep`
+  as compatibility exports for callers that still spell runtime and link
+  separately
 
-`xlsynth-sys` consumers should prefer the `xlsynth_sys_*` labels above rather
-than spelling generic bundle internals like `artifact_config`, `libxls_file`,
-`libxls`, or `dslx_stdlib` directly in downstream `MODULE.bazel` files.
+`xlsynth-sys` consumers should prefer `xlsynth_sys_artifact_config`,
+`xlsynth_sys_dep`, and, for frozen releases, `xlsynth_sys_legacy_stdlib` plus
+`xlsynth_sys_legacy_dso`, rather than spelling generic bundle internals like
+`artifact_config`, `libxls_file`, `libxls`, or `dslx_stdlib` directly in
+downstream `MODULE.bazel` files.
 
 Supported DSLX rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>//:bundle"`. Today that escape hatch is available on

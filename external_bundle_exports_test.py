@@ -60,6 +60,20 @@ class ExternalBundleExportsTest(unittest.TestCase):
             "xlsynth_artifact_config.toml",
         )
 
+    def test_xlsynth_sys_dep_export_packages_runtime_payload(self):
+        runfiles_lookup = runfiles.Create()
+        workspace = os.environ["TEST_WORKSPACE"]
+
+        locations_file = Path(
+            runfiles_lookup.Rlocation("{}/xlsynth_sys_dep_locations.txt".format(workspace)),
+        )
+        self.assertTrue(locations_file.is_file())
+
+        basenames = [Path(path).name for path in locations_file.read_text(encoding = "utf-8").split()]
+        self.assertIn("dslx_stdlib", basenames)
+        self.assertTrue(any(name.startswith("libxls") for name in basenames))
+        self.assertFalse(any(name == "xlsynth-driver" for name in basenames))
+
     def test_xlsynth_sys_legacy_exports_are_stdlib_plus_dso(self):
         runfiles_lookup = runfiles.Create()
         workspace = os.environ["TEST_WORKSPACE"]

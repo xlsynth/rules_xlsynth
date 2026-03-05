@@ -21,13 +21,19 @@ matching `libxls` shared library. That repo exports:
 - `@<name>//:xlsynth_sys_artifact_config`
 - `@<name>//:xlsynth_sys_legacy_stdlib`
 - `@<name>//:xlsynth_sys_legacy_dso`
+- `@<name>//:xlsynth_sys_dep`
 - `@<name>//:xlsynth_sys_runtime_files`
 - `@<name>//:xlsynth_sys_link_dep`
 
 The `xlsynth_sys_*` exports are the intended downstream contract for
-`rules_rust` `crate_extension.annotation(...)` wiring. They let root
-`MODULE.bazel` files choose only a bundle and a build-script mode instead of
-coupling to generic bundle internals.
+`rules_rust` `crate_extension.annotation(...)` wiring. The preferred modern
+shape is `build_script_data` / `build_script_env` for the build-script
+contract, plus `deps = ["@<name>//:xlsynth_sys_dep"]` for the combined
+runtime-plus-link contract. The compatibility exports
+`xlsynth_sys_runtime_files` and `xlsynth_sys_link_dep` remain available for
+callers that still spell those phases separately. This lets root `MODULE.bazel`
+files choose only a bundle and a build-script mode instead of coupling to
+generic bundle internals.
 
 `artifact_source` controls how those artifacts are resolved:
 

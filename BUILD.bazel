@@ -56,6 +56,13 @@ genrule(
 )
 
 genrule(
+    name = "xlsynth_sys_dep_probe",
+    srcs = ["@rules_xlsynth_selftest_xls//:xlsynth_sys_dep"],
+    outs = ["xlsynth_sys_dep_locations.txt"],
+    cmd = "printf '%s\\n' '$(locations @rules_xlsynth_selftest_xls//:xlsynth_sys_dep)' > $@",
+)
+
+genrule(
     name = "xlsynth_sys_artifact_config_probe",
     srcs = ["@rules_xlsynth_selftest_xls//:xlsynth_sys_artifact_config"],
     outs = ["xlsynth_sys_artifact_config_location.txt"],
@@ -79,6 +86,7 @@ py_test(
         ":bundle_alias_probe",
         ":stdlib_location_probe",
         ":xlsynth_sys_artifact_config_probe",
+        ":xlsynth_sys_dep_probe",
         ":xlsynth_sys_legacy_inputs_probe",
         ":xlsynth_sys_runtime_probe",
         "@rules_xlsynth_selftest_xls",
