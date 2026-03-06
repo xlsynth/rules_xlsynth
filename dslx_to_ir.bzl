@@ -4,6 +4,13 @@ load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_lib", "mangle_dslx_name")
 load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
+load(
+    ":xls_toolchain.bzl",
+    "XlsArtifactBundleInfo",
+    "declare_xls_toolchain_toml",
+    "get_driver_artifact_inputs",
+    "get_selected_driver_toolchain",
+)
 
 def _dslx_to_ir_impl(ctx):
     # Get the DslxInfo from the direct library target
@@ -20,21 +27,34 @@ def _dslx_to_ir_impl(ctx):
     all_transitive_srcs = get_srcs_from_lib(ctx)
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source())
+    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
+    toolchain = get_selected_driver_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_to_ir", toolchain = toolchain)
+    dslx2ir_inputs = [toolchain_file] + get_driver_artifact_inputs(toolchain, ["ir_converter_main"])
+    ir2opt_inputs = [toolchain_file] + get_driver_artifact_inputs(toolchain, ["opt_main"])
 
     # Stage 1: dslx2ir
-    ctx.actions.run_shell(
-        inputs = all_transitive_srcs,
-        tools = [runner],
+    ctx.actions.run(
+        inputs = all_transitive_srcs + dslx2ir_inputs,
+        executable = runner,
         outputs = [ctx.outputs.ir_file],
-        command = "\"$1\" driver dslx2ir --dslx_input_file=\"$2\" --dslx_top=\"$3\" > \"$4\"",
         arguments = [
-            runner.path,
-            main_src.path,
-            ctx.attr.top,
+            "driver",
+            "--driver_path",
+            toolchain.driver_path,
+            "--runtime_library_path",
+            toolchain.runtime_library_path,
+            "--toolchain",
+            toolchain_file.path,
+            "--stdout_path",
             ctx.outputs.ir_file.path,
+            "dslx2ir",
+            "--dslx_input_file",
+            main_src.path,
+            "--dslx_top",
+            ctx.attr.top,
         ],
-        use_default_shell_env = True,
+        use_default_shell_env = False,
         progress_message = "Generating IR for DSLX",
         mnemonic = "DSLX2IR",
     )
@@ -42,18 +62,26 @@ def _dslx_to_ir_impl(ctx):
     ir_top = mangle_dslx_name(main_src.basename, ctx.attr.top)
 
     # Stage 2: ir2opt
-    ctx.actions.run_shell(
-        inputs = [ctx.outputs.ir_file],
-        tools = [runner],
+    ctx.actions.run(
+        inputs = [ctx.outputs.ir_file] + ir2opt_inputs,
+        executable = runner,
         outputs = [ctx.outputs.opt_ir_file],
-        command = "\"$1\" driver ir2opt \"$2\" --top \"$3\" > \"$4\"",
         arguments = [
-            runner.path,
-            ctx.outputs.ir_file.path,
-            ir_top,
+            "driver",
+            "--driver_path",
+            toolchain.driver_path,
+            "--runtime_library_path",
+            toolchain.runtime_library_path,
+            "--toolchain",
+            toolchain_file.path,
+            "--stdout_path",
             ctx.outputs.opt_ir_file.path,
+            "ir2opt",
+            ctx.outputs.ir_file.path,
+            "--top",
+            ir_top,
         ],
-        use_default_shell_env = True,
+        use_default_shell_env = False,
         progress_message = "Optimizing IR",
         mnemonic = "IR2OPT",
     )
@@ -76,9 +104,14 @@ dslx_to_ir = rule(
             doc = "The top-level DSLX module to be converted to IR.",
             mandatory = True,
         ),
+        "xls_bundle": attr.label(
+            doc = "Optional XLS bundle override.",
+            providers = [XlsArtifactBundleInfo],
+        ),
     },
     outputs = {
         "ir_file": "%{name}.ir",
         "opt_ir_file": "%{name}.opt.ir",
     },
+    toolchains = ["//:toolchain_type"],
 )
