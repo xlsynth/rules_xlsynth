@@ -31,7 +31,7 @@ class ExternalBundleExportsTest(unittest.TestCase):
 
         locations = locations_file.read_text(encoding = "utf-8").split()
         self.assertTrue(any(Path(path).name == "xlsynth-driver" for path in locations))
-        self.assertTrue(any(Path(path).name == "libxls_patched.dylib" for path in locations))
+        self.assertTrue(any(Path(path).name == expected_libxls_name() for path in locations))
         self.assertTrue(any(Path(path).name == "block_to_verilog_main" for path in locations))
 
     def test_xlsynth_sys_runtime_export_is_narrow(self):

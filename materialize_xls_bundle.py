@@ -264,19 +264,6 @@ def build_driver_environment(
     return env
 
 
-def patch_macos_dylib_install_name(dylib_path):
-    if sys.platform == "darwin":
-        subprocess.run(
-            [
-                "install_name_tool",
-                "-id",
-                str(dylib_path),
-                str(dylib_path),
-            ],
-            check = True,
-        )
-
-
 def parse_readelf_soname(stdout):
     marker = "Library soname: ["
     for line in stdout.splitlines():
@@ -286,9 +273,7 @@ def parse_readelf_soname(stdout):
     return ""
 
 
-def detect_runtime_library_aliases(libxls_path, sys_platform = sys.platform):
-    if sys_platform != "linux":
-        return []
+def read_linux_soname(libxls_path):
     result = subprocess.run(
         ["readelf", "-d", str(libxls_path)],
         check = False,
@@ -303,22 +288,43 @@ def detect_runtime_library_aliases(libxls_path, sys_platform = sys.platform):
                 result.stderr,
             )
         )
-    soname = parse_readelf_soname(result.stdout)
-    if not soname or soname == Path(libxls_path).name:
-        return []
-    return [soname]
+    return parse_readelf_soname(result.stdout)
 
 
-def materialize_runtime_library_aliases(repo_root, libxls_path, sys_platform = sys.platform):
-    aliases = detect_runtime_library_aliases(libxls_path, sys_platform = sys_platform)
-    for alias in aliases:
-        alias_path = repo_root / alias
-        ensure_clean_path(alias_path)
-        try:
-            os.symlink(libxls_path.name, alias_path)
-        except OSError:
-            shutil.copy2(str(libxls_path), str(alias_path))
-    return aliases
+def normalize_linux_soname(libxls_path):
+    soname = read_linux_soname(libxls_path)
+    expected = Path(libxls_path).name
+    if soname and soname != expected:
+        patchelf = shutil.which("patchelf")
+        if patchelf == None:
+            raise RuntimeError(
+                "libxls SONAME at {} is {} but patchelf is unavailable; install patchelf to normalize SONAME to {}".format(
+                    libxls_path,
+                    soname,
+                    expected,
+                )
+            )
+        subprocess.run(
+            [patchelf, "--set-soname", expected, str(libxls_path)],
+            check = True,
+        )
+
+
+def normalize_runtime_library_identity(libxls_path, sys_platform = sys.platform):
+    if sys_platform == "darwin":
+        subprocess.run(
+            [
+                "install_name_tool",
+                "-id",
+                "@rpath/{}".format(Path(libxls_path).name),
+                str(libxls_path),
+            ],
+            check = True,
+        )
+    elif sys_platform == "linux":
+        normalize_linux_soname(libxls_path)
+    else:
+        raise RuntimeError("Unsupported host platform: {}".format(sys_platform))
 
 
 def detect_driver_capability(driver_path, libxls_path, dslx_stdlib_path):
@@ -525,8 +531,7 @@ def materialize_bundle(repo_root, plan):
 
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
         copy_path(resolved["libxls"], libxls_dest)
-        patch_macos_dylib_install_name(libxls_dest)
-        runtime_aliases = materialize_runtime_library_aliases(repo_root, libxls_dest)
+        normalize_runtime_library_identity(libxls_dest)
 
         driver_path = install_driver(
             repo_root,
@@ -546,8 +551,8 @@ def materialize_bundle(repo_root, plan):
         symlink_or_copy(resolved["driver"], driver_dest)
 
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
-        symlink_or_copy(resolved["libxls"], libxls_dest)
-        runtime_aliases = materialize_runtime_library_aliases(repo_root, libxls_dest)
+        copy_path(resolved["libxls"], libxls_dest)
+        normalize_runtime_library_identity(libxls_dest)
 
     artifact_config_path = repo_root / "xlsynth_artifact_config.toml"
     artifact_config_path.write_text(
@@ -566,7 +571,6 @@ def materialize_bundle(repo_root, plan):
                 "true" if driver_supports else "false"
             ),
             "libxls_name={}\n".format(libxls_dest.name),
-            "libxls_runtime_aliases={}\n".format(",".join(runtime_aliases)),
         ]),
         encoding = "utf-8",
     )

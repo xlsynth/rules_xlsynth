@@ -226,7 +226,7 @@ Tag        Type                         Name/Value
             "libxls-v0.38.0.so",
         )
 
-    def test_detect_runtime_library_aliases_uses_linux_soname_when_needed(self):
+    def test_read_linux_soname_reads_elf_metadata(self):
         with mock.patch.object(
             materialize_xls_bundle.subprocess,
             "run",
@@ -237,30 +237,52 @@ Tag        Type                         Name/Value
             ),
         ):
             self.assertEqual(
-                materialize_xls_bundle.detect_runtime_library_aliases(
-                    Path("/tmp/xls-bundle/libxls.so"),
-                    sys_platform = "linux",
-                ),
-                ["libxls-v0.38.0.so"],
+                materialize_xls_bundle.read_linux_soname(Path("/tmp/xls-bundle/libxls.so")),
+                "libxls-v0.38.0.so",
             )
 
-    def test_detect_runtime_library_aliases_ignores_matching_linux_name(self):
+    def test_normalize_linux_soname_sets_expected_name(self):
         with mock.patch.object(
-            materialize_xls_bundle.subprocess,
-            "run",
-            return_value = mock.Mock(
-                returncode = 0,
-                stdout = "0x000000000000000e (SONAME)             Library soname: [libxls.so]\n",
-                stderr = "",
-            ),
+            materialize_xls_bundle,
+            "read_linux_soname",
+            return_value = "libxls-v0.38.0.so",
         ):
-            self.assertEqual(
-                materialize_xls_bundle.detect_runtime_library_aliases(
-                    Path("/tmp/xls-bundle/libxls.so"),
-                    sys_platform = "linux",
-                ),
-                [],
-            )
+            with mock.patch.object(materialize_xls_bundle.shutil, "which", return_value = "/usr/bin/patchelf"):
+                with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
+                    materialize_xls_bundle.normalize_linux_soname(Path("/tmp/xls-bundle/libxls.so"))
+        mock_run.assert_called_once_with(
+            [
+                "/usr/bin/patchelf",
+                "--set-soname",
+                "libxls.so",
+                "/tmp/xls-bundle/libxls.so",
+            ],
+            check = True,
+        )
+
+    def test_normalize_linux_soname_is_noop_when_matching(self):
+        with mock.patch.object(
+            materialize_xls_bundle,
+            "read_linux_soname",
+            return_value = "libxls.so",
+        ):
+            with mock.patch.object(materialize_xls_bundle.shutil, "which") as mock_which:
+                with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
+                    materialize_xls_bundle.normalize_linux_soname(Path("/tmp/xls-bundle/libxls.so"))
+        mock_which.assert_not_called()
+        mock_run.assert_not_called()
+
+    def test_normalize_linux_soname_raises_when_patchelf_missing(self):
+        with mock.patch.object(
+            materialize_xls_bundle,
+            "read_linux_soname",
+            return_value = "libxls-v0.38.0.so",
+        ):
+            with mock.patch.object(materialize_xls_bundle.shutil, "which", return_value = None):
+                with self.assertRaises(RuntimeError):
+                    materialize_xls_bundle.normalize_linux_soname(
+                        Path("/tmp/xls-bundle/libxls.so"),
+                    )
 
 
 if __name__ == "__main__":
