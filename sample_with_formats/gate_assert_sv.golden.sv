@@ -28,11 +28,11 @@ module __gate_assert_minimal__main(
   end
 
   // ===== Pipe stage 1:
-  wire p1_or_58_comb;
-  wire p1_gated_comb;
+  wire p1_or_75_comb;
+  wire gated;
   wire p1_load_en_comb;
-  assign p1_or_58_comb = ~p0_valid | p0_x | rst;
-  br_gate_buf gated_p1_gated_comb(.in(p0_x), .out(p1_gated_comb));
+  assign p1_or_75_comb = ~p0_valid | p0_x | rst;
+  assign gated = p0_pred & p0_x;
   assign p1_load_en_comb = p0_valid | rst;
 
   // Registers for pipe stage 1:
@@ -44,13 +44,13 @@ module __gate_assert_minimal__main(
       p1_gated <= 1'h0;
     end else begin
       p1_valid <= p0_valid;
-      p1_gated <= p1_load_en_comb ? p1_gated_comb : p1_gated;
+      p1_gated <= p1_load_en_comb ? gated : p1_gated;
     end
   end
   assign output_valid = p1_valid;
   assign out = p1_gated;
   `ifdef ASSERT_ON
-  `BR_ASSERT(should_be_one, p1_or_58_comb)
+  __gate_assert_minimal__main_0_non_synth___gate_assert_minimal__main_should_be_one: assert property (@(posedge clk) disable iff ($sampled(rst !== 1'h0 || $isunknown(p1_or_75_comb))) p1_or_75_comb) else $fatal(0, "Assertion failure via assert! @ sample_with_formats/gate_assert_minimal.x:4:12-4:40");
   `endif  // ASSERT_ON
 endmodule
 
