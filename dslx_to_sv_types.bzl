@@ -9,6 +9,11 @@ _SV_ENUM_CASE_NAMING_POLICIES = [
     "enum_qualified",
 ]
 
+_SV_STRUCT_FIELD_ORDERING_POLICIES = [
+    "as_declared",
+    "reversed",
+]
+
 def _dslx_to_sv_types_impl(ctx):
     srcs = get_srcs_from_deps(ctx)
 
@@ -17,15 +22,20 @@ def _dslx_to_sv_types_impl(ctx):
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source())
 
+    struct_field_ordering_arg = (
+        "--sv_struct_field_ordering=" + ctx.attr.sv_struct_field_ordering
+    )
+
     ctx.actions.run_shell(
         inputs = srcs,
         tools = [runner],
         outputs = [output_sv_file],
-        command = "\"$1\" driver dslx2sv-types --dslx_input_file=\"$2\" \"$3\" > \"$4\"",
+        command = "\"$1\" driver dslx2sv-types --dslx_input_file=\"$2\" \"$3\" $4 > \"$5\"",
         arguments = [
             runner.path,
             srcs[0].path,
             "--sv_enum_case_naming_policy=" + ctx.attr.sv_enum_case_naming_policy,
+            struct_field_ordering_arg,
             output_sv_file.path,
         ],
         use_default_shell_env = True,
@@ -47,6 +57,11 @@ dslx_to_sv_types = rule(
             doc = "Enum case naming policy passed to xlsynth-driver (`unqualified` or `enum_qualified`).",
             mandatory = True,
             values = _SV_ENUM_CASE_NAMING_POLICIES,
+        ),
+        "sv_struct_field_ordering": attr.string(
+            doc = "Struct field ordering policy passed to xlsynth-driver (`as_declared` or `reversed`).",
+            default = "as_declared",
+            values = _SV_STRUCT_FIELD_ORDERING_POLICIES,
         ),
     },
     outputs = {

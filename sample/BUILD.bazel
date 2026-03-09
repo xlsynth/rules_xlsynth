@@ -44,6 +44,24 @@ diff_test(
 )
 
 dslx_library(
+    name = "reversed_struct_ordering",
+    srcs = ["reversed_struct_ordering.x"],
+)
+
+dslx_to_sv_types(
+    name = "reversed_struct_ordering_pkg",
+    sv_enum_case_naming_policy = "unqualified",
+    sv_struct_field_ordering = "reversed",
+    deps = [":reversed_struct_ordering"],
+)
+
+diff_test(
+    name = "reversed_struct_ordering_pkg_test",
+    file1 = ":reversed_struct_ordering_pkg",
+    file2 = ":reversed_struct_ordering_pkg.golden.sv",
+)
+
+dslx_library(
     name = "sample",
     srcs = ["sample.x"],
     deps = [":imported"],
