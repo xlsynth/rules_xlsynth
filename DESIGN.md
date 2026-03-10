@@ -50,7 +50,8 @@ such as `dslx_interpreter_main` or `typecheck_main`.
 
 The helper uses the selected `libxls` file path directly and derives the
 runtime library directory from `dirname(libxls_path)`, so users no longer need
-to configure a separate runtime-library path.
+to configure a separate runtime-library path. The old artifact-path build
+settings are deleted; artifact selection is bundle-only.
 
 ## Generating the Bazel helper
 

@@ -78,13 +78,14 @@ dslx_to_pipeline(
 )
 ```
 
-New workspaces should not set artifact-path `.bazelrc` lines such as
+Artifact-path build settings such as
 `--@rules_xlsynth//config:driver_path=...`,
 `--@rules_xlsynth//config:tools_path=...`,
-`--@rules_xlsynth//config:runtime_library_path=...`, or
-`--@rules_xlsynth//config:dslx_stdlib_path=...`. Artifact selection now lives
-in `MODULE.bazel`. The remaining `@rules_xlsynth//config:*` settings are
-behavior knobs, such as extra DSLX search paths or warning toggles.
+`--@rules_xlsynth//config:runtime_library_path=...`, and
+`--@rules_xlsynth//config:dslx_stdlib_path=...` are no longer supported.
+Artifact selection lives only in `MODULE.bazel`. The remaining
+`@rules_xlsynth//config:*` settings are behavior knobs, such as extra DSLX
+search paths or warning toggles.
 
 Self-hosted examples in this repo:
 
