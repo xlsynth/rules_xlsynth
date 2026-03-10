@@ -2,6 +2,7 @@
 
 load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_driver_toolchain")
 
 
 def _ir_to_delay_info_impl(ctx):
@@ -9,21 +10,31 @@ def _ir_to_delay_info_impl(ctx):
     output_file = ctx.outputs.delay_info
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source())
+    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
+    toolchain = require_driver_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "ir_to_delay_info")
 
-    ctx.actions.run_shell(
-        inputs = [opt_ir_file],
-        tools = [runner],
+    ctx.actions.run(
+        inputs = [opt_ir_file, toolchain_file],
+        executable = runner,
         outputs = [output_file],
-        command = "\"$1\" driver ir2delayinfo --delay_model=\"$2\" \"$3\" \"$4\" > \"$5\"",
         arguments = [
-            runner.path,
+            "driver",
+            "--driver_path",
+            toolchain.driver_path,
+            "--runtime_library_path",
+            toolchain.runtime_library_path,
+            "--toolchain",
+            toolchain_file.path,
+            "--stdout_path",
+            output_file.path,
+            "ir2delayinfo",
+            "--delay_model",
             ctx.attr.delay_model,
             opt_ir_file.path,
             ctx.attr.top,
-            output_file.path,
         ],
-        use_default_shell_env = True,
+        use_default_shell_env = False,
     )
 
     return DefaultInfo(
@@ -55,4 +66,5 @@ ir_to_delay_info = rule(
     outputs = {
         "delay_info": "%{name}.txt",
     },
+    toolchains = ["//:toolchain_type"],
 )

@@ -3,6 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_deps", "get_srcs_from_lib", "write_executable_shell_script")
 load(":env_helpers.bzl", "python_runner_source")
+load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_tools_toolchain")
 
 
 def _dslx_test_impl(ctx):
@@ -35,13 +36,24 @@ def _dslx_test_impl(ctx):
     srcs = test_src + srcs_from_deps
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source())
-    cmd = "/usr/bin/env python3 {} tool dslx_interpreter_main {}".format(
+    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
+    toolchain = require_tools_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_test")
+    cmd_parts = [
+        "/usr/bin/env",
+        "python3",
         runner.short_path,
-        " ".join([src.short_path for src in srcs]),
-    )
+        "tool",
+        "--toolchain",
+        toolchain_file.short_path,
+    ]
+    if toolchain.runtime_library_path:
+        cmd_parts.extend(["--runtime_library_path", toolchain.runtime_library_path])
+    cmd_parts.append("dslx_interpreter_main")
+    cmd_parts.extend([src.short_path for src in srcs])
+    cmd = " ".join(["\"{}\"".format(part) for part in cmd_parts])
 
-    runfiles = ctx.runfiles(srcs + [runner])
+    runfiles = ctx.runfiles(srcs + [runner, toolchain_file])
     executable_file = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
@@ -72,4 +84,5 @@ dslx_test = rule(
         ),
     },
     test = True,
+    toolchains = ["//:toolchain_type"],
 )

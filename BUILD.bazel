@@ -1,3 +1,6 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load(":xls_toolchain.bzl", "xls_toolchain")
+
 py_test(
     name = "make_env_helpers_test",
     srcs = ["make_env_helpers_test.py"],
@@ -6,4 +9,21 @@ py_test(
         "env_helpers.py",
         "make_env_helpers.py",
     ],
+)
+
+toolchain_type(
+    name = "toolchain_type",
+    visibility = ["//visibility:public"],
+)
+
+xls_toolchain(
+    name = "default_xls_toolchain_impl",
+    visibility = ["//visibility:public"],
+)
+
+toolchain(
+    name = "default_xls_toolchain",
+    toolchain = ":default_xls_toolchain_impl",
+    toolchain_type = ":toolchain_type",
+    visibility = ["//visibility:public"],
 )
