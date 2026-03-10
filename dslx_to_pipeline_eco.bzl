@@ -3,7 +3,7 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":env_helpers.bzl", "python_runner_source")
 load(":helpers.bzl", "get_srcs_from_deps")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "require_driver_toolchain")
+load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "get_selected_driver_toolchain")
 
 def _dslx_to_pipeline_eco_impl(ctx):
     srcs = get_srcs_from_deps(ctx)
@@ -69,15 +69,19 @@ def _dslx_to_pipeline_eco_impl(ctx):
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
-    toolchain = require_driver_toolchain(ctx)
+    toolchain = get_selected_driver_toolchain(ctx)
     toolchain_file = declare_xls_toolchain_toml(
         ctx,
         name = "dslx_to_pipeline_eco",
+        toolchain = toolchain,
         add_invariant_assertions = ctx.attr.add_invariant_assertions,
     )
 
     ctx.actions.run(
-        inputs = srcs + [toolchain_file],
+        inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(
+            toolchain,
+            ["ir_converter_main", "opt_main", "codegen_main"],
+        ),
         executable = runner,
         outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file, output_baseline_verilog_file, output_eco_edit_file],
         arguments = [
@@ -166,6 +170,10 @@ DslxToPipelineEcoAttrs = {
         doc = "The unoptimized IR file of the ECO baseline.",
         mandatory = True,
         allow_single_file = [".ir"],
+    ),
+    "xls_bundle": attr.label(
+        doc = "Optional override bundle repo label, for example @legacy_xls//:bundle.",
+        providers = [XlsArtifactBundleInfo],
     ),
 }
 
