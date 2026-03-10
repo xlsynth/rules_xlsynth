@@ -20,7 +20,6 @@ XlsArtifactBundleInfo = provider(
     },
 )
 
-
 def _split_nonempty(value, separator):
     if not value:
         return []
@@ -31,19 +30,16 @@ def _split_nonempty(value, separator):
             items.append(stripped)
     return items
 
-
 def _validate_tri_state(value, label):
     if value not in _TRI_STATE_VALUES:
         fail("{} must be one of {}".format(label, _TRI_STATE_VALUES))
     return value
-
 
 def _single_artifact(target, label):
     files = target[DefaultInfo].files.to_list()
     if len(files) != 1:
         fail("{} must provide exactly one artifact, got {}".format(label, len(files)))
     return files[0]
-
 
 def _single_directory_artifact(target, label):
     files = target[DefaultInfo].files.to_list()
@@ -54,7 +50,6 @@ def _single_directory_artifact(target, label):
         fail("{} must provide a directory artifact".format(label))
     return artifact
 
-
 def _artifact_directory(files, label):
     if not files:
         fail("{} must provide at least one artifact".format(label))
@@ -63,7 +58,6 @@ def _artifact_directory(files, label):
         if file.dirname != dirname:
             fail("{} artifacts must share one directory; got {} and {}".format(label, dirname, file.dirname))
     return dirname
-
 
 def _bundle_struct_from_provider(bundle):
     return struct(
@@ -78,7 +72,6 @@ def _bundle_struct_from_provider(bundle):
         tools_root = bundle.tools_root,
         tools_path = bundle.tools_path,
     )
-
 
 def _toolchain_with_semantics(artifact_selection, ctx):
     type_inference_v2 = _validate_tri_state(
@@ -114,11 +107,9 @@ def _toolchain_with_semantics(artifact_selection, ctx):
         add_invariant_assertions = add_invariant_assertions,
     )
 
-
 def _xls_toolchain_impl(ctx):
     artifact_selection = _bundle_struct_from_provider(ctx.attr.bundle[XlsArtifactBundleInfo])
     return [_toolchain_with_semantics(artifact_selection, ctx)]
-
 
 xls_toolchain = rule(
     implementation = _xls_toolchain_impl,
@@ -134,7 +125,6 @@ xls_toolchain = rule(
         "_add_invariant_assertions_flag": attr.label(default = "//config:add_invariant_assertions"),
     },
 )
-
 
 def _xls_bundle_impl(ctx):
     tool_files = ctx.attr.tools_root[DefaultInfo].files.to_list()
@@ -158,7 +148,6 @@ def _xls_bundle_impl(ctx):
         DefaultInfo(files = depset(direct = artifact_inputs)),
     ]
 
-
 xls_bundle = rule(
     implementation = _xls_bundle_impl,
     attrs = {
@@ -170,17 +159,14 @@ xls_bundle = rule(
     },
 )
 
-
 def get_xls_toolchain(ctx):
     return ctx.toolchains[_XLS_TOOLCHAIN_TYPE]
-
 
 def _require_common_toolchain(toolchain):
     if not toolchain.tools_path:
         fail("rules_xlsynth requires a configured XLS tools root")
     if not toolchain.dslx_stdlib_path:
         fail("rules_xlsynth requires a configured DSLX stdlib root")
-
 
 def _merge_toolchain_with_bundle(toolchain, bundle):
     artifact_selection = _bundle_struct_from_provider(bundle)
@@ -205,7 +191,6 @@ def _merge_toolchain_with_bundle(toolchain, bundle):
         add_invariant_assertions = toolchain.add_invariant_assertions,
     )
 
-
 def require_driver_toolchain(ctx):
     toolchain = get_xls_toolchain(ctx)
     if not toolchain.driver_path:
@@ -213,12 +198,10 @@ def require_driver_toolchain(ctx):
     _require_common_toolchain(toolchain)
     return toolchain
 
-
 def require_tools_toolchain(ctx):
     toolchain = get_xls_toolchain(ctx)
     _require_common_toolchain(toolchain)
     return toolchain
-
 
 def get_selected_tools_toolchain(ctx):
     toolchain = require_tools_toolchain(ctx)
@@ -226,27 +209,22 @@ def get_selected_tools_toolchain(ctx):
         return _merge_toolchain_with_bundle(toolchain, ctx.attr.xls_bundle[XlsArtifactBundleInfo])
     return toolchain
 
-
 def get_selected_driver_toolchain(ctx):
     toolchain = get_selected_tools_toolchain(ctx)
     if not toolchain.driver_path:
         fail("rules_xlsynth requires a configured xlsynth-driver")
     return toolchain
 
-
 def _toml_quote(value):
     return "\"{}\"".format(value.replace("\\", "\\\\").replace("\"", "\\\""))
 
-
 def _toml_array(values):
     return "[{}]".format(", ".join([_toml_quote(value) for value in values]))
-
 
 def _resolve_tri_state(default_value, override_value):
     if override_value == "":
         return default_value
     return override_value
-
 
 def declare_xls_toolchain_toml(
         ctx,
@@ -302,10 +280,8 @@ def declare_xls_toolchain_toml(
     )
     return toolchain_toml
 
-
 def get_toolchain_artifact_inputs(toolchain):
     return getattr(toolchain, "artifact_inputs", [])
-
 
 def _bundle_runtime_inputs(toolchain):
     inputs = []
@@ -314,7 +290,6 @@ def _bundle_runtime_inputs(toolchain):
         if artifact != None:
             inputs.append(artifact)
     return inputs
-
 
 def _bundle_tool_input(toolchain, tool_name):
     artifact_inputs = get_toolchain_artifact_inputs(toolchain)
@@ -325,7 +300,6 @@ def _bundle_tool_input(toolchain, tool_name):
         fail("rules_xlsynth toolchain is missing tool artifact {}".format(tool_name))
     return matches[0]
 
-
 def _bundle_tool_inputs(toolchain, tool_names):
     inputs = []
     for tool_name in tool_names:
@@ -334,20 +308,17 @@ def _bundle_tool_inputs(toolchain, tool_names):
             inputs.append(tool_input)
     return inputs
 
-
 def get_driver_artifact_inputs(toolchain, tool_names = []):
     driver = getattr(toolchain, "driver", None)
     if driver == None:
         return get_toolchain_artifact_inputs(toolchain)
     return [driver] + _bundle_tool_inputs(toolchain, tool_names) + _bundle_runtime_inputs(toolchain)
 
-
 def get_tool_artifact_inputs(toolchain, tool_name):
     tool_input = _bundle_tool_input(toolchain, tool_name)
     if tool_input == None:
         return get_toolchain_artifact_inputs(toolchain)
     return [tool_input] + _bundle_runtime_inputs(toolchain)
-
 
 def _patch_dylib_impl(ctx):
     ctx.actions.run_shell(
@@ -365,7 +336,6 @@ def _patch_dylib_impl(ctx):
     )
     return DefaultInfo(files = depset([ctx.outputs.out]))
 
-
 patch_dylib = rule(
     implementation = _patch_dylib_impl,
     attrs = {
@@ -373,7 +343,6 @@ patch_dylib = rule(
         "out": attr.output(),
     },
 )
-
 
 def _copy_flat_files_to_directory_impl(ctx):
     output = ctx.actions.declare_directory(ctx.label.name)
@@ -395,7 +364,6 @@ def _copy_flat_files_to_directory_impl(ctx):
     )
     return DefaultInfo(files = depset([output]))
 
-
 copy_flat_files_to_directory = rule(
     implementation = _copy_flat_files_to_directory_impl,
     attrs = {
@@ -403,6 +371,55 @@ copy_flat_files_to_directory = rule(
     },
 )
 
+def _xlsynth_artifact_config_impl(ctx):
+    bundle_root = ctx.label.name
+    config_output = ctx.actions.declare_file("{}/xlsynth_artifact_config.toml".format(bundle_root))
+    dso_output = ctx.actions.declare_file("{}/{}".format(bundle_root, ctx.attr.dso_name))
+    stdlib_output = ctx.actions.declare_directory("{}/dslx_stdlib".format(bundle_root))
+    dslx_stdlib = _single_directory_artifact(ctx.attr.dslx_stdlib, "dslx_stdlib")
+    shared_library = ctx.file.shared_library
+    ctx.actions.run_shell(
+        inputs = [dslx_stdlib, shared_library],
+        outputs = [config_output, dso_output, stdlib_output],
+        arguments = [
+            shared_library.path,
+            dso_output.path,
+            dslx_stdlib.path,
+            stdlib_output.path,
+            config_output.path,
+            ctx.attr.dso_name,
+        ],
+        command = """
+            set -euo pipefail
+            shared_library="$1"
+            dso_output="$2"
+            dslx_stdlib="$3"
+            stdlib_output="$4"
+            config_output="$5"
+            dso_name="$6"
+
+            mkdir -p "$(dirname "$dso_output")" "$(dirname "$config_output")" "$stdlib_output"
+            cp "$shared_library" "$dso_output"
+            cp -R "$dslx_stdlib"/. "$stdlib_output"
+            printf 'dso_path = "%s"\\ndslx_stdlib_path = "dslx_stdlib"\\n' \
+                "$dso_name" > "$config_output"
+        """,
+        progress_message = "Packaging xlsynth artifact config for {}".format(ctx.label),
+    )
+    packaged_files = [config_output, dso_output, stdlib_output]
+    return DefaultInfo(
+        files = depset([config_output]),
+        runfiles = ctx.runfiles(files = packaged_files),
+    )
+
+xlsynth_artifact_config = rule(
+    implementation = _xlsynth_artifact_config_impl,
+    attrs = {
+        "dso_name": attr.string(mandatory = True),
+        "dslx_stdlib": attr.label(mandatory = True),
+        "shared_library": attr.label(allow_single_file = True, mandatory = True),
+    },
+)
 
 def _xls_shared_library_link_impl(ctx):
     cc_toolchain = find_cpp_toolchain(ctx)
@@ -434,7 +451,6 @@ def _xls_shared_library_link_impl(ctx):
         ),
         CcInfo(linking_context = linking_context),
     ]
-
 
 xls_shared_library_link = rule(
     implementation = _xls_shared_library_link_impl,

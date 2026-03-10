@@ -19,6 +19,8 @@ xls.toolchain(
     xls_version = "0.38.0",
     xlsynth_driver_version = "0.33.0",
     artifact_source = "auto",
+    installed_tools_root_prefix = "/opt/xlsynth",
+    installed_driver_root_prefix = "/opt/xlsynth-driver",
 )
 
 xls.toolchain(
@@ -34,20 +36,31 @@ register_toolchains("@workspace_xls//:all")
 
 `artifact_source` chooses how each bundle repo is materialized:
 
-- `auto` uses the exact versioned `/eda-tools` install when it exists and
-  otherwise downloads the release artifacts.
-- `eda_tools_only` requires the exact versioned `/eda-tools` install.
+- `auto` probes the consumer-owned installed layout and otherwise downloads the
+  release artifacts.
+- `installed_only` requires the matching installed layout.
 - `download_only` always downloads the release artifacts.
 - `local_paths` uses `local_tools_path`, `local_dslx_stdlib_path`,
   `local_driver_path`, and `local_libxls_path`.
+
+For the installed-layout modes, `rules_xlsynth` derives exact-version paths as:
+
+- `<installed_tools_root_prefix>/v<xls_version>` for the tools tree
+- `<installed_tools_root_prefix>/v<xls_version>/xls/dslx/stdlib` for the DSLX
+  stdlib
+- `<installed_tools_root_prefix>/v<xls_version>/libxls.{so,dylib}` for `libxls`
+- `<installed_driver_root_prefix>/<xlsynth_driver_version>/bin/xlsynth-driver`
+  for the driver binary
 
 The attributes accepted by each mode are strict:
 
 - `local_paths` requires all four `local_*` attrs and does not accept
   `xls_version` or `xlsynth_driver_version`.
-- `auto`, `eda_tools_only`, and `download_only` require both
-  `xls_version` and `xlsynth_driver_version` and do not accept any `local_*`
-  attrs.
+- `auto` and `installed_only` require `xls_version`,
+  `xlsynth_driver_version`, `installed_tools_root_prefix`, and
+  `installed_driver_root_prefix`, and do not accept any `local_*` attrs.
+- `download_only` requires `xls_version` and `xlsynth_driver_version`, and
+  does not accept any `local_*` or `installed_*` attrs.
 
 Download-backed modes also have one host prerequisite: when `auto` falls back
 to downloading, or when `download_only` is selected, the repository rule
@@ -62,6 +75,22 @@ Each `xls.toolchain(...)` call exports a small repo surface:
 - `@<name>//:bundle` for explicit `xls_bundle` overrides
 - `@<name>//:libxls` and `@<name>//:libxls_link` for native consumers
 - `@<name>//:dslx_stdlib` for packages that need the standard library tree
+- `@<name>//:xlsynth_sys_artifact_config` for the modern single-file
+  `xlsynth-sys` build-script contract
+- `@<name>//:xlsynth_sys_legacy_stdlib` and
+  `@<name>//:xlsynth_sys_legacy_dso` for frozen `xlsynth-sys` releases that
+  still use the paired `DSLX_STDLIB_PATH` / `XLS_DSO_PATH` contract
+- `@<name>//:xlsynth_sys_dep` for the preferred `xlsynth-sys`
+  runtime-plus-link contract
+- `@<name>//:xlsynth_sys_runtime_files` and `@<name>//:xlsynth_sys_link_dep`
+  as compatibility exports for callers that still spell runtime and link
+  separately
+
+`xlsynth-sys` consumers should prefer `xlsynth_sys_artifact_config`,
+`xlsynth_sys_dep`, and, for frozen releases, `xlsynth_sys_legacy_stdlib` plus
+`xlsynth_sys_legacy_dso`, rather than spelling generic bundle internals like
+`artifact_config`, `libxls_file`, `libxls`, or `dslx_stdlib` directly in
+downstream `MODULE.bazel` files.
 
 Supported DSLX rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>//:bundle"`. Today that escape hatch is available on

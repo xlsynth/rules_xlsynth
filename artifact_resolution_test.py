@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -10,18 +11,23 @@ import materialize_xls_bundle
 
 
 class ArtifactResolutionTest(unittest.TestCase):
-    def test_auto_prefers_exact_eda_tools_layout(self):
+    def test_auto_prefers_exact_installed_layout(self):
         plan = materialize_xls_bundle.resolve_artifact_plan(
             artifact_source = "auto",
             xls_version = "0.38.0",
             driver_version = "0.33.0",
+            installed_tools_root_prefix = "/tools/xlsynth",
+            installed_driver_root_prefix = "/tools/xlsynth-driver",
             exists_fn = lambda path: True,
         )
-        self.assertEqual(plan["mode"], "eda_tools")
-        self.assertTrue(str(plan["dslx_stdlib_root"]).endswith("/eda-tools/xlsynth/v0.38.0/xls/dslx/stdlib"))
+        self.assertEqual(plan["mode"], "installed")
+        self.assertEqual(
+            plan["dslx_stdlib_root"],
+            Path("/tools/xlsynth/v0.38.0/xls/dslx/stdlib"),
+        )
         self.assertEqual(
             materialize_xls_bundle.derive_runtime_library_path(plan["libxls"]),
-            "/eda-tools/xlsynth/v0.38.0",
+            "/tools/xlsynth/v0.38.0",
         )
 
     def test_auto_falls_back_to_download(self):
@@ -29,22 +35,35 @@ class ArtifactResolutionTest(unittest.TestCase):
             artifact_source = "auto",
             xls_version = "0.38.0",
             driver_version = "0.33.0",
+            installed_tools_root_prefix = "/tools/xlsynth",
+            installed_driver_root_prefix = "/tools/xlsynth-driver",
             exists_fn = lambda path: False,
         )
         self.assertEqual(plan["mode"], "download")
         self.assertEqual(plan["xls_version"], "0.38.0")
         self.assertEqual(plan["driver_version"], "0.33.0")
 
-    def test_eda_tools_only_requires_installed_paths(self):
+    def test_auto_requires_installed_prefixes(self):
         with self.assertRaises(ValueError):
             materialize_xls_bundle.resolve_artifact_plan(
-                artifact_source = "eda_tools_only",
+                artifact_source = "auto",
                 xls_version = "0.38.0",
                 driver_version = "0.33.0",
                 exists_fn = lambda path: False,
             )
 
-    def test_download_only_skips_eda_tools_probe(self):
+    def test_installed_only_requires_installed_paths(self):
+        with self.assertRaises(ValueError):
+            materialize_xls_bundle.resolve_artifact_plan(
+                artifact_source = "installed_only",
+                xls_version = "0.38.0",
+                driver_version = "0.33.0",
+                installed_tools_root_prefix = "/tools/xlsynth",
+                installed_driver_root_prefix = "/tools/xlsynth-driver",
+                exists_fn = lambda path: False,
+            )
+
+    def test_download_only_skips_installed_probe(self):
         observed_paths = []
 
         def exists_fn(path):
@@ -76,8 +95,25 @@ class ArtifactResolutionTest(unittest.TestCase):
             "/tmp/xls-local-dev",
         )
 
-    def test_eda_tools_paths_use_host_specific_libxls_name(self):
-        plan = materialize_xls_bundle.derive_eda_tools_paths("0.38.0", "0.33.0")
+    def test_download_only_rejects_installed_prefixes(self):
+        with self.assertRaises(ValueError):
+            materialize_xls_bundle.resolve_artifact_plan(
+                artifact_source = "download_only",
+                xls_version = "0.38.0",
+                driver_version = "0.33.0",
+                installed_tools_root_prefix = "/tools/xlsynth",
+                installed_driver_root_prefix = "/tools/xlsynth-driver",
+            )
+
+    def test_installed_paths_use_live_version_pattern(self):
+        plan = materialize_xls_bundle.derive_installed_paths(
+            xls_version = "0.38.0",
+            driver_version = "0.33.0",
+            installed_tools_root_prefix = "/eda-tools/xlsynth",
+            installed_driver_root_prefix = "/eda-tools/xlsynth-driver",
+        )
+        self.assertEqual(plan["tools_root"], Path("/eda-tools/xlsynth/v0.38.0"))
+        self.assertEqual(plan["driver"], Path("/eda-tools/xlsynth-driver/0.33.0/bin/xlsynth-driver"))
         expected_name = "libxls.dylib" if sys.platform == "darwin" else "libxls.so"
         self.assertEqual(plan["libxls"].name, expected_name)
 
@@ -136,15 +172,83 @@ class ArtifactResolutionTest(unittest.TestCase):
             ],
         )
 
-    def test_build_driver_install_environment_uses_repo_local_cargo_and_rustup_homes(self):
+    def test_build_driver_install_environment_uses_platform_scoped_cache_dirs(self):
         libxls_path = "/tmp/xls-bundle/libxls.dylib" if sys.platform == "darwin" else "/tmp/xls-bundle/libxls.so"
         env = materialize_xls_bundle.build_driver_install_environment(
             Path("/tmp/xls-bundle-repo"),
             libxls_path = libxls_path,
             dslx_stdlib_path = "/tmp/xls-bundle",
+            host_platform = "arm64",
         )
-        self.assertEqual(env["RUSTUP_HOME"], "/tmp/xls-bundle-repo/_rustup_home")
-        self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target")
+        self.assertEqual(env["RUSTUP_HOME"], "/tmp/xls-bundle-repo/_rustup_home/arm64")
+        self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target/arm64")
+
+    def test_driver_install_root_is_version_and_platform_scoped(self):
+        self.assertEqual(
+            materialize_xls_bundle.driver_install_root(
+                Path("/tmp/xls-bundle-repo"),
+                "0.33.0",
+                "arm64",
+            ),
+            Path("/tmp/xls-bundle-repo/_cargo_driver/arm64/0.33.0"),
+        )
+
+    def test_download_versioned_artifacts_reuses_valid_cache(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            download_root = repo_root / "_downloaded_xls" / "arm64" / "0.38.0"
+            (download_root / "xls" / "dslx" / "stdlib").mkdir(parents = True)
+            (download_root / "xls" / "dslx" / "stdlib" / "std.x").write_text("// stdlib\n", encoding = "utf-8")
+            for binary in materialize_xls_bundle.TOOL_BINARIES:
+                (download_root / binary).write_text("", encoding = "utf-8")
+            (download_root / "libxls-v0.38.0-arm64.dylib").write_text("", encoding = "utf-8")
+
+            with mock.patch.object(materialize_xls_bundle, "detect_host_platform", return_value = "arm64"):
+                with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
+                    resolved = materialize_xls_bundle.download_versioned_artifacts(repo_root, "0.38.0")
+
+            self.assertEqual(resolved["tools_root"], download_root)
+            self.assertEqual(resolved["dslx_stdlib_root"], download_root / "xls" / "dslx" / "stdlib")
+            self.assertEqual(
+                resolved["libxls"],
+                download_root / "libxls-v0.38.0-arm64.dylib",
+            )
+            mock_run.assert_not_called()
+
+    def test_install_driver_reuses_valid_cached_binary(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            driver_path = repo_root / "_cargo_driver" / "arm64" / "0.33.0" / "bin" / "xlsynth-driver"
+            driver_path.parent.mkdir(parents = True)
+            driver_path.write_text("", encoding = "utf-8")
+
+            with mock.patch.object(materialize_xls_bundle, "detect_host_platform", return_value = "arm64"):
+                with mock.patch.object(materialize_xls_bundle.shutil, "which") as mock_which:
+                    with mock.patch.object(
+                        materialize_xls_bundle.subprocess,
+                        "run",
+                        return_value = mock.Mock(
+                            returncode = 0,
+                            stdout = "xlsynth-driver 0.33.0\n",
+                            stderr = "",
+                        ),
+                    ) as mock_run:
+                        resolved = materialize_xls_bundle.install_driver(
+                            repo_root = repo_root,
+                            driver_version = "0.33.0",
+                            libxls_path = "/tmp/xls-bundle/libxls.dylib" if sys.platform == "darwin" else "/tmp/xls-bundle/libxls.so",
+                            dslx_stdlib_path = "/tmp/xls-bundle",
+                        )
+
+            self.assertEqual(resolved, driver_path)
+            mock_which.assert_not_called()
+            mock_run.assert_called_once_with(
+                [str(driver_path), "--version"],
+                check = False,
+                capture_output = True,
+                text = True,
+                env = mock.ANY,
+            )
 
     def test_parse_readelf_soname_finds_soname(self):
         self.assertEqual(
@@ -157,7 +261,7 @@ Tag        Type                         Name/Value
             "libxls-v0.38.0.so",
         )
 
-    def test_detect_runtime_library_aliases_uses_linux_soname_when_needed(self):
+    def test_read_linux_soname_reads_elf_metadata(self):
         with mock.patch.object(
             materialize_xls_bundle.subprocess,
             "run",
@@ -168,30 +272,52 @@ Tag        Type                         Name/Value
             ),
         ):
             self.assertEqual(
-                materialize_xls_bundle.detect_runtime_library_aliases(
-                    Path("/tmp/xls-bundle/libxls.so"),
-                    sys_platform = "linux",
-                ),
-                ["libxls-v0.38.0.so"],
+                materialize_xls_bundle.read_linux_soname(Path("/tmp/xls-bundle/libxls.so")),
+                "libxls-v0.38.0.so",
             )
 
-    def test_detect_runtime_library_aliases_ignores_matching_linux_name(self):
+    def test_normalize_linux_soname_sets_expected_name(self):
         with mock.patch.object(
-            materialize_xls_bundle.subprocess,
-            "run",
-            return_value = mock.Mock(
-                returncode = 0,
-                stdout = "0x000000000000000e (SONAME)             Library soname: [libxls.so]\n",
-                stderr = "",
-            ),
+            materialize_xls_bundle,
+            "read_linux_soname",
+            return_value = "libxls-v0.38.0.so",
         ):
-            self.assertEqual(
-                materialize_xls_bundle.detect_runtime_library_aliases(
-                    Path("/tmp/xls-bundle/libxls.so"),
-                    sys_platform = "linux",
-                ),
-                [],
-            )
+            with mock.patch.object(materialize_xls_bundle.shutil, "which", return_value = "/usr/bin/patchelf"):
+                with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
+                    materialize_xls_bundle.normalize_linux_soname(Path("/tmp/xls-bundle/libxls.so"))
+        mock_run.assert_called_once_with(
+            [
+                "/usr/bin/patchelf",
+                "--set-soname",
+                "libxls.so",
+                "/tmp/xls-bundle/libxls.so",
+            ],
+            check = True,
+        )
+
+    def test_normalize_linux_soname_is_noop_when_matching(self):
+        with mock.patch.object(
+            materialize_xls_bundle,
+            "read_linux_soname",
+            return_value = "libxls.so",
+        ):
+            with mock.patch.object(materialize_xls_bundle.shutil, "which") as mock_which:
+                with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
+                    materialize_xls_bundle.normalize_linux_soname(Path("/tmp/xls-bundle/libxls.so"))
+        mock_which.assert_not_called()
+        mock_run.assert_not_called()
+
+    def test_normalize_linux_soname_raises_when_patchelf_missing(self):
+        with mock.patch.object(
+            materialize_xls_bundle,
+            "read_linux_soname",
+            return_value = "libxls-v0.38.0.so",
+        ):
+            with mock.patch.object(materialize_xls_bundle.shutil, "which", return_value = None):
+                with self.assertRaises(RuntimeError):
+                    materialize_xls_bundle.normalize_linux_soname(
+                        Path("/tmp/xls-bundle/libxls.so"),
+                    )
 
 
 if __name__ == "__main__":

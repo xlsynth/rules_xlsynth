@@ -10,7 +10,7 @@ xls.toolchain(
     name = "rules_xlsynth_selftest_xls",
     xls_version = "0.38.0",
     xlsynth_driver_version = "0.33.0",
-    artifact_source = "auto",
+    artifact_source = "download_only",
 )
 
 use_repo(xls, "rules_xlsynth_selftest_xls")

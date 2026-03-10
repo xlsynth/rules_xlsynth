@@ -18,15 +18,38 @@ matching `libxls` shared library. That repo exports:
 - `@<name>//:libxls`
 - `@<name>//:libxls_link`
 - `@<name>//:dslx_stdlib`
+- `@<name>//:xlsynth_sys_artifact_config`
+- `@<name>//:xlsynth_sys_legacy_stdlib`
+- `@<name>//:xlsynth_sys_legacy_dso`
+- `@<name>//:xlsynth_sys_dep`
+- `@<name>//:xlsynth_sys_runtime_files`
+- `@<name>//:xlsynth_sys_link_dep`
+
+The `xlsynth_sys_*` exports are the intended downstream contract for
+`rules_rust` `crate_extension.annotation(...)` wiring. The preferred modern
+shape is `build_script_data` / `build_script_env` for the build-script
+contract, plus `deps = ["@<name>//:xlsynth_sys_dep"]` for the combined
+runtime-plus-link contract. The compatibility exports
+`xlsynth_sys_runtime_files` and `xlsynth_sys_link_dep` remain available for
+callers that still spell those phases separately. This lets root `MODULE.bazel`
+files choose only a bundle and a build-script mode instead of coupling to
+generic bundle internals.
 
 `artifact_source` controls how those artifacts are resolved:
 
-- `auto` prefers exact-version `/eda-tools` installs and otherwise downloads
-  the release artifacts.
-- `eda_tools_only` requires the matching `/eda-tools` install.
+- `auto` probes a consumer-owned installed layout and otherwise downloads the
+  release artifacts.
+- `installed_only` requires the matching installed layout.
 - `download_only` always downloads the release artifacts.
 - `local_paths` uses explicit local paths and is the documented escape hatch
   for `/tmp/xls-local-dev/` style setups.
+
+For the installed-layout modes, the provider derives the concrete paths from
+the toolchain declaration instead of hard-coding a repository-global install
+root: `<installed_tools_root_prefix>/v<xls_version>` for the tools tree and
+`<installed_driver_root_prefix>/<xlsynth_driver_version>/bin/xlsynth-driver`
+for the driver binary. The provider owns the version-derived suffixes; the
+consumer workspace owns the root prefixes.
 
 ## Default bundles and explicit overrides
 

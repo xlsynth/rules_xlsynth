@@ -44,15 +44,20 @@ def libxls_name_for_platform(sys_platform):
         raise RuntimeError("Unsupported host platform: {}".format(sys_platform))
 
 
-def derive_eda_tools_paths(xls_version, driver_version):
+def derive_installed_paths(
+        xls_version,
+        driver_version,
+        installed_tools_root_prefix,
+        installed_driver_root_prefix,
+        sys_platform = sys.platform):
     normalized_xls_version = normalize_version(xls_version)
     normalized_driver_version = normalize_version(driver_version)
-    tools_root = Path("/eda-tools/xlsynth/v{}".format(normalized_xls_version))
+    tools_root = Path(installed_tools_root_prefix) / "v{}".format(normalized_xls_version)
     return {
         "tools_root": tools_root,
         "dslx_stdlib_root": tools_root / "xls" / "dslx" / "stdlib",
-        "driver": Path("/eda-tools/xlsynth-driver/{}/bin/xlsynth-driver".format(normalized_driver_version)),
-        "libxls": tools_root / libxls_name_for_platform(sys.platform),
+        "driver": Path(installed_driver_root_prefix) / normalized_driver_version / "bin" / "xlsynth-driver",
+        "libxls": tools_root / libxls_name_for_platform(sys_platform),
     }
 
 
@@ -70,6 +75,8 @@ def resolve_artifact_plan(
     artifact_source,
     xls_version,
     driver_version,
+    installed_tools_root_prefix = "",
+    installed_driver_root_prefix = "",
     local_tools_path = "",
     local_dslx_stdlib_path = "",
     local_driver_path = "",
@@ -96,14 +103,33 @@ def resolve_artifact_plan(
             "libxls": Path(local_libxls_path),
         }
 
-    if artifact_source not in ("auto", "eda_tools_only", "download_only"):
+    if artifact_source not in ("auto", "installed_only", "download_only"):
         raise ValueError("Unknown artifact_source: {}".format(artifact_source))
     if not xls_version or not driver_version:
         raise ValueError("{} requires xls_version and xlsynth_driver_version".format(artifact_source))
     if local_tools_path or local_dslx_stdlib_path or local_driver_path or local_libxls_path:
         raise ValueError("{} does not accept local_paths attrs".format(artifact_source))
+    if artifact_source == "download_only":
+        if installed_tools_root_prefix or installed_driver_root_prefix:
+            raise ValueError("download_only does not accept installed_* attrs")
+    else:
+        missing_installed = [
+            name
+            for name, value in {
+                "installed_tools_root_prefix": installed_tools_root_prefix,
+                "installed_driver_root_prefix": installed_driver_root_prefix,
+            }.items()
+            if not value
+        ]
+        if missing_installed:
+            raise ValueError("{} requires {}".format(artifact_source, ", ".join(sorted(missing_installed))))
 
-    eda_tools = derive_eda_tools_paths(xls_version, driver_version)
+    installed_paths = derive_installed_paths(
+        xls_version = xls_version,
+        driver_version = driver_version,
+        installed_tools_root_prefix = installed_tools_root_prefix,
+        installed_driver_root_prefix = installed_driver_root_prefix,
+    )
     if artifact_source == "download_only":
         return {
             "mode": "download",
@@ -111,29 +137,29 @@ def resolve_artifact_plan(
             "driver_version": normalize_version(driver_version),
         }
 
-    eda_tools_present = all(exists_fn(str(path)) for path in eda_tools.values())
-    if artifact_source == "auto" and eda_tools_present:
+    installed_paths_present = all(exists_fn(str(path)) for path in installed_paths.values())
+    if artifact_source == "auto" and installed_paths_present:
         return {
-            "mode": "eda_tools",
-            "tools_root": eda_tools["tools_root"],
-            "dslx_stdlib_root": eda_tools["dslx_stdlib_root"],
-            "driver": eda_tools["driver"],
-            "libxls": eda_tools["libxls"],
+            "mode": "installed",
+            "tools_root": installed_paths["tools_root"],
+            "dslx_stdlib_root": installed_paths["dslx_stdlib_root"],
+            "driver": installed_paths["driver"],
+            "libxls": installed_paths["libxls"],
         }
-    if artifact_source == "eda_tools_only":
-        if not eda_tools_present:
+    if artifact_source == "installed_only":
+        if not installed_paths_present:
             raise ValueError(
-                "eda_tools_only requires exact-version /eda-tools paths for XLS {} and driver {}".format(
+                "installed_only requires exact-version installed paths for XLS {} and driver {}".format(
                     normalize_version(xls_version),
                     normalize_version(driver_version),
                 )
             )
         return {
-            "mode": "eda_tools",
-            "tools_root": eda_tools["tools_root"],
-            "dslx_stdlib_root": eda_tools["dslx_stdlib_root"],
-            "driver": eda_tools["driver"],
-            "libxls": eda_tools["libxls"],
+            "mode": "installed",
+            "tools_root": installed_paths["tools_root"],
+            "dslx_stdlib_root": installed_paths["dslx_stdlib_root"],
+            "driver": installed_paths["driver"],
+            "libxls": installed_paths["libxls"],
         }
     return {
         "mode": "download",
@@ -169,6 +195,22 @@ def detect_host_platform():
         if any(marker in lower for marker in ["rocky", "rhel", "almalinux", "centos"]):
             return "rocky8"
     return "ubuntu2004"
+
+
+def driver_install_root(repo_root, driver_version, host_platform):
+    return repo_root / "_cargo_driver" / host_platform / normalize_version(driver_version)
+
+
+def rustup_home_root(repo_root, host_platform):
+    return repo_root / "_rustup_home" / host_platform
+
+
+def cargo_target_root(repo_root, host_platform):
+    return repo_root / "_cargo_target" / host_platform
+
+
+def downloaded_xls_root(repo_root, xls_version, host_platform):
+    return repo_root / "_downloaded_xls" / host_platform / normalize_version(xls_version)
 
 
 def ensure_clean_path(path):
@@ -248,19 +290,6 @@ def build_driver_environment(
     return env
 
 
-def patch_macos_dylib_install_name(dylib_path):
-    if sys.platform == "darwin":
-        subprocess.run(
-            [
-                "install_name_tool",
-                "-id",
-                str(dylib_path),
-                str(dylib_path),
-            ],
-            check = True,
-        )
-
-
 def parse_readelf_soname(stdout):
     marker = "Library soname: ["
     for line in stdout.splitlines():
@@ -270,9 +299,7 @@ def parse_readelf_soname(stdout):
     return ""
 
 
-def detect_runtime_library_aliases(libxls_path, sys_platform = sys.platform):
-    if sys_platform != "linux":
-        return []
+def read_linux_soname(libxls_path):
     result = subprocess.run(
         ["readelf", "-d", str(libxls_path)],
         check = False,
@@ -287,22 +314,43 @@ def detect_runtime_library_aliases(libxls_path, sys_platform = sys.platform):
                 result.stderr,
             )
         )
-    soname = parse_readelf_soname(result.stdout)
-    if not soname or soname == Path(libxls_path).name:
-        return []
-    return [soname]
+    return parse_readelf_soname(result.stdout)
 
 
-def materialize_runtime_library_aliases(repo_root, libxls_path, sys_platform = sys.platform):
-    aliases = detect_runtime_library_aliases(libxls_path, sys_platform = sys_platform)
-    for alias in aliases:
-        alias_path = repo_root / alias
-        ensure_clean_path(alias_path)
-        try:
-            os.symlink(libxls_path.name, alias_path)
-        except OSError:
-            shutil.copy2(str(libxls_path), str(alias_path))
-    return aliases
+def normalize_linux_soname(libxls_path):
+    soname = read_linux_soname(libxls_path)
+    expected = Path(libxls_path).name
+    if soname and soname != expected:
+        patchelf = shutil.which("patchelf")
+        if patchelf == None:
+            raise RuntimeError(
+                "libxls SONAME at {} is {} but patchelf is unavailable; install patchelf to normalize SONAME to {}".format(
+                    libxls_path,
+                    soname,
+                    expected,
+                )
+            )
+        subprocess.run(
+            [patchelf, "--set-soname", expected, str(libxls_path)],
+            check = True,
+        )
+
+
+def normalize_runtime_library_identity(libxls_path, sys_platform = sys.platform):
+    if sys_platform == "darwin":
+        subprocess.run(
+            [
+                "install_name_tool",
+                "-id",
+                "@rpath/{}".format(Path(libxls_path).name),
+                str(libxls_path),
+            ],
+            check = True,
+        )
+    elif sys_platform == "linux":
+        normalize_linux_soname(libxls_path)
+    else:
+        raise RuntimeError("Unsupported host platform: {}".format(sys_platform))
 
 
 def detect_driver_capability(driver_path, libxls_path, dslx_stdlib_path):
@@ -358,15 +406,17 @@ def build_driver_install_environment(
         libxls_path,
         dslx_stdlib_path,
         environ = None,
-        sys_platform = sys.platform):
+        sys_platform = sys.platform,
+        host_platform = ""):
     env = build_driver_environment(
         libxls_path = libxls_path,
         dslx_stdlib_path = dslx_stdlib_path,
         environ = environ,
         sys_platform = sys_platform,
     )
-    env["RUSTUP_HOME"] = str(repo_root / "_rustup_home")
-    env["CARGO_TARGET_DIR"] = str(repo_root / "_cargo_target")
+    resolved_host_platform = host_platform or detect_host_platform()
+    env["RUSTUP_HOME"] = str(rustup_home_root(repo_root, resolved_host_platform))
+    env["CARGO_TARGET_DIR"] = str(cargo_target_root(repo_root, resolved_host_platform))
     return env
 
 
@@ -387,29 +437,7 @@ def ensure_rustup_nightly_toolchain(rustup_path, env):
     )
 
 
-def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
-    rustup = shutil.which("rustup")
-    if rustup is None:
-        raise RuntimeError(
-            "rules_xlsynth download fallback requires rustup to install xlsynth-driver {}".format(
-                driver_version
-            )
-        )
-
-    install_root = repo_root / "_cargo_driver"
-    rustup_home = repo_root / "_rustup_home"
-    target_root = repo_root / "_cargo_target"
-    for path in [install_root, rustup_home, target_root]:
-        ensure_clean_path(path)
-        path.mkdir(parents = True, exist_ok = True)
-    env = build_driver_install_environment(repo_root, libxls_path, dslx_stdlib_path)
-    ensure_rustup_nightly_toolchain(rustup, env)
-    subprocess.run(
-        build_driver_install_command(rustup, install_root, driver_version),
-        check = True,
-        env = env,
-    )
-    driver_path = install_root / "bin" / "xlsynth-driver"
+def validate_installed_driver(driver_path, env, driver_version):
     result = subprocess.run(
         [str(driver_path), "--version"],
         check = False,
@@ -425,32 +453,65 @@ def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
                 result.stderr,
             )
         )
+    version_text = "{}\n{}".format(result.stdout, result.stderr)
+    expected_version = normalize_version(driver_version)
+    if expected_version not in version_text:
+        raise RuntimeError(
+            "Installed xlsynth-driver at {} reported an unexpected version.\nexpected substring: {}\nstdout:\n{}\nstderr:\n{}".format(
+                driver_path,
+                expected_version,
+                result.stdout,
+                result.stderr,
+            )
+        )
+
+
+def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
+    host_platform = detect_host_platform()
+    install_root = driver_install_root(repo_root, driver_version, host_platform)
+    rustup_home = rustup_home_root(repo_root, host_platform)
+    target_root = cargo_target_root(repo_root, host_platform)
+    env = build_driver_install_environment(
+        repo_root,
+        libxls_path,
+        dslx_stdlib_path,
+        host_platform = host_platform,
+    )
+    for path in [install_root, rustup_home, target_root]:
+        path.mkdir(parents = True, exist_ok = True)
+    driver_path = install_root / "bin" / "xlsynth-driver"
+    if driver_path.exists():
+        try:
+            validate_installed_driver(driver_path, env, driver_version)
+            return driver_path
+        except RuntimeError:
+            ensure_clean_path(install_root)
+            install_root.mkdir(parents = True, exist_ok = True)
+
+    rustup = shutil.which("rustup")
+    if rustup is None:
+        raise RuntimeError(
+            "rules_xlsynth download fallback requires rustup to install xlsynth-driver {}".format(
+                driver_version
+            )
+        )
+    ensure_rustup_nightly_toolchain(rustup, env)
+    subprocess.run(
+        build_driver_install_command(rustup, install_root, driver_version),
+        check = True,
+        env = env,
+    )
+    validate_installed_driver(driver_path, env, driver_version)
     return driver_path
 
 
-def download_versioned_artifacts(repo_root, xls_version):
-    script_path = Path(__file__).with_name("download_release.py")
-    platform = detect_host_platform()
-    download_root = repo_root / "_downloaded_xls"
-    ensure_clean_path(download_root)
-    download_root.mkdir(parents = True, exist_ok = True)
-    subprocess.run(
-        [
-            sys.executable,
-            str(script_path),
-            "--output",
-            str(download_root),
-            "--platform",
-            platform,
-            "--version",
-            version_tag(xls_version),
-            "--dso",
-        ],
-        check = True,
-    )
-
+def resolve_downloaded_artifacts(download_root):
     stdlib_root = download_root / "xls" / "dslx" / "stdlib"
     validate_stdlib_root(stdlib_root)
+    for binary in TOOL_BINARIES:
+        tool_path = download_root / binary
+        if not tool_path.exists():
+            raise RuntimeError("Expected tool binary at {}".format(tool_path))
     libxls_candidates = sorted(download_root.glob("libxls-*.so")) + sorted(download_root.glob("libxls-*.dylib"))
     if len(libxls_candidates) != 1:
         raise RuntimeError("Expected exactly one libxls artifact in {}, found {}".format(download_root, libxls_candidates))
@@ -461,6 +522,33 @@ def download_versioned_artifacts(repo_root, xls_version):
     }
 
 
+def download_versioned_artifacts(repo_root, xls_version):
+    script_path = Path(__file__).with_name("download_release.py")
+    host_platform = detect_host_platform()
+    download_root = downloaded_xls_root(repo_root, xls_version, host_platform)
+    if download_root.exists():
+        try:
+            return resolve_downloaded_artifacts(download_root)
+        except (RuntimeError, ValueError):
+            ensure_clean_path(download_root)
+    download_root.mkdir(parents = True, exist_ok = True)
+    subprocess.run(
+        [
+            sys.executable,
+            str(script_path),
+            "--output",
+            str(download_root),
+            "--platform",
+            host_platform,
+            "--version",
+            version_tag(xls_version),
+            "--dso",
+        ],
+        check = True,
+    )
+    return resolve_downloaded_artifacts(download_root)
+
+
 def materialize_bundle(repo_root, plan):
     if plan["mode"] == "download":
         resolved = download_versioned_artifacts(repo_root, plan["xls_version"])
@@ -469,8 +557,7 @@ def materialize_bundle(repo_root, plan):
 
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
         copy_path(resolved["libxls"], libxls_dest)
-        patch_macos_dylib_install_name(libxls_dest)
-        runtime_aliases = materialize_runtime_library_aliases(repo_root, libxls_dest)
+        normalize_runtime_library_identity(libxls_dest)
 
         driver_path = install_driver(
             repo_root,
@@ -490,8 +577,17 @@ def materialize_bundle(repo_root, plan):
         symlink_or_copy(resolved["driver"], driver_dest)
 
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
-        symlink_or_copy(resolved["libxls"], libxls_dest)
-        runtime_aliases = materialize_runtime_library_aliases(repo_root, libxls_dest)
+        copy_path(resolved["libxls"], libxls_dest)
+        normalize_runtime_library_identity(libxls_dest)
+
+    artifact_config_path = repo_root / "xlsynth_artifact_config.toml"
+    artifact_config_path.write_text(
+        "".join([
+            "dso_path = \"{}\"\n".format(libxls_dest.name),
+            "dslx_stdlib_path = \".\"\n",
+        ]),
+        encoding = "utf-8",
+    )
 
     driver_supports = detect_driver_capability(driver_dest, libxls_dest, repo_root)
     metadata_path = repo_root / "bundle_metadata.txt"
@@ -501,7 +597,6 @@ def materialize_bundle(repo_root, plan):
                 "true" if driver_supports else "false"
             ),
             "libxls_name={}\n".format(libxls_dest.name),
-            "libxls_runtime_aliases={}\n".format(",".join(runtime_aliases)),
         ]),
         encoding = "utf-8",
     )
@@ -518,6 +613,8 @@ def parse_args(argv):
     parser.add_argument("--artifact-source", required = True)
     parser.add_argument("--xls-version", default = "")
     parser.add_argument("--xlsynth-driver-version", default = "")
+    parser.add_argument("--installed-tools-root-prefix", default = "")
+    parser.add_argument("--installed-driver-root-prefix", default = "")
     parser.add_argument("--local-tools-path", default = "")
     parser.add_argument("--local-dslx-stdlib-path", default = "")
     parser.add_argument("--local-driver-path", default = "")
@@ -533,6 +630,8 @@ def main(argv):
         artifact_source = args.artifact_source,
         xls_version = args.xls_version,
         driver_version = args.xlsynth_driver_version,
+        installed_tools_root_prefix = args.installed_tools_root_prefix,
+        installed_driver_root_prefix = args.installed_driver_root_prefix,
         local_tools_path = args.local_tools_path,
         local_dslx_stdlib_path = args.local_dslx_stdlib_path,
         local_driver_path = args.local_driver_path,
