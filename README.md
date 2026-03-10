@@ -51,9 +51,10 @@ The attributes accepted by each mode are strict:
 
 Download-backed modes also have one host prerequisite: when `auto` falls back
 to downloading, or when `download_only` is selected, the repository rule
-installs `xlsynth-driver` with `rustup run nightly cargo install`. That means
-the host running module resolution must have `rustup` available with a nightly
-toolchain installed.
+installs `xlsynth-driver` with `rustup run nightly cargo install`. The host
+running module resolution must have `rustup` available. If the nightly
+toolchain is missing, `rules_xlsynth` bootstraps a repo-local `rustup` home
+before installing the driver.
 
 Each `xls.toolchain(...)` call exports a small repo surface:
 
@@ -62,8 +63,9 @@ Each `xls.toolchain(...)` call exports a small repo surface:
 - `@<name>//:libxls` and `@<name>//:libxls_link` for native consumers
 - `@<name>//:dslx_stdlib` for packages that need the standard library tree
 
-Supported leaf rules may opt out of the registered default bundle with
+Supported DSLX rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>//:bundle"`. Today that escape hatch is available on
+`dslx_library`, `dslx_test`, `dslx_to_ir`, `dslx_prove_quickcheck_test`,
 `dslx_to_sv_types`, `dslx_to_pipeline`, `dslx_to_pipeline_eco`, and
 `dslx_stitch_pipeline`.
 

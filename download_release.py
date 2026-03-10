@@ -2,6 +2,7 @@
 
 import gzip
 import hashlib
+import http.client
 import json
 from optparse import OptionParser
 import os
@@ -23,6 +24,7 @@ SUPPORTED_PLATFORMS = {
 TOOL_BINARIES = [
     "dslx_interpreter_main",
     "ir_converter_main",
+    "block_to_verilog_main",
     "codegen_main",
     "opt_main",
     "prove_quickcheck_main",
@@ -108,6 +110,35 @@ def get_latest_release(max_attempts):
     print(f"Latest version discovered: {latest_version}")
     return latest_version
 
+def copy_url_to_path(url, destination_path, headers, max_attempts):
+    """
+    Downloads one URL to destination_path with exponential-backoff retries.
+
+    This retries both connection setup failures and mid-stream read failures so
+    large artifact downloads survive transient disconnects.
+    """
+    attempt = 0
+    delay = 1
+    while attempt < max_attempts:
+        attempt += 1
+        try:
+            with request_with_retry(url, stream=True, headers=headers, max_attempts=max_attempts) as r:
+                with open(destination_path, 'wb') as f:
+                    shutil.copyfileobj(r, f)
+            return
+        except urlerror.HTTPError as e:
+            if e.code == 404 or attempt == max_attempts:
+                print(f"All {attempt} attempts failed for {url}")
+                raise
+            print(f"Attempt {attempt} failed for {url}. HTTP {e.code}. Retrying in {delay} seconds...")
+        except (ConnectionResetError, EOFError, OSError, TimeoutError, http.client.HTTPException, urlerror.URLError) as e:
+            if attempt == max_attempts:
+                print(f"All {attempt} attempts failed for {url}")
+                raise
+            print(f"Attempt {attempt} failed for {url}. Error: {e}. Retrying in {delay} seconds...")
+        time.sleep(delay)
+        delay *= 2
+
 def high_integrity_download(base_url, filename, target_dir, max_attempts, is_binary=False, platform=None):
     print(f"Starting download of {filename}...")
     start_time = time.time()
@@ -121,15 +152,9 @@ def high_integrity_download(base_url, filename, target_dir, max_attempts, is_bin
 
         headers = get_headers()
 
-        # Download SHA256 file with retry support
-        with request_with_retry(sha256_url, stream=True, headers=headers, max_attempts=max_attempts) as r:
-            with open(sha256_path, 'wb') as f:
-                shutil.copyfileobj(r, f)
+        copy_url_to_path(sha256_url, sha256_path, headers, max_attempts)
 
-        # Download the artifact with retry support
-        with request_with_retry(artifact_url, stream=True, headers=headers, max_attempts=max_attempts) as r:
-            with open(artifact_path, 'wb') as f:
-                shutil.copyfileobj(r, f)
+        copy_url_to_path(artifact_url, artifact_path, headers, max_attempts)
 
         # Verify checksum
         with open(sha256_path, 'r') as f:

@@ -1,7 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_tool_artifact_inputs", "require_tools_toolchain")
+load(
+    ":xls_toolchain.bzl",
+    "XlsArtifactBundleInfo",
+    "declare_xls_toolchain_toml",
+    "get_selected_tools_toolchain",
+    "get_tool_artifact_inputs",
+)
 
 DslxInfo = provider(
     doc = "Contains DAG info per node in a struct.",
@@ -64,8 +70,8 @@ def _dslx_library_impl(ctx):
     # Run typechecking via the embedded runner so env is read at action runtime.
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
-    toolchain = require_tools_toolchain(ctx)
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = "typecheck")
+    toolchain = get_selected_tools_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "typecheck", toolchain = toolchain)
     action_inputs = srcs + [toolchain_file] + get_tool_artifact_inputs(toolchain, "typecheck_main")
     ctx.actions.run(
         inputs = action_inputs,
@@ -104,6 +110,10 @@ dslx_library = rule(
         "srcs": attr.label_list(
             doc = "DSLX sources.",
             allow_files = [".x"],
+        ),
+        "xls_bundle": attr.label(
+            doc = "Optional XLS bundle override.",
+            providers = [XlsArtifactBundleInfo],
         ),
     },
     toolchains = ["//:toolchain_type"],

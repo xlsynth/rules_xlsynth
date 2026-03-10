@@ -12,6 +12,7 @@ import sys
 TOOL_BINARIES = [
     "dslx_interpreter_main",
     "ir_converter_main",
+    "block_to_verilog_main",
     "codegen_main",
     "opt_main",
     "prove_quickcheck_main",
@@ -260,6 +261,50 @@ def patch_macos_dylib_install_name(dylib_path):
         )
 
 
+def parse_readelf_soname(stdout):
+    marker = "Library soname: ["
+    for line in stdout.splitlines():
+        if marker not in line:
+            continue
+        return line.split(marker, 1)[1].split("]", 1)[0]
+    return ""
+
+
+def detect_runtime_library_aliases(libxls_path, sys_platform = sys.platform):
+    if sys_platform != "linux":
+        return []
+    result = subprocess.run(
+        ["readelf", "-d", str(libxls_path)],
+        check = False,
+        capture_output = True,
+        text = True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Failed to inspect ELF SONAME at {}\nstdout:\n{}\nstderr:\n{}".format(
+                libxls_path,
+                result.stdout,
+                result.stderr,
+            )
+        )
+    soname = parse_readelf_soname(result.stdout)
+    if not soname or soname == Path(libxls_path).name:
+        return []
+    return [soname]
+
+
+def materialize_runtime_library_aliases(repo_root, libxls_path, sys_platform = sys.platform):
+    aliases = detect_runtime_library_aliases(libxls_path, sys_platform = sys_platform)
+    for alias in aliases:
+        alias_path = repo_root / alias
+        ensure_clean_path(alias_path)
+        try:
+            os.symlink(libxls_path.name, alias_path)
+        except OSError:
+            shutil.copy2(str(libxls_path), str(alias_path))
+    return aliases
+
+
 def detect_driver_capability(driver_path, libxls_path, dslx_stdlib_path):
     env = build_driver_environment(libxls_path, dslx_stdlib_path)
     result = subprocess.run(
@@ -297,22 +342,68 @@ def build_driver_install_command(rustup_path, install_root, driver_version):
     ]
 
 
+def build_rustup_toolchain_install_command(rustup_path):
+    return [
+        rustup_path,
+        "toolchain",
+        "install",
+        "nightly",
+        "--profile",
+        "minimal",
+    ]
+
+
+def build_driver_install_environment(
+        repo_root,
+        libxls_path,
+        dslx_stdlib_path,
+        environ = None,
+        sys_platform = sys.platform):
+    env = build_driver_environment(
+        libxls_path = libxls_path,
+        dslx_stdlib_path = dslx_stdlib_path,
+        environ = environ,
+        sys_platform = sys_platform,
+    )
+    env["RUSTUP_HOME"] = str(repo_root / "_rustup_home")
+    env["CARGO_TARGET_DIR"] = str(repo_root / "_cargo_target")
+    return env
+
+
+def ensure_rustup_nightly_toolchain(rustup_path, env):
+    probe = subprocess.run(
+        [rustup_path, "run", "nightly", "cargo", "--version"],
+        check = False,
+        capture_output = True,
+        text = True,
+        env = env,
+    )
+    if probe.returncode == 0:
+        return
+    subprocess.run(
+        build_rustup_toolchain_install_command(rustup_path),
+        check = True,
+        env = env,
+    )
+
+
 def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
     rustup = shutil.which("rustup")
     if rustup is None:
         raise RuntimeError(
-            "rules_xlsynth download fallback requires rustup with a nightly toolchain to install xlsynth-driver {}".format(
+            "rules_xlsynth download fallback requires rustup to install xlsynth-driver {}".format(
                 driver_version
             )
         )
 
     install_root = repo_root / "_cargo_driver"
+    rustup_home = repo_root / "_rustup_home"
     target_root = repo_root / "_cargo_target"
-    ensure_clean_path(install_root)
-    ensure_clean_path(target_root)
-    install_root.mkdir(parents = True, exist_ok = True)
-    env = build_driver_environment(libxls_path, dslx_stdlib_path)
-    env["CARGO_TARGET_DIR"] = str(target_root)
+    for path in [install_root, rustup_home, target_root]:
+        ensure_clean_path(path)
+        path.mkdir(parents = True, exist_ok = True)
+    env = build_driver_install_environment(repo_root, libxls_path, dslx_stdlib_path)
+    ensure_rustup_nightly_toolchain(rustup, env)
     subprocess.run(
         build_driver_install_command(rustup, install_root, driver_version),
         check = True,
@@ -379,6 +470,7 @@ def materialize_bundle(repo_root, plan):
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
         copy_path(resolved["libxls"], libxls_dest)
         patch_macos_dylib_install_name(libxls_dest)
+        runtime_aliases = materialize_runtime_library_aliases(repo_root, libxls_dest)
 
         driver_path = install_driver(
             repo_root,
@@ -399,6 +491,7 @@ def materialize_bundle(repo_root, plan):
 
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
         symlink_or_copy(resolved["libxls"], libxls_dest)
+        runtime_aliases = materialize_runtime_library_aliases(repo_root, libxls_dest)
 
     driver_supports = detect_driver_capability(driver_dest, libxls_dest, repo_root)
     metadata_path = repo_root / "bundle_metadata.txt"
@@ -408,6 +501,7 @@ def materialize_bundle(repo_root, plan):
                 "true" if driver_supports else "false"
             ),
             "libxls_name={}\n".format(libxls_dest.name),
+            "libxls_runtime_aliases={}\n".format(",".join(runtime_aliases)),
         ]),
         encoding = "utf-8",
     )

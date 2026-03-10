@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 import materialize_xls_bundle
 
@@ -119,6 +121,77 @@ class ArtifactResolutionTest(unittest.TestCase):
                 "xlsynth-driver",
             ],
         )
+
+    def test_build_rustup_toolchain_install_command_uses_minimal_profile(self):
+        command = materialize_xls_bundle.build_rustup_toolchain_install_command("/usr/bin/rustup")
+        self.assertEqual(
+            command,
+            [
+                "/usr/bin/rustup",
+                "toolchain",
+                "install",
+                "nightly",
+                "--profile",
+                "minimal",
+            ],
+        )
+
+    def test_build_driver_install_environment_uses_repo_local_cargo_and_rustup_homes(self):
+        libxls_path = "/tmp/xls-bundle/libxls.dylib" if sys.platform == "darwin" else "/tmp/xls-bundle/libxls.so"
+        env = materialize_xls_bundle.build_driver_install_environment(
+            Path("/tmp/xls-bundle-repo"),
+            libxls_path = libxls_path,
+            dslx_stdlib_path = "/tmp/xls-bundle",
+        )
+        self.assertEqual(env["RUSTUP_HOME"], "/tmp/xls-bundle-repo/_rustup_home")
+        self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target")
+
+    def test_parse_readelf_soname_finds_soname(self):
+        self.assertEqual(
+            materialize_xls_bundle.parse_readelf_soname(
+                """
+Tag        Type                         Name/Value
+0x000000000000000e (SONAME)             Library soname: [libxls-v0.38.0.so]
+"""
+            ),
+            "libxls-v0.38.0.so",
+        )
+
+    def test_detect_runtime_library_aliases_uses_linux_soname_when_needed(self):
+        with mock.patch.object(
+            materialize_xls_bundle.subprocess,
+            "run",
+            return_value = mock.Mock(
+                returncode = 0,
+                stdout = "0x000000000000000e (SONAME)             Library soname: [libxls-v0.38.0.so]\n",
+                stderr = "",
+            ),
+        ):
+            self.assertEqual(
+                materialize_xls_bundle.detect_runtime_library_aliases(
+                    Path("/tmp/xls-bundle/libxls.so"),
+                    sys_platform = "linux",
+                ),
+                ["libxls-v0.38.0.so"],
+            )
+
+    def test_detect_runtime_library_aliases_ignores_matching_linux_name(self):
+        with mock.patch.object(
+            materialize_xls_bundle.subprocess,
+            "run",
+            return_value = mock.Mock(
+                returncode = 0,
+                stdout = "0x000000000000000e (SONAME)             Library soname: [libxls.so]\n",
+                stderr = "",
+            ),
+        ):
+            self.assertEqual(
+                materialize_xls_bundle.detect_runtime_library_aliases(
+                    Path("/tmp/xls-bundle/libxls.so"),
+                    sys_platform = "linux",
+                ),
+                [],
+            )
 
 
 if __name__ == "__main__":

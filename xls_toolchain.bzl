@@ -359,7 +359,7 @@ def _patch_dylib_impl(ctx):
         """.format(
             infile = ctx.file.src.path,
             outfile = ctx.outputs.out.path,
-            libname = ctx.file.src.basename,
+            libname = ctx.outputs.out.basename,
         ),
         progress_message = "Patching dylib install name",
     )
@@ -426,12 +426,20 @@ def _xls_shared_library_link_impl(ctx):
     linking_context = cc_common.create_linking_context(
         linker_inputs = depset([linker_input]),
     )
-    return [CcInfo(linking_context = linking_context)]
+    runtime_files = [shared_library] + ctx.files.runtime_files
+    return [
+        DefaultInfo(
+            files = depset(runtime_files),
+            runfiles = ctx.runfiles(files = runtime_files),
+        ),
+        CcInfo(linking_context = linking_context),
+    ]
 
 
 xls_shared_library_link = rule(
     implementation = _xls_shared_library_link_impl,
     attrs = {
+        "runtime_files": attr.label(allow_files = True),
         "shared_library": attr.label(mandatory = True, allow_single_file = True),
         "_cc_toolchain": attr.label(default = Label("@bazel_tools//tools/cpp:current_cc_toolchain")),
     },

@@ -3,7 +3,13 @@
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_deps", "get_srcs_from_lib", "write_executable_shell_script")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_tool_artifact_inputs", "require_tools_toolchain")
+load(
+    ":xls_toolchain.bzl",
+    "XlsArtifactBundleInfo",
+    "declare_xls_toolchain_toml",
+    "get_selected_tools_toolchain",
+    "get_tool_artifact_inputs",
+)
 
 
 def _dslx_test_impl(ctx):
@@ -37,8 +43,8 @@ def _dslx_test_impl(ctx):
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
-    toolchain = require_tools_toolchain(ctx)
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_test")
+    toolchain = get_selected_tools_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_test", toolchain = toolchain)
     cmd_parts = [
         "/usr/bin/env",
         "python3",
@@ -81,6 +87,10 @@ dslx_test = rule(
         "deps": attr.label_list(
             doc = "The DSLX library dependencies for the test.",
             providers = [DslxInfo],
+        ),
+        "xls_bundle": attr.label(
+            doc = "Optional XLS bundle override.",
+            providers = [XlsArtifactBundleInfo],
         ),
     },
     test = True,

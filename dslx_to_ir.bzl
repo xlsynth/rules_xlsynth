@@ -4,7 +4,13 @@ load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "get_srcs_from_lib", "mangle_dslx_name")
 load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "require_driver_toolchain")
+load(
+    ":xls_toolchain.bzl",
+    "XlsArtifactBundleInfo",
+    "declare_xls_toolchain_toml",
+    "get_driver_artifact_inputs",
+    "get_selected_driver_toolchain",
+)
 
 def _dslx_to_ir_impl(ctx):
     # Get the DslxInfo from the direct library target
@@ -22,8 +28,8 @@ def _dslx_to_ir_impl(ctx):
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
-    toolchain = require_driver_toolchain(ctx)
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_to_ir")
+    toolchain = get_selected_driver_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_to_ir", toolchain = toolchain)
     dslx2ir_inputs = [toolchain_file] + get_driver_artifact_inputs(toolchain, ["ir_converter_main"])
     ir2opt_inputs = [toolchain_file] + get_driver_artifact_inputs(toolchain, ["opt_main"])
 
@@ -97,6 +103,10 @@ dslx_to_ir = rule(
         "top": attr.string(
             doc = "The top-level DSLX module to be converted to IR.",
             mandatory = True,
+        ),
+        "xls_bundle": attr.label(
+            doc = "Optional XLS bundle override.",
+            providers = [XlsArtifactBundleInfo],
         ),
     },
     outputs = {

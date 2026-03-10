@@ -31,7 +31,7 @@ matching `libxls` shared library. That repo exports:
 ## Default bundles and explicit overrides
 
 Most rules use the registered default workspace bundle through normal Bazel
-toolchain resolution. Supported leaf rules can opt into a named bundle with
+toolchain resolution. Supported DSLX rules can opt into a named bundle with
 `xls_bundle = "@<name>//:bundle"`. That override changes only the artifact
 bundle. The existing behavior settings - for example `dslx_path`, warnings,
 `type_inference_v2`, `gate_format`, `assert_format`, `use_system_verilog`, and

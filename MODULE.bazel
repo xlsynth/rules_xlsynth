@@ -4,7 +4,7 @@ bazel_dep(name = "bazel_skylib", version = "1.6.1")
 bazel_dep(name = "rules_cc", version = "0.2.11")
 bazel_dep(name = "rules_python", version = "1.0.0")
 
-xls = use_extension("//:extensions.bzl", "xls")
+xls = use_extension("//:extensions.bzl", "xls", dev_dependency = True)
 
 xls.toolchain(
     name = "rules_xlsynth_selftest_xls",
@@ -14,4 +14,7 @@ xls.toolchain(
 )
 
 use_repo(xls, "rules_xlsynth_selftest_xls")
-register_toolchains("@rules_xlsynth_selftest_xls//:all")
+register_toolchains(
+    "@rules_xlsynth_selftest_xls//:all",
+    dev_dependency = True,
+)
