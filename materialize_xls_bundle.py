@@ -183,7 +183,10 @@ def detect_host_platform():
         if machine == "arm64":
             return "arm64"
         if machine == "x86_64":
-            return "x64"
+            raise RuntimeError(
+                "download-backed XLS bundles do not support Intel macOS because the xlsynth "
+                "releases do not publish matching x86_64 Darwin artifacts"
+            )
         raise RuntimeError("Unsupported macOS architecture: {}".format(machine))
 
     if sys.platform != "linux":

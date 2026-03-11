@@ -105,6 +105,12 @@ class ArtifactResolutionTest(unittest.TestCase):
                 installed_driver_root_prefix = "/tools/xlsynth-driver",
             )
 
+    def test_detect_host_platform_rejects_intel_macos(self):
+        with mock.patch.object(materialize_xls_bundle.sys, "platform", "darwin"):
+            with mock.patch.object(materialize_xls_bundle.os, "uname", return_value = mock.Mock(machine = "x86_64")):
+                with self.assertRaisesRegex(RuntimeError, "Intel macOS"):
+                    materialize_xls_bundle.detect_host_platform()
+
     def test_installed_paths_use_live_version_pattern(self):
         plan = materialize_xls_bundle.derive_installed_paths(
             xls_version = "0.38.0",

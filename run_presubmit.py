@@ -400,32 +400,41 @@ def run_workspace_toolchain_smoke_example(config: PresubmitConfig):
 
 def _resolve_example_artifacts(config: PresubmitConfig, temp_root: Path) -> Dict[str, Path]:
     plan = materialize_xls_bundle.resolve_artifact_plan(
-        artifact_source = 'auto',
+        artifact_source = 'download_only',
         xls_version = config.xls_version,
         driver_version = config.xlsynth_driver_version,
     )
-    if plan['mode'] == 'download':
-        resolved = materialize_xls_bundle.download_versioned_artifacts(temp_root, plan['xls_version'])
-        normalized_libxls = temp_root / materialize_xls_bundle.normalized_libxls_name(resolved['libxls'])
-        materialize_xls_bundle.copy_path(resolved['libxls'], normalized_libxls)
-        driver_path = materialize_xls_bundle.install_driver(
-            temp_root,
-            plan['driver_version'],
-            normalized_libxls,
-            resolved['dslx_stdlib_root'],
-        )
-        return {
-            'tools_root': resolved['tools_root'],
-            'dslx_stdlib_root': resolved['dslx_stdlib_root'],
-            'driver': driver_path,
-            'libxls': normalized_libxls,
-        }
+    if plan['mode'] != 'download':
+        raise ValueError('Expected download-backed example artifacts, got {}'.format(plan['mode']))
+    resolved = materialize_xls_bundle.download_versioned_artifacts(temp_root, plan['xls_version'])
+    normalized_libxls = temp_root / materialize_xls_bundle.normalized_libxls_name(resolved['libxls'])
+    materialize_xls_bundle.copy_path(resolved['libxls'], normalized_libxls)
+    driver_path = materialize_xls_bundle.install_driver(
+        temp_root,
+        plan['driver_version'],
+        normalized_libxls,
+        resolved['dslx_stdlib_root'],
+    )
     return {
-        'tools_root': plan['tools_root'],
-        'dslx_stdlib_root': plan['dslx_stdlib_root'],
-        'driver': plan['driver'],
-        'libxls': plan['libxls'],
+        'tools_root': resolved['tools_root'],
+        'dslx_stdlib_root': resolved['dslx_stdlib_root'],
+        'driver': driver_path,
+        'libxls': normalized_libxls,
     }
+
+
+@register
+def run_toolchain_helper_tests(config: PresubmitConfig):
+    bazel_test_opt(
+        (
+            '//:make_env_helpers_test',
+            '//:env_helpers_test',
+            '//:artifact_resolution_test',
+            '//:download_release_test',
+            '//:external_bundle_exports_test',
+        ),
+        config,
+    )
 
 
 def _stage_local_dev_example_tree(config: PresubmitConfig) -> Path:
