@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-from dataclasses import dataclass
-from typing import Optional, Tuple, List, Callable, Dict, Set
+from typing import Optional, Tuple, List, Callable, Dict, NamedTuple, Set
 import subprocess
 import optparse
 import os
@@ -21,8 +20,7 @@ def register(f: Runnable):
     return f
 
 
-@dataclass(frozen = True)
-class PresubmitConfig:
+class PresubmitConfig(NamedTuple):
     repo_root: Path
     dslx_path: Optional[Tuple[str, ...]]
     xlsynth_driver_version: str
@@ -73,7 +71,7 @@ def _run_bazel(
         targets: Tuple[str, ...],
         flags: List[str],
         *,
-        capture_output: bool) -> subprocess.CompletedProcess[str]:
+        capture_output: bool) -> subprocess.CompletedProcess:
     cmdline = [
         'bazel',
         '--bazelrc=/dev/null',
