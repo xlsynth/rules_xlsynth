@@ -13,6 +13,7 @@ Expected layout:
 |-- libxls.so
 |-- tools/
 |   |-- check_ir_equivalence_main
+|   |-- block_to_verilog_main
 |   |-- codegen_main
 |   |-- delay_info_main
 |   |-- dslx_fmt
@@ -28,6 +29,10 @@ Expected layout:
 `local_tools_path` must be the directory that directly contains the XLS tool
 binaries, and `local_dslx_stdlib_path` must be the directory that directly
 contains `std.x`.
+
+That `tools/` list is the full bundle tool set expected by
+`materialize_xls_bundle.py`, even though the smoke targets below only exercise
+a subset of those binaries.
 
 Populate that tree by copying or symlinking outputs from local XLS and
 `xlsynth-driver` builds. A typical setup stages the compiled tool binaries into
