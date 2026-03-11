@@ -122,8 +122,6 @@ jobs:
       - name: Run presubmit script
         run: |
           python run_presubmit.py \
-            --xlsynth-tools $(pwd)/dependencies \
-            --xlsynth-driver-dir $(dirname "$(which xlsynth-driver)") \
             --dslx-path dependencies/dslx_stdlib
 
   dslx_ci_py36:
@@ -264,6 +262,4 @@ jobs:
         run: |
           source $HOME/.cargo/env
           python3.6 run_presubmit.py \
-            --xlsynth-tools $(pwd)/dependencies \
-            --xlsynth-driver-dir $(dirname "$(which xlsynth-driver)") \
             --dslx-path dependencies/dslx_stdlib
