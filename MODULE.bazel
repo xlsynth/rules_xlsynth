@@ -8,8 +8,8 @@ xls = use_extension("//:extensions.bzl", "xls", dev_dependency = True)
 
 xls.toolchain(
     name = "rules_xlsynth_selftest_xls",
-    xls_version = "0.38.0",
-    xlsynth_driver_version = "0.33.0",
+    xls_version = "0.39.0",
+    xlsynth_driver_version = "0.36.0",
     artifact_source = "download_only",
 )
 
