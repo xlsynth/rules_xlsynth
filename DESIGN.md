@@ -57,7 +57,7 @@ Most rules use the registered default workspace bundle through normal Bazel
 toolchain resolution. Supported DSLX rules can opt into a named bundle with
 `xls_bundle = "@<name>//:bundle"`. That override changes only the artifact
 bundle. The existing behavior settings - for example `dslx_path`, warnings,
-`type_inference_v2`, `gate_format`, `assert_format`, `use_system_verilog`, and
+`gate_format`, `assert_format`, `use_system_verilog`, and
 `add_invariant_assertions` - still come from the registered toolchain.
 
 ## Runner and toolchain TOML

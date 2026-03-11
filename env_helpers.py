@@ -54,8 +54,6 @@ _DSLX_FLAG_SPECS: Dict[str, EnvFlagSpec] = {
     EnvFlagSpec("enable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
     "disable_warnings":
     EnvFlagSpec("disable_warnings", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
-    "type_inference_v2":
-    EnvFlagSpec("type_inference_v2", EnvFlagMode.PASSTHROUGH_IF_NONEMPTY),
 }
 
 

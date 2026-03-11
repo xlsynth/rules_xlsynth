@@ -76,10 +76,6 @@ def _bundle_struct_from_provider(bundle):
     )
 
 def _toolchain_with_semantics(artifact_selection, ctx):
-    type_inference_v2 = _validate_tri_state(
-        ctx.attr._type_inference_v2_flag[BuildSettingInfo].value,
-        "@rules_xlsynth//config:type_inference_v2",
-    )
     use_system_verilog = _validate_tri_state(
         ctx.attr._use_system_verilog_flag[BuildSettingInfo].value,
         "@rules_xlsynth//config:use_system_verilog",
@@ -103,7 +99,6 @@ def _toolchain_with_semantics(artifact_selection, ctx):
         dslx_path = _split_nonempty(ctx.attr._dslx_path_flag[BuildSettingInfo].value, ":"),
         enable_warnings = _split_nonempty(ctx.attr._enable_warnings_flag[BuildSettingInfo].value, ","),
         disable_warnings = _split_nonempty(ctx.attr._disable_warnings_flag[BuildSettingInfo].value, ","),
-        type_inference_v2 = type_inference_v2,
         gate_format = ctx.attr._gate_format_flag[BuildSettingInfo].value,
         assert_format = ctx.attr._assert_format_flag[BuildSettingInfo].value,
         use_system_verilog = use_system_verilog,
@@ -121,7 +116,6 @@ xls_toolchain = rule(
         "_dslx_path_flag": attr.label(default = "//config:dslx_path"),
         "_enable_warnings_flag": attr.label(default = "//config:enable_warnings"),
         "_disable_warnings_flag": attr.label(default = "//config:disable_warnings"),
-        "_type_inference_v2_flag": attr.label(default = "//config:type_inference_v2"),
         "_gate_format_flag": attr.label(default = "//config:gate_format"),
         "_assert_format_flag": attr.label(default = "//config:assert_format"),
         "_use_system_verilog_flag": attr.label(default = "//config:use_system_verilog"),
@@ -190,7 +184,6 @@ def _merge_toolchain_with_bundle(toolchain, bundle):
         dslx_path = toolchain.dslx_path,
         enable_warnings = toolchain.enable_warnings,
         disable_warnings = toolchain.disable_warnings,
-        type_inference_v2 = toolchain.type_inference_v2,
         gate_format = toolchain.gate_format,
         assert_format = toolchain.assert_format,
         use_system_verilog = toolchain.use_system_verilog,
@@ -237,7 +230,6 @@ def declare_xls_toolchain_toml(
         *,
         name,
         toolchain = None,
-        type_inference_v2 = "",
         gate_format = None,
         assert_format = None,
         use_system_verilog = "",
@@ -245,7 +237,6 @@ def declare_xls_toolchain_toml(
         array_index_bounds_checking = ""):
     resolved_toolchain = require_tools_toolchain(ctx) if toolchain == None else toolchain
 
-    resolved_type_inference_v2 = _resolve_tri_state(resolved_toolchain.type_inference_v2, type_inference_v2)
     resolved_use_system_verilog = _resolve_tri_state(resolved_toolchain.use_system_verilog, use_system_verilog)
     resolved_add_invariant_assertions = _resolve_tri_state(resolved_toolchain.add_invariant_assertions, add_invariant_assertions)
     resolved_gate_format = resolved_toolchain.gate_format if gate_format == None else gate_format
@@ -261,9 +252,6 @@ def declare_xls_toolchain_toml(
         "enable_warnings = {}".format(_toml_array(resolved_toolchain.enable_warnings)),
         "disable_warnings = {}".format(_toml_array(resolved_toolchain.disable_warnings)),
     ]
-    if resolved_type_inference_v2:
-        lines.append("type_inference_v2 = {}".format(resolved_type_inference_v2))
-
     lines.extend([
         "",
         "[toolchain.codegen]",

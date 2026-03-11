@@ -28,6 +28,17 @@ _DRIVER_CAPABILITY_FLAGS = {
 }
 
 
+def run_captured_text_command(args, check, env = None):
+    return subprocess.run(
+        args,
+        check = check,
+        stdout = subprocess.PIPE,
+        stderr = subprocess.PIPE,
+        universal_newlines = True,
+        env = env,
+    )
+
+
 def normalize_version(version):
     if not version:
         return version
@@ -308,11 +319,9 @@ def parse_readelf_soname(stdout):
 
 
 def read_linux_soname(libxls_path):
-    result = subprocess.run(
+    result = run_captured_text_command(
         ["readelf", "-d", str(libxls_path)],
         check = False,
-        capture_output = True,
-        text = True,
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -363,11 +372,9 @@ def normalize_runtime_library_identity(libxls_path, sys_platform = sys.platform)
 
 def detect_driver_capabilities(driver_path, libxls_path, dslx_stdlib_path):
     env = build_driver_environment(libxls_path, dslx_stdlib_path)
-    result = subprocess.run(
+    result = run_captured_text_command(
         [str(driver_path), "dslx2sv-types", "--help"],
         check = False,
-        capture_output = True,
-        text = True,
         env = env,
     )
     if result.returncode != 0:
@@ -432,11 +439,9 @@ def build_driver_install_environment(
 
 
 def ensure_rustup_nightly_toolchain(rustup_path, env):
-    probe = subprocess.run(
+    probe = run_captured_text_command(
         [rustup_path, "run", "nightly", "cargo", "--version"],
         check = False,
-        capture_output = True,
-        text = True,
         env = env,
     )
     if probe.returncode == 0:
@@ -449,11 +454,9 @@ def ensure_rustup_nightly_toolchain(rustup_path, env):
 
 
 def validate_installed_driver(driver_path, env, driver_version):
-    result = subprocess.run(
+    result = run_captured_text_command(
         [str(driver_path), "--version"],
         check = False,
-        capture_output = True,
-        text = True,
         env = env,
     )
     if result.returncode != 0:

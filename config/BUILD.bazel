@@ -18,11 +18,6 @@ string_flag(
 )
 
 string_flag(
-    name = "type_inference_v2",
-    build_setting_default = "",
-)
-
-string_flag(
     name = "gate_format",
     build_setting_default = "",
 )

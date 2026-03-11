@@ -34,7 +34,6 @@ def _build_setting_override_flags(more_action_env: Optional[Dict[str, str]]) -> 
         'XLSYNTH_DSLX_PATH': '@rules_xlsynth//config:dslx_path',
         'XLSYNTH_DSLX_ENABLE_WARNINGS': '@rules_xlsynth//config:enable_warnings',
         'XLSYNTH_DSLX_DISABLE_WARNINGS': '@rules_xlsynth//config:disable_warnings',
-        'XLSYNTH_TYPE_INFERENCE_V2': '@rules_xlsynth//config:type_inference_v2',
         'XLSYNTH_GATE_FORMAT': '@rules_xlsynth//config:gate_format',
         'XLSYNTH_ASSERT_FORMAT': '@rules_xlsynth//config:assert_format',
         'XLSYNTH_USE_SYSTEM_VERILOG': '@rules_xlsynth//config:use_system_verilog',

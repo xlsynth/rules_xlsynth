@@ -273,8 +273,9 @@ class ArtifactResolutionTest(unittest.TestCase):
             mock_run.assert_called_once_with(
                 [str(driver_path), "--version"],
                 check = False,
-                capture_output = True,
-                text = True,
+                stdout = materialize_xls_bundle.subprocess.PIPE,
+                stderr = materialize_xls_bundle.subprocess.PIPE,
+                universal_newlines = True,
                 env = mock.ANY,
             )
 
@@ -298,11 +299,19 @@ Tag        Type                         Name/Value
                 stdout = "0x000000000000000e (SONAME)             Library soname: [libxls-v0.38.0.so]\n",
                 stderr = "",
             ),
-        ):
+        ) as mock_run:
             self.assertEqual(
                 materialize_xls_bundle.read_linux_soname(Path("/tmp/xls-bundle/libxls.so")),
                 "libxls-v0.38.0.so",
             )
+        mock_run.assert_called_once_with(
+            ["readelf", "-d", "/tmp/xls-bundle/libxls.so"],
+            check = False,
+            stdout = materialize_xls_bundle.subprocess.PIPE,
+            stderr = materialize_xls_bundle.subprocess.PIPE,
+            universal_newlines = True,
+            env = None,
+        )
 
     def test_normalize_linux_soname_sets_expected_name(self):
         with mock.patch.object(

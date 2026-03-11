@@ -5,6 +5,7 @@ import argparse
 import sys
 import textwrap
 from pathlib import Path
+from typing import List
 
 _DOCSTRING = """Returns the embedded xlsynth_runner.py source.
 
@@ -31,7 +32,7 @@ def _generate_bzl(py_source: str) -> str:
     return "\n".join([*header_lines, docstring, *return_lines, ""])
 
 
-def main(argv: list[str]) -> int:
+def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description="Regenerate env_helpers.bzl")
     parser.add_argument("--output", type=Path, default=Path("env_helpers.bzl"))
     parser.add_argument("--source", type=Path, default=Path("env_helpers.py"))
