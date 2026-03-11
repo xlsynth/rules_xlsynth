@@ -135,6 +135,28 @@ class ArtifactResolutionTest(unittest.TestCase):
         self.assertEqual(env["XLS_DSO_PATH"], libxls_path)
         self.assertEqual(env["DSLX_STDLIB_PATH"], "/tmp/xls-bundle")
 
+    def test_detect_driver_capabilities_reads_help_flags(self):
+        with mock.patch.object(
+            materialize_xls_bundle.subprocess,
+            "run",
+            return_value = mock.Mock(
+                returncode = 0,
+                stdout = "Usage: xlsynth-driver dslx2sv-types --sv_struct_field_ordering <POLICY>\n",
+                stderr = "--sv_enum_case_naming_policy <POLICY>\n",
+            ),
+        ):
+            self.assertEqual(
+                materialize_xls_bundle.detect_driver_capabilities(
+                    Path("/tmp/xls-bundle/xlsynth-driver"),
+                    Path("/tmp/xls-bundle/libxls.so"),
+                    Path("/tmp/xls-bundle"),
+                ),
+                {
+                    "driver_supports_sv_enum_case_naming_policy": True,
+                    "driver_supports_sv_struct_field_ordering": True,
+                },
+            )
+
     def test_build_driver_install_command_uses_rustup_nightly(self):
         command = materialize_xls_bundle.build_driver_install_command(
             "/usr/bin/rustup",

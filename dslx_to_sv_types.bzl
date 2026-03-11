@@ -15,6 +15,8 @@ _SV_STRUCT_FIELD_ORDERING_POLICIES = [
     "reversed",
 ]
 
+_DEFAULT_SV_STRUCT_FIELD_ORDERING_POLICY = "as_declared"
+
 def _dslx_to_sv_types_impl(ctx):
     srcs = get_srcs_from_deps(ctx)
 
@@ -39,9 +41,13 @@ def _dslx_to_sv_types_impl(ctx):
         srcs[0].path,
     ]
 
-    arguments.append(
-        "--sv_struct_field_ordering=" + ctx.attr.sv_struct_field_ordering,
-    )
+    if toolchain.driver_supports_sv_struct_field_ordering:
+        arguments.append(
+            "--sv_struct_field_ordering=" + ctx.attr.sv_struct_field_ordering,
+        )
+    else:
+        if ctx.attr.sv_struct_field_ordering != _DEFAULT_SV_STRUCT_FIELD_ORDERING_POLICY:
+            fail("sv_struct_field_ordering={} requires a selected XLS bundle whose xlsynth-driver supports that flag".format(ctx.attr.sv_struct_field_ordering))
 
     if toolchain.driver_supports_sv_enum_case_naming_policy:
         arguments.append("--sv_enum_case_naming_policy=" + ctx.attr.sv_enum_case_naming_policy)
@@ -76,7 +82,7 @@ dslx_to_sv_types = rule(
         ),
         "sv_struct_field_ordering": attr.string(
             doc = "Struct field ordering policy passed to xlsynth-driver (`as_declared` or `reversed`).",
-            default = "as_declared",
+            default = _DEFAULT_SV_STRUCT_FIELD_ORDERING_POLICY,
             values = _SV_STRUCT_FIELD_ORDERING_POLICIES,
         ),
         "xls_bundle": attr.label(

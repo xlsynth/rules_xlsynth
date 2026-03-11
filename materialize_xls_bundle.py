@@ -22,6 +22,11 @@ TOOL_BINARIES = [
     "check_ir_equivalence_main",
 ]
 
+_DRIVER_CAPABILITY_FLAGS = {
+    "driver_supports_sv_enum_case_naming_policy": "--sv_enum_case_naming_policy",
+    "driver_supports_sv_struct_field_ordering": "--sv_struct_field_ordering",
+}
+
 
 def normalize_version(version):
     if not version:
@@ -353,7 +358,7 @@ def normalize_runtime_library_identity(libxls_path, sys_platform = sys.platform)
         raise RuntimeError("Unsupported host platform: {}".format(sys_platform))
 
 
-def detect_driver_capability(driver_path, libxls_path, dslx_stdlib_path):
+def detect_driver_capabilities(driver_path, libxls_path, dslx_stdlib_path):
     env = build_driver_environment(libxls_path, dslx_stdlib_path)
     result = subprocess.run(
         [str(driver_path), "dslx2sv-types", "--help"],
@@ -371,7 +376,10 @@ def detect_driver_capability(driver_path, libxls_path, dslx_stdlib_path):
             )
         )
     help_text = "{}\n{}".format(result.stdout, result.stderr)
-    return "--sv_enum_case_naming_policy" in help_text
+    return {
+        capability_name: capability_flag in help_text
+        for capability_name, capability_flag in _DRIVER_CAPABILITY_FLAGS.items()
+    }
 
 
 def build_driver_install_command(rustup_path, install_root, driver_version):
@@ -589,19 +597,23 @@ def materialize_bundle(repo_root, plan):
         encoding = "utf-8",
     )
 
-    driver_supports = detect_driver_capability(driver_dest, libxls_dest, repo_root)
+    driver_capabilities = detect_driver_capabilities(driver_dest, libxls_dest, repo_root)
     metadata_path = repo_root / "bundle_metadata.txt"
     metadata_path.write_text(
         "".join([
-            "driver_supports_sv_enum_case_naming_policy={}\n".format(
-                "true" if driver_supports else "false"
-            ),
+            "".join([
+                "{}={}\n".format(
+                    capability_name,
+                    "true" if capability_enabled else "false",
+                )
+                for capability_name, capability_enabled in driver_capabilities.items()
+            ]),
             "libxls_name={}\n".format(libxls_dest.name),
         ]),
         encoding = "utf-8",
     )
     return {
-        "driver_supports_sv_enum_case_naming_policy": driver_supports,
+        **driver_capabilities,
         "runtime_library_path": derive_runtime_library_path(libxls_dest),
         "libxls_name": libxls_dest.name,
     }

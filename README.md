@@ -177,6 +177,11 @@ The selected bundle records whether its `xlsynth-driver` supports the
 `sv_enum_case_naming_policy = "unqualified"`; `enum_qualified` only works when
 the chosen workspace bundle or explicit `xls_bundle` advertises support.
 
+Older bundles also keep working with the default
+`sv_struct_field_ordering = "as_declared"` behavior. The explicit `reversed`
+mode only works when the chosen workspace bundle or explicit `xls_bundle`
+advertises support for `--sv_struct_field_ordering`.
+
 ### `dslx_to_ir` - convert DSLX to optimized IR
 
 Given a DSLX library target as a dependency, this rule will generate:

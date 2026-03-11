@@ -23,7 +23,11 @@ def _metadata_dict(repo_ctx):
         metadata[key] = value
     return metadata
 
-def _bundle_build_file(repo_alias, libxls_name, driver_supports):
+def _bundle_build_file(
+        repo_alias,
+        libxls_name,
+        driver_supports_sv_enum_case_naming_policy,
+        driver_supports_sv_struct_field_ordering):
     tool_list = ",\n        ".join(['"{}"'.format(name) for name in _TOOL_BINARIES])
     exported_files = ",\n    ".join(
         ['"{}"'.format(name) for name in _TOOL_BINARIES + ["xlsynth-driver", libxls_name]],
@@ -130,7 +134,8 @@ alias(
 xls_bundle(
     name = "bundle",
     driver = ":xlsynth-driver",
-    driver_supports_sv_enum_case_naming_policy = {driver_supports},
+    driver_supports_sv_enum_case_naming_policy = {driver_supports_sv_enum_case_naming_policy},
+    driver_supports_sv_struct_field_ordering = {driver_supports_sv_struct_field_ordering},
     dslx_stdlib = ":dslx_stdlib",
     libxls = ":libxls_file",
     tools_root = ":tools_root_files",
@@ -160,7 +165,8 @@ toolchain(
         libxls_name = libxls_name,
         lib_file_rule = lib_file_rule.strip(),
         repo_alias = repo_alias,
-        driver_supports = "True" if driver_supports else "False",
+        driver_supports_sv_enum_case_naming_policy = "True" if driver_supports_sv_enum_case_naming_policy else "False",
+        driver_supports_sv_struct_field_ordering = "True" if driver_supports_sv_struct_field_ordering else "False",
     )
 
 def _bundle_repo_impl(repo_ctx):
@@ -204,7 +210,8 @@ def _bundle_repo_impl(repo_ctx):
         _bundle_build_file(
             repo_alias = repo_ctx.attr.repo_alias,
             libxls_name = metadata["libxls_name"],
-            driver_supports = metadata["driver_supports_sv_enum_case_naming_policy"] == "true",
+            driver_supports_sv_enum_case_naming_policy = metadata["driver_supports_sv_enum_case_naming_policy"] == "true",
+            driver_supports_sv_struct_field_ordering = metadata["driver_supports_sv_struct_field_ordering"] == "true",
         ),
     )
 
