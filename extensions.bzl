@@ -26,12 +26,14 @@ def _metadata_dict(repo_ctx):
 def _bundle_build_file(
         repo_alias,
         libxls_name,
+        runtime_aliases,
         driver_supports_sv_enum_case_naming_policy,
         driver_supports_sv_struct_field_ordering):
     tool_list = ",\n        ".join(['"{}"'.format(name) for name in _TOOL_BINARIES])
     exported_files = ",\n    ".join(
-        ['"{}"'.format(name) for name in _TOOL_BINARIES + ["xlsynth-driver", libxls_name]],
+        ['"{}"'.format(name) for name in _TOOL_BINARIES + ["xlsynth-driver", libxls_name] + runtime_aliases],
     )
+    runtime_alias_srcs = ",\n        ".join(['"{}"'.format(name) for name in runtime_aliases])
     lib_target = libxls_name
     lib_file_rule = """
 filegroup(
@@ -41,7 +43,7 @@ filegroup(
 )
 filegroup(
     name = "libxls_runtime_files",
-    srcs = [":libxls_file"],
+    srcs = [":libxls_file"{runtime_alias_srcs}],
     visibility = ["//visibility:public"],
 )
 cc_import(
@@ -57,6 +59,7 @@ xls_shared_library_link(
 )
 """.format(
         lib_target = lib_target,
+        runtime_alias_srcs = "" if not runtime_aliases else ",\n        {}".format(runtime_alias_srcs),
     )
     return """# SPDX-License-Identifier: Apache-2.0
 
@@ -205,11 +208,17 @@ def _bundle_repo_impl(repo_ctx):
             result.stderr,
         ))
     metadata = _metadata_dict(repo_ctx)
+    runtime_aliases = [
+        alias
+        for alias in metadata.get("libxls_runtime_aliases", "").split(",")
+        if alias
+    ]
     repo_ctx.file(
         "BUILD.bazel",
         _bundle_build_file(
             repo_alias = repo_ctx.attr.repo_alias,
             libxls_name = metadata["libxls_name"],
+            runtime_aliases = runtime_aliases,
             driver_supports_sv_enum_case_naming_policy = metadata["driver_supports_sv_enum_case_naming_policy"] == "true",
             driver_supports_sv_struct_field_ordering = metadata["driver_supports_sv_struct_field_ordering"] == "true",
         ),

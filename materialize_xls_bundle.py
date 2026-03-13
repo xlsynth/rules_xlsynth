@@ -330,27 +330,40 @@ def read_linux_soname(libxls_path):
                 result.stdout,
                 result.stderr,
             )
-        )
+    )
     return parse_readelf_soname(result.stdout)
+
+
+def materialize_runtime_library_aliases(libxls_path, runtime_aliases):
+    staged_aliases = []
+    for alias in runtime_aliases:
+        if not alias or alias == Path(libxls_path).name:
+            continue
+        alias_path = Path(libxls_path).parent / alias
+        ensure_clean_path(alias_path)
+        try:
+            os.symlink(Path(libxls_path).name, str(alias_path))
+        except OSError:
+            shutil.copy2(str(libxls_path), str(alias_path))
+        staged_aliases.append(alias)
+    return staged_aliases
 
 
 def normalize_linux_soname(libxls_path):
     soname = read_linux_soname(libxls_path)
     expected = Path(libxls_path).name
-    if soname and soname != expected:
-        patchelf = shutil.which("patchelf")
-        if patchelf == None:
-            raise RuntimeError(
-                "libxls SONAME at {} is {} but patchelf is unavailable; install patchelf to normalize SONAME to {}".format(
-                    libxls_path,
-                    soname,
-                    expected,
-                )
-            )
-        subprocess.run(
-            [patchelf, "--set-soname", expected, str(libxls_path)],
-            check = True,
-        )
+    if not soname or soname == expected:
+        return []
+
+    patchelf = shutil.which("patchelf")
+    if patchelf == None:
+        return materialize_runtime_library_aliases(libxls_path, [soname])
+
+    subprocess.run(
+        [patchelf, "--set-soname", expected, str(libxls_path)],
+        check = True,
+    )
+    return []
 
 
 def normalize_runtime_library_identity(libxls_path, sys_platform = sys.platform):
@@ -364,8 +377,9 @@ def normalize_runtime_library_identity(libxls_path, sys_platform = sys.platform)
             ],
             check = True,
         )
+        return []
     elif sys_platform == "linux":
-        normalize_linux_soname(libxls_path)
+        return normalize_linux_soname(libxls_path)
     else:
         raise RuntimeError("Unsupported host platform: {}".format(sys_platform))
 
@@ -571,7 +585,7 @@ def materialize_bundle(repo_root, plan):
 
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
         copy_path(resolved["libxls"], libxls_dest)
-        normalize_runtime_library_identity(libxls_dest)
+        runtime_aliases = normalize_runtime_library_identity(libxls_dest)
 
         driver_path = install_driver(
             repo_root,
@@ -592,7 +606,7 @@ def materialize_bundle(repo_root, plan):
 
         libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
         copy_path(resolved["libxls"], libxls_dest)
-        normalize_runtime_library_identity(libxls_dest)
+        runtime_aliases = normalize_runtime_library_identity(libxls_dest)
 
     artifact_config_path = repo_root / "xlsynth_artifact_config.toml"
     artifact_config_path.write_text(
@@ -615,6 +629,7 @@ def materialize_bundle(repo_root, plan):
                 for capability_name, capability_enabled in driver_capabilities.items()
             ]),
             "libxls_name={}\n".format(libxls_dest.name),
+            "libxls_runtime_aliases={}\n".format(",".join(runtime_aliases)),
         ]),
         encoding = "utf-8",
     )

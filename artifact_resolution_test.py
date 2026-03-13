@@ -340,21 +340,85 @@ Tag        Type                         Name/Value
         ):
             with mock.patch.object(materialize_xls_bundle.shutil, "which") as mock_which:
                 with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
-                    materialize_xls_bundle.normalize_linux_soname(Path("/tmp/xls-bundle/libxls.so"))
+                    self.assertEqual(
+                        materialize_xls_bundle.normalize_linux_soname(Path("/tmp/xls-bundle/libxls.so")),
+                        [],
+                    )
         mock_which.assert_not_called()
         mock_run.assert_not_called()
 
-    def test_normalize_linux_soname_raises_when_patchelf_missing(self):
-        with mock.patch.object(
-            materialize_xls_bundle,
-            "read_linux_soname",
-            return_value = "libxls-v0.38.0.so",
-        ):
-            with mock.patch.object(materialize_xls_bundle.shutil, "which", return_value = None):
-                with self.assertRaises(RuntimeError):
-                    materialize_xls_bundle.normalize_linux_soname(
-                        Path("/tmp/xls-bundle/libxls.so"),
+    def test_normalize_linux_soname_stages_runtime_alias_when_patchelf_missing(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            libxls_path = Path(tempdir) / "libxls.so"
+            libxls_path.write_text("xls\n", encoding = "utf-8")
+
+            with mock.patch.object(
+                materialize_xls_bundle,
+                "read_linux_soname",
+                return_value = "libxls-v0.38.0.so",
+            ):
+                with mock.patch.object(materialize_xls_bundle.shutil, "which", return_value = None):
+                    with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
+                        self.assertEqual(
+                            materialize_xls_bundle.normalize_linux_soname(libxls_path),
+                            ["libxls-v0.38.0.so"],
+                        )
+
+            alias_path = Path(tempdir) / "libxls-v0.38.0.so"
+            self.assertTrue(alias_path.exists())
+            if alias_path.is_symlink():
+                self.assertEqual(os.readlink(alias_path), "libxls.so")
+            else:
+                self.assertEqual(alias_path.read_text(encoding = "utf-8"), "xls\n")
+            mock_run.assert_not_called()
+
+    def test_materialize_bundle_records_runtime_aliases(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            input_root = repo_root / "_inputs"
+            tools_root = input_root / "tools"
+            stdlib_root = tools_root / "xls" / "dslx" / "stdlib"
+            stdlib_root.mkdir(parents = True)
+            (stdlib_root / "std.x").write_text("// stdlib\n", encoding = "utf-8")
+            for binary in materialize_xls_bundle.TOOL_BINARIES:
+                (tools_root / binary).write_text("", encoding = "utf-8")
+
+            driver_path = input_root / "xlsynth-driver"
+            driver_path.write_text("", encoding = "utf-8")
+            libxls_path = input_root / "libxls-v0.38.0.so"
+            libxls_path.write_text("xls\n", encoding = "utf-8")
+
+            with mock.patch.object(
+                materialize_xls_bundle,
+                "normalize_runtime_library_identity",
+                return_value = ["libxls-v0.38.0.so"],
+            ):
+                with mock.patch.object(
+                    materialize_xls_bundle,
+                    "detect_driver_capabilities",
+                    return_value = {
+                        "driver_supports_sv_enum_case_naming_policy": True,
+                        "driver_supports_sv_struct_field_ordering": False,
+                    },
+                ):
+                    materialize_xls_bundle.materialize_bundle(
+                        repo_root,
+                        {
+                            "mode": "installed",
+                            "tools_root": tools_root,
+                            "dslx_stdlib_root": stdlib_root,
+                            "driver": driver_path,
+                            "libxls": libxls_path,
+                        },
                     )
+
+            metadata = dict(
+                line.split("=", 1)
+                for line in (repo_root / "bundle_metadata.txt").read_text(encoding = "utf-8").splitlines()
+                if line
+            )
+            self.assertEqual(metadata["libxls_name"], "libxls.so")
+            self.assertEqual(metadata["libxls_runtime_aliases"], "libxls-v0.38.0.so")
 
 
 if __name__ == "__main__":
