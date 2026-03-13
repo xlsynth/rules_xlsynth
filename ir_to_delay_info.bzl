@@ -1,35 +1,50 @@
 # SPDX-License-Identifier: Apache-2.0
 
-load(":ir_provider.bzl", "IrInfo")
 load(":env_helpers.bzl", "python_runner_source")
-
+load(":ir_provider.bzl", "IrInfo")
+load(
+    ":xls_toolchain.bzl",
+    "XlsArtifactBundleInfo",
+    "declare_xls_toolchain_toml",
+    "get_driver_artifact_inputs",
+    "get_selected_driver_toolchain",
+)
 
 def _ir_to_delay_info_impl(ctx):
     opt_ir_file = ctx.attr.ir[IrInfo].ir_file if ctx.attr.use_unopt_ir else ctx.attr.ir[IrInfo].opt_ir_file
     output_file = ctx.outputs.delay_info
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source())
+    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
+    toolchain = get_selected_driver_toolchain(ctx)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = "ir_to_delay_info", toolchain = toolchain)
 
-    ctx.actions.run_shell(
-        inputs = [opt_ir_file],
-        tools = [runner],
+    ctx.actions.run(
+        inputs = [opt_ir_file, toolchain_file] + get_driver_artifact_inputs(toolchain, ["delay_info_main"]),
+        executable = runner,
         outputs = [output_file],
-        command = "\"$1\" driver ir2delayinfo --delay_model=\"$2\" \"$3\" \"$4\" > \"$5\"",
         arguments = [
-            runner.path,
+            "driver",
+            "--driver_path",
+            toolchain.driver_path,
+            "--runtime_library_path",
+            toolchain.runtime_library_path,
+            "--toolchain",
+            toolchain_file.path,
+            "--stdout_path",
+            output_file.path,
+            "ir2delayinfo",
+            "--delay_model",
             ctx.attr.delay_model,
             opt_ir_file.path,
             ctx.attr.top,
-            output_file.path,
         ],
-        use_default_shell_env = True,
+        use_default_shell_env = False,
     )
 
     return DefaultInfo(
         files = depset(direct = [output_file]),
     )
-
 
 ir_to_delay_info = rule(
     doc = "Convert an IR file to delay info",
@@ -51,8 +66,13 @@ ir_to_delay_info = rule(
             doc = "Whether to use the unoptimized IR file instead of optimized IR file.",
             default = False,
         ),
+        "xls_bundle": attr.label(
+            doc = "Optional XLS bundle override.",
+            providers = [XlsArtifactBundleInfo],
+        ),
     },
     outputs = {
         "delay_info": "%{name}.txt",
     },
+    toolchains = ["//:toolchain_type"],
 )

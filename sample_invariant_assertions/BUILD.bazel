@@ -3,8 +3,8 @@
 load("//:rules.bzl", "dslx_library", "dslx_to_pipeline")
 
 # DSLX library containing the example function that will exercise the
-# invariant-assertion code-generation path when
-# XLSYNTH_ADD_INVARIANT_ASSERTIONS=true.
+# invariant-assertion code-generation path when the toolchain or build-setting
+# default enables invariant assertions.
 dslx_library(
     name = "array_match",
     srcs = ["array_match.x"],
@@ -21,8 +21,8 @@ dslx_to_pipeline(
 )
 
 # -- Targets that explicitly override the invariant-assertion setting via rule
-#    attribute so we can test that it supersedes any value coming from the
-#    environment / toolchain TOML.
+#    attribute so we can test that it supersedes any repo-wide toolchain TOML
+#    default.
 
 dslx_to_pipeline(
     name = "array_match_sv_attr_true",

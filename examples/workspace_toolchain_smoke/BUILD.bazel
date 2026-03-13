@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("@rules_xlsynth//:rules.bzl", "dslx_library", "dslx_to_pipeline", "dslx_to_sv_types")
+
+dslx_library(
+    name = "smoke",
+    srcs = ["smoke.x"],
+)
+
+# Uses the registered default workspace bundle.
+dslx_to_sv_types(
+    name = "smoke_sv_types",
+    sv_enum_case_naming_policy = "unqualified",
+    deps = [":smoke"],
+)
+
+# Uses an explicit bundle override on a supported leaf rule.
+dslx_to_pipeline(
+    name = "smoke_pipeline",
+    delay_model = "asap7",
+    pipeline_stages = 1,
+    top = "main",
+    xls_bundle = "@workspace_override_xls//:bundle",
+    deps = [":smoke"],
+)

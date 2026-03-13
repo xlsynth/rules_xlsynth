@@ -19,8 +19,8 @@ dslx_library(
         ":imported",
         "//sample_stitch_expecting_dslx_path/subdir:another",
     ],
-    # Note: we still demonstrate XLSYNTH_DSLX_PATH because the DSLX imports use
-    # bare module names (no explicit path prefixes).
+    # Note: we still demonstrate @rules_xlsynth//config:dslx_path because the
+    # DSLX imports use bare module names (no explicit path prefixes).
 )
 
 # Stitch the stage functions into a wrapper module.
