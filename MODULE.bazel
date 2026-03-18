@@ -13,8 +13,23 @@ xls.toolchain(
     artifact_source = "download_only",
 )
 
-use_repo(xls, "rules_xlsynth_selftest_xls")
+# Mirror the explicit override repo name used by the standalone smoke example
+# so `bazel test //...` from the repo root can still analyze that package.
+xls.toolchain(
+    name = "workspace_override_xls",
+    xls_version = "0.39.0",
+    xlsynth_driver_version = "0.36.0",
+    artifact_source = "download_only",
+)
+
+use_repo(
+    xls,
+    "rules_xlsynth_selftest_xls_runtime",
+    "rules_xlsynth_selftest_xls_toolchain",
+    "workspace_override_xls_runtime",
+    "workspace_override_xls_toolchain",
+)
 register_toolchains(
-    "@rules_xlsynth_selftest_xls//:all",
+    "@rules_xlsynth_selftest_xls_toolchain//:all",
     dev_dependency = True,
 )

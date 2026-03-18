@@ -15,6 +15,6 @@ xls.toolchain(
     local_libxls_path = "/tmp/xls-local-dev/libxls.so",
     local_tools_path = "/tmp/xls-local-dev/tools",
 )
-use_repo(xls, "xls_local_dev")
+use_repo(xls, "xls_local_dev_runtime", "xls_local_dev_toolchain")
 
-register_toolchains("@xls_local_dev//:all")
+register_toolchains("@xls_local_dev_toolchain//:all")

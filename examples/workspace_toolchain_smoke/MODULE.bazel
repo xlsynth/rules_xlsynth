@@ -22,6 +22,12 @@ xls.toolchain(
     xls_version = "0.39.0",
     xlsynth_driver_version = "0.36.0",
 )
-use_repo(xls, "workspace_default_xls", "workspace_override_xls")
+use_repo(
+    xls,
+    "workspace_default_xls_runtime",
+    "workspace_default_xls_toolchain",
+    "workspace_override_xls_runtime",
+    "workspace_override_xls_toolchain",
+)
 
-register_toolchains("@workspace_default_xls//:all")
+register_toolchains("@workspace_default_xls_toolchain//:all")

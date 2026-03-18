@@ -86,7 +86,7 @@ dslx_to_sv_types = rule(
             values = _SV_STRUCT_FIELD_ORDERING_POLICIES,
         ),
         "xls_bundle": attr.label(
-            doc = "Optional override bundle repo label, for example @legacy_xls//:bundle.",
+            doc = "Optional override bundle repo label, for example @legacy_xls_toolchain//:bundle.",
             providers = [XlsArtifactBundleInfo],
         ),
     },
