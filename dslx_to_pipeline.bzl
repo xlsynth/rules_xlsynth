@@ -36,6 +36,7 @@ def _dslx_to_pipeline_impl(ctx):
     bool_flags = [
         "flop_inputs",
         "flop_outputs",
+        "use_system_verilog",
         "reset_data_path",
     ]
     for flag in bool_flags:
@@ -129,6 +130,10 @@ DslxToPipelineAttrs = {
     ),
     "flop_outputs": attr.bool(
         doc = "Whether to flop the output ports.",
+        default = True,
+    ),
+    "use_system_verilog": attr.bool(
+        doc = "Emit SystemVerilog when true, plain Verilog when false.",
         default = True,
     ),
     "reset_data_path": attr.bool(
