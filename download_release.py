@@ -56,6 +56,14 @@ def build_dso_release_filename(platform, version_tuple):
     return filename
 
 
+def build_runtime_tarball_release_filename(platform):
+    return "libxls-runtime-{}.tar.gz".format(platform)
+
+
+def build_runtime_manifest_release_filename(platform):
+    return "libxls-runtime-{}-manifest.json".format(platform)
+
+
 def build_release_artifacts(version, platform, include_dso):
     version_tuple = parse_xlsynth_release_tag(version)
     artifacts = [(build_binary_release_filename(binary_name, platform), True) for binary_name in TOOL_BINARIES]
@@ -194,6 +202,23 @@ def high_integrity_download(base_url, filename, target_dir, max_attempts, is_bin
         file_size = os.path.getsize(target_path) / (1024 * 1024)  # Size in MiB
         print(f"Downloaded {target_filename}: {file_size:.2f} MiB in {elapsed_time:.2f} seconds")
 
+
+def try_high_integrity_download(base_url, filename, target_dir, max_attempts, is_binary = False, platform = None):
+    try:
+        high_integrity_download(
+            base_url,
+            filename,
+            target_dir,
+            max_attempts,
+            is_binary = is_binary,
+            platform = platform,
+        )
+        return True
+    except urlerror.HTTPError as e:
+        if e.code == 404:
+            return False
+        raise
+
 def main():
     parser = OptionParser()
     parser.add_option("-v", "--version", dest="version", help="Specify release version (e.g., v0.0.0)")
@@ -238,6 +263,32 @@ def main():
     stdlib_filename = "dslx_stdlib.tar.gz"
     high_integrity_download(base_url, stdlib_filename, options.output_dir, options.max_attempts, is_binary=False)
     shutil.unpack_archive(os.path.join(options.output_dir, stdlib_filename), options.output_dir)
+
+    if options.dso and SUPPORTED_PLATFORMS[options.platform] == ".so":
+        runtime_tarball = build_runtime_tarball_release_filename(options.platform)
+        runtime_manifest = build_runtime_manifest_release_filename(options.platform)
+        tarball_present = try_high_integrity_download(
+            base_url,
+            runtime_tarball,
+            options.output_dir,
+            options.max_attempts,
+            is_binary = False,
+        )
+        manifest_present = try_high_integrity_download(
+            base_url,
+            runtime_manifest,
+            options.output_dir,
+            options.max_attempts,
+            is_binary = False,
+        )
+        if tarball_present and manifest_present:
+            shutil.unpack_archive(os.path.join(options.output_dir, runtime_tarball), options.output_dir)
+        elif tarball_present or manifest_present:
+            print("Ignoring partial runtime-closure asset set for {}".format(options.platform))
+            for partial_name in [runtime_tarball, runtime_manifest]:
+                partial_path = os.path.join(options.output_dir, partial_name)
+                if os.path.exists(partial_path):
+                    os.remove(partial_path)
 
 if __name__ == "__main__":
     main()

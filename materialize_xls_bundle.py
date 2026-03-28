@@ -3,6 +3,7 @@
 """Materializes an XLS bundle repository for the rules_xlsynth module extension."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -186,6 +187,35 @@ def resolve_artifact_plan(
 
 def derive_runtime_library_path(libxls_path):
     return str(Path(libxls_path).parent)
+
+
+def load_runtime_manifest(search_root):
+    manifest_paths = sorted(Path(search_root).glob("libxls-runtime-*-manifest.json"))
+    if not manifest_paths:
+        return []
+    if len(manifest_paths) != 1:
+        raise RuntimeError(
+            "Expected at most one runtime manifest in {}, found {}".format(
+                search_root,
+                manifest_paths,
+            )
+        )
+    manifest = json.loads(manifest_paths[0].read_text(encoding = "utf-8"))
+    runtime_files = manifest.get("runtime_files", [])
+    if not isinstance(runtime_files, list) or not all(isinstance(name, str) and name for name in runtime_files):
+        raise RuntimeError("Invalid runtime manifest at {}".format(manifest_paths[0]))
+    resolved_paths = []
+    for runtime_file in runtime_files:
+        runtime_path = Path(search_root) / runtime_file
+        if not runtime_path.exists():
+            raise RuntimeError(
+                "Runtime manifest {} references missing file {}".format(
+                    manifest_paths[0],
+                    runtime_path,
+                )
+            )
+        resolved_paths.append(runtime_path)
+    return resolved_paths
 
 
 def detect_host_platform():
@@ -547,6 +577,7 @@ def resolve_downloaded_artifacts(download_root):
         "tools_root": download_root,
         "dslx_stdlib_root": stdlib_root,
         "libxls": libxls_candidates[0],
+        "runtime_files": load_runtime_manifest(download_root),
     }
 
 
@@ -576,38 +607,16 @@ def download_versioned_artifacts(repo_root, xls_version):
     )
     return resolve_downloaded_artifacts(download_root)
 
-
-def materialize_bundle(repo_root, plan):
+def resolve_materialization_inputs(repo_root, plan):
     if plan["mode"] == "download":
-        resolved = download_versioned_artifacts(repo_root, plan["xls_version"])
-        link_tool_binaries(resolved["tools_root"], repo_root)
-        link_stdlib_sources(resolved["dslx_stdlib_root"], repo_root)
+        return download_versioned_artifacts(repo_root, plan["xls_version"])
+    resolved = dict(plan)
+    validate_stdlib_root(resolved["dslx_stdlib_root"])
+    resolved["runtime_files"] = load_runtime_manifest(Path(resolved["libxls"]).parent)
+    return resolved
 
-        libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
-        copy_path(resolved["libxls"], libxls_dest)
-        runtime_aliases = normalize_runtime_library_identity(libxls_dest)
 
-        driver_path = install_driver(
-            repo_root,
-            plan["driver_version"],
-            libxls_dest,
-            repo_root,
-        )
-        driver_dest = repo_root / "xlsynth-driver"
-        symlink_or_copy(driver_path, driver_dest)
-    else:
-        resolved = plan
-        validate_stdlib_root(resolved["dslx_stdlib_root"])
-        link_tool_binaries(resolved["tools_root"], repo_root)
-        link_stdlib_sources(resolved["dslx_stdlib_root"], repo_root)
-
-        driver_dest = repo_root / "xlsynth-driver"
-        symlink_or_copy(resolved["driver"], driver_dest)
-
-        libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
-        copy_path(resolved["libxls"], libxls_dest)
-        runtime_aliases = normalize_runtime_library_identity(libxls_dest)
-
+def write_artifact_config(repo_root, libxls_dest):
     artifact_config_path = repo_root / "xlsynth_artifact_config.toml"
     artifact_config_path.write_text(
         "".join([
@@ -617,33 +626,114 @@ def materialize_bundle(repo_root, plan):
         encoding = "utf-8",
     )
 
-    driver_capabilities = detect_driver_capabilities(driver_dest, libxls_dest, repo_root)
-    metadata_path = repo_root / "bundle_metadata.txt"
+
+def write_runtime_metadata(repo_root, libxls_dest, runtime_aliases, runtime_files):
+    metadata_path = repo_root / "runtime_metadata.txt"
     metadata_path.write_text(
         "".join([
-            "".join([
-                "{}={}\n".format(
-                    capability_name,
-                    "true" if capability_enabled else "false",
-                )
-                for capability_name, capability_enabled in driver_capabilities.items()
-            ]),
             "libxls_name={}\n".format(libxls_dest.name),
             "libxls_runtime_aliases={}\n".format(",".join(runtime_aliases)),
+            "libxls_runtime_files={}\n".format(",".join(sorted(runtime_files))),
         ]),
         encoding = "utf-8",
     )
+
+
+def write_toolchain_metadata(repo_root, driver_capabilities):
+    metadata_path = repo_root / "toolchain_metadata.txt"
+    metadata_path.write_text(
+        "".join([
+            "{}={}\n".format(
+                capability_name,
+                "true" if capability_enabled else "false",
+            )
+            for capability_name, capability_enabled in driver_capabilities.items()
+        ]),
+        encoding = "utf-8",
+    )
+
+
+def stage_runtime_payload(repo_root, resolved):
+    link_tool_binaries(resolved["tools_root"], repo_root)
+    link_stdlib_sources(resolved["dslx_stdlib_root"], repo_root)
+
+    libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
+    copy_path(resolved["libxls"], libxls_dest)
+
+    staged_runtime_files = []
+    for runtime_file in resolved.get("runtime_files", []):
+        runtime_dest = repo_root / runtime_file.name
+        copy_path(runtime_file, runtime_dest)
+        if runtime_dest.name not in staged_runtime_files:
+            staged_runtime_files.append(runtime_dest.name)
+
+    runtime_aliases = normalize_runtime_library_identity(libxls_dest)
+    write_artifact_config(repo_root, libxls_dest)
+    write_runtime_metadata(repo_root, libxls_dest, runtime_aliases, staged_runtime_files)
     return {
-        **driver_capabilities,
-        "runtime_library_path": derive_runtime_library_path(libxls_dest),
-        "libxls_name": libxls_dest.name,
+        "libxls_dest": libxls_dest,
+        "runtime_aliases": runtime_aliases,
+        "runtime_files": staged_runtime_files,
     }
+
+
+def build_driver_probe_paths(repo_root):
+    probe_root = repo_root / "_driver_probe"
+    ensure_clean_path(probe_root)
+    probe_root.mkdir(parents = True, exist_ok = True)
+    return {
+        "probe_root": probe_root,
+        "stdlib_root": probe_root / "dslx_stdlib",
+        "libxls": probe_root / normalized_libxls_name("libxls.so" if sys.platform == "linux" else "libxls.dylib"),
+    }
+
+
+def stage_driver_probe_inputs(repo_root, resolved):
+    probe_paths = build_driver_probe_paths(repo_root)
+    symlink_or_copy(resolved["dslx_stdlib_root"], probe_paths["stdlib_root"])
+    copy_path(resolved["libxls"], probe_paths["libxls"])
+    for runtime_file in resolved.get("runtime_files", []):
+        probe_runtime_dest = probe_paths["probe_root"] / runtime_file.name
+        copy_path(runtime_file, probe_runtime_dest)
+    normalize_runtime_library_identity(probe_paths["libxls"])
+    return probe_paths
+
+
+def materialize_runtime_surface(repo_root, plan):
+    resolved = resolve_materialization_inputs(repo_root, plan)
+    stage_runtime_payload(repo_root, resolved)
+
+
+def materialize_toolchain_surface(repo_root, plan):
+    resolved = resolve_materialization_inputs(repo_root, plan)
+    probe_paths = stage_driver_probe_inputs(repo_root, resolved)
+
+    if plan["mode"] == "download":
+        driver_path = install_driver(
+            repo_root,
+            plan["driver_version"],
+            probe_paths["libxls"],
+            probe_paths["stdlib_root"],
+        )
+    else:
+        driver_path = resolved["driver"]
+
+    driver_dest = repo_root / "xlsynth-driver"
+    symlink_or_copy(driver_path, driver_dest)
+
+    driver_capabilities = detect_driver_capabilities(
+        driver_dest,
+        probe_paths["libxls"],
+        probe_paths["stdlib_root"],
+    )
+    write_toolchain_metadata(repo_root, driver_capabilities)
 
 
 def parse_args(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", required = True)
     parser.add_argument("--artifact-source", required = True)
+    parser.add_argument("--surface", required = True, choices = ["runtime", "toolchain"])
     parser.add_argument("--xls-version", default = "")
     parser.add_argument("--xlsynth-driver-version", default = "")
     parser.add_argument("--installed-tools-root-prefix", default = "")
@@ -670,7 +760,10 @@ def main(argv):
         local_driver_path = args.local_driver_path,
         local_libxls_path = args.local_libxls_path,
     )
-    materialize_bundle(repo_root, plan)
+    if args.surface == "runtime":
+        materialize_runtime_surface(repo_root, plan)
+    else:
+        materialize_toolchain_surface(repo_root, plan)
 
 
 if __name__ == "__main__":

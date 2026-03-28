@@ -62,6 +62,16 @@ class DownloadReleaseTest(unittest.TestCase):
         self.assertIn(("dslx_fmt-arm64", True), artifacts)
         self.assertIn(("libxls-arm64.dylib.gz", False), artifacts)
 
+    def test_runtime_closure_release_filenames_are_platform_scoped(self):
+        self.assertEqual(
+            download_release.build_runtime_tarball_release_filename("ubuntu2004"),
+            "libxls-runtime-ubuntu2004.tar.gz",
+        )
+        self.assertEqual(
+            download_release.build_runtime_manifest_release_filename("ubuntu2004"),
+            "libxls-runtime-ubuntu2004-manifest.json",
+        )
+
     def test_copy_url_to_path_retries_after_stream_reset(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             destination_path = f"{temp_dir}/artifact"
@@ -98,6 +108,30 @@ class DownloadReleaseTest(unittest.TestCase):
                         headers = {},
                         max_attempts = 2,
                     )
+
+    def test_try_high_integrity_download_returns_false_for_not_found(self):
+        not_found = urlerror.HTTPError(
+            url = "https://example.invalid/runtime-closure",
+            code = 404,
+            msg = "not found",
+            hdrs = None,
+            fp = None,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with mock.patch.object(
+                download_release,
+                "high_integrity_download",
+                side_effect = not_found,
+            ):
+                self.assertFalse(
+                    download_release.try_high_integrity_download(
+                        "https://example.invalid",
+                        "libxls-runtime-ubuntu2004.tar.gz",
+                        temp_dir,
+                        2,
+                    ),
+                )
 
 
 if __name__ == "__main__":

@@ -20,6 +20,6 @@ dslx_to_pipeline(
     delay_model = "asap7",
     pipeline_stages = 1,
     top = "main",
-    xls_bundle = "@workspace_override_xls//:bundle",
+    xls_bundle = "@workspace_override_xls_toolchain//:bundle",
     deps = [":smoke"],
 )

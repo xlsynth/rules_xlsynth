@@ -15,14 +15,14 @@ class EnvHelpersTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             runfiles_root = tmp_path / "runfiles"
-            driver_path = runfiles_root / "+xls+rules_xlsynth_selftest_xls" / "xlsynth-driver"
+            driver_path = runfiles_root / "+xls+rules_xlsynth_selftest_xls_toolchain" / "xlsynth-driver"
             driver_path.parent.mkdir(parents = True)
             driver_path.write_text("#!/bin/sh\n", encoding = "utf-8")
             toolchain_path = tmp_path / "toolchain.toml"
             toolchain_path.write_text("[toolchain]\n", encoding = "utf-8")
 
             argv = mock.Mock(
-                driver_path = "external/+xls+rules_xlsynth_selftest_xls/xlsynth-driver",
+                driver_path = "external/+xls+rules_xlsynth_selftest_xls_toolchain/xlsynth-driver",
                 toolchain = str(toolchain_path),
                 subcommand = "--version",
                 passthrough = [],
@@ -50,12 +50,12 @@ class EnvHelpersTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             runfiles_root = tmp_path / "runfiles"
-            tools_path = runfiles_root / "+xls+rules_xlsynth_selftest_xls" / "tools"
+            tools_path = runfiles_root / "+xls+rules_xlsynth_selftest_xls_runtime" / "tools"
             tools_path.mkdir(parents = True)
             toolchain_path = tmp_path / "toolchain.toml"
             toolchain_path.write_text(
                 "[toolchain]\n"
-                "tool_path = \"external/+xls+rules_xlsynth_selftest_xls/tools\"\n",
+                "tool_path = \"external/+xls+rules_xlsynth_selftest_xls_runtime/tools\"\n",
                 encoding = "utf-8",
             )
 
