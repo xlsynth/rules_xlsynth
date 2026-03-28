@@ -8,7 +8,7 @@ xls = use_extension("//:extensions.bzl", "xls", dev_dependency = True)
 
 xls.toolchain(
     name = "rules_xlsynth_selftest_xls",
-    xls_version = "0.39.0",
+    xls_version = "0.40.0",
     xlsynth_driver_version = "0.36.0",
     artifact_source = "download_only",
 )
@@ -17,7 +17,7 @@ xls.toolchain(
 # so `bazel test //...` from the repo root can still analyze that package.
 xls.toolchain(
     name = "workspace_override_xls",
-    xls_version = "0.39.0",
+    xls_version = "0.40.0",
     xlsynth_driver_version = "0.36.0",
     artifact_source = "download_only",
 )

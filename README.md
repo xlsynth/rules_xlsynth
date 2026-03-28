@@ -17,7 +17,7 @@ xls = use_extension("@rules_xlsynth//:extensions.bzl", "xls")
 
 xls.toolchain(
     name = "workspace_xls",
-    xls_version = "0.39.0",
+    xls_version = "0.40.0",
     xlsynth_driver_version = "0.36.0",
     artifact_source = "auto",
     installed_tools_root_prefix = "/opt/xlsynth",
