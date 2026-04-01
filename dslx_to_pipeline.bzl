@@ -38,6 +38,7 @@ def _dslx_to_pipeline_impl(ctx):
         "flop_outputs",
         "use_system_verilog",
         "reset_data_path",
+        "reset_active_low",
     ]
     for flag in bool_flags:
         value = getattr(ctx.attr, flag)
@@ -198,6 +199,10 @@ DslxToPipelineAttrs = {
     "reset": attr.string(
         doc = "The reset signal to use in generation.",
         default = "",
+    ),
+    "reset_active_low": attr.bool(
+        doc = "Whether reset is active low.",
+        default = False,
     ),
     "top": attr.string(
         doc = "The top entry function within the dependency module.",
