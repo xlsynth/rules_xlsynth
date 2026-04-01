@@ -39,6 +39,7 @@ def _dslx_to_pipeline_impl(ctx):
         "use_system_verilog",
         "reset_data_path",
         "reset_active_low",
+        "reset_asynchronous",
     ]
     for flag in bool_flags:
         value = getattr(ctx.attr, flag)
@@ -202,6 +203,10 @@ DslxToPipelineAttrs = {
     ),
     "reset_active_low": attr.bool(
         doc = "Whether reset is active low.",
+        default = False,
+    ),
+    "reset_asynchronous": attr.bool(
+        doc = "Whether reset is asynchronous.",
         default = False,
     ),
     "top": attr.string(
