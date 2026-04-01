@@ -57,6 +57,12 @@ def _dslx_to_pipeline_impl(ctx):
     if ctx.attr.reset:
         passthrough.append("--reset={}".format(ctx.attr.reset))
 
+    ir_top = ctx.attr.ir_top
+    if ir_top == "":
+        file_name = srcs[0].path.rsplit("/", 1)[1] if "/" in srcs[0].path else srcs[0].path
+        basename = file_name.split(".", 1)[0] if "." in file_name else file_name
+        ir_top = "__{}__{}".format(basename, ctx.attr.top)
+
     output_sv_file = ctx.outputs.sv_file
     output_unopt_ir_file = ctx.outputs.unopt_ir_file
     output_opt_ir_file = ctx.outputs.opt_ir_file
@@ -71,28 +77,64 @@ def _dslx_to_pipeline_impl(ctx):
         add_invariant_assertions = ctx.attr.add_invariant_assertions,
     )
 
+    common_args = [
+        "driver",
+        "--driver_path",
+        toolchain.driver_path,
+        "--runtime_library_path",
+        toolchain.runtime_library_path,
+        "--toolchain",
+        toolchain_file.path,
+    ]
+
     ctx.actions.run(
         inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(
             toolchain,
-            ["ir_converter_main", "opt_main", "codegen_main"],
+            ["ir_converter_main"],
         ),
+        tools = [runner],
         executable = runner,
-        outputs = [output_sv_file, output_unopt_ir_file, output_opt_ir_file],
-        arguments = [
-            "driver",
-            "--driver_path",
-            toolchain.driver_path,
-            "--runtime_library_path",
-            toolchain.runtime_library_path,
-            "--toolchain",
-            toolchain_file.path,
+        outputs = [output_unopt_ir_file],
+        arguments = common_args + [
             "--stdout_path",
-            output_sv_file.path,
-            "dslx2pipeline",
+            output_unopt_ir_file.path,
+            "dslx2ir",
             "--dslx_input_file=" + srcs[0].path,
             "--dslx_top=" + top_entry,
-            "--output_unopt_ir=" + output_unopt_ir_file.path,
-            "--output_opt_ir=" + output_opt_ir_file.path,
+        ],
+        use_default_shell_env = False,
+    )
+
+    ctx.actions.run(
+        inputs = srcs + [output_unopt_ir_file, toolchain_file] + get_driver_artifact_inputs(
+            toolchain, ["opt_main"],
+        ),
+        tools = [runner],
+        executable = runner,
+        outputs = [output_opt_ir_file],
+        arguments = common_args + [
+            "--stdout_path",
+            output_opt_ir_file.path,
+            "ir2opt",
+            output_unopt_ir_file.path,
+            "--top=" + ir_top,
+        ],
+        use_default_shell_env = False,
+    )
+
+    ctx.actions.run(
+        inputs = srcs + [output_opt_ir_file, toolchain_file] + get_driver_artifact_inputs(
+            toolchain, ["codegen_main"],
+        ),
+        tools = [runner],
+        executable = runner,
+        outputs = [output_sv_file],
+        arguments = common_args + [
+            "--stdout_path",
+            output_sv_file.path,
+            "ir2pipeline",
+            "--top=" + ir_top,
+            output_opt_ir_file.path,
         ] + passthrough,
         use_default_shell_env = False,
     )
@@ -164,6 +206,10 @@ DslxToPipelineAttrs = {
     "xls_bundle": attr.label(
         doc = "Optional override bundle repo label, for example @legacy_xls_toolchain//:bundle.",
         providers = [XlsArtifactBundleInfo],
+    ),
+    "ir_top": attr.string(
+        doc = "The name of top entry in the intermediate representation, by default the same as: __{file_name}__{DSLX top}",
+        default = "",
     ),
 }
 
