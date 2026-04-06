@@ -241,7 +241,30 @@ class ArtifactResolutionTest(unittest.TestCase):
                 resolved["libxls"],
                 download_root / "libxls-v0.38.0-arm64.dylib",
             )
+            self.assertEqual(resolved["runtime_files"], [])
             mock_run.assert_not_called()
+
+    def test_load_runtime_manifest_returns_runtime_files(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            (root / "libc++.so.1").write_text("", encoding = "utf-8")
+            (root / "libc++abi.so.1").write_text("", encoding = "utf-8")
+            (root / "libxls-runtime-ubuntu2004-manifest.json").write_text(
+                '{"runtime_files": ["libc++.so.1", "libc++abi.so.1"]}\n',
+                encoding = "utf-8",
+            )
+
+            self.assertEqual(
+                materialize_xls_bundle.load_runtime_manifest(root),
+                [
+                    root / "libc++.so.1",
+                    root / "libc++abi.so.1",
+                ],
+            )
+
+    def test_load_runtime_manifest_returns_empty_when_missing(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            self.assertEqual(materialize_xls_bundle.load_runtime_manifest(Path(tempdir)), [])
 
     def test_install_driver_reuses_valid_cached_binary(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -372,7 +395,7 @@ Tag        Type                         Name/Value
                 self.assertEqual(alias_path.read_text(encoding = "utf-8"), "xls\n")
             mock_run.assert_not_called()
 
-    def test_materialize_bundle_records_runtime_aliases(self):
+    def test_stage_runtime_payload_records_runtime_metadata(self):
         with tempfile.TemporaryDirectory() as tempdir:
             repo_root = Path(tempdir)
             input_root = repo_root / "_inputs"
@@ -383,15 +406,61 @@ Tag        Type                         Name/Value
             for binary in materialize_xls_bundle.TOOL_BINARIES:
                 (tools_root / binary).write_text("", encoding = "utf-8")
 
-            driver_path = input_root / "xlsynth-driver"
-            driver_path.write_text("", encoding = "utf-8")
             libxls_path = input_root / "libxls-v0.38.0.so"
             libxls_path.write_text("xls\n", encoding = "utf-8")
+            runtime_companion = input_root / "libc++.so.1"
+            runtime_companion.write_text("runtime\n", encoding = "utf-8")
 
             with mock.patch.object(
                 materialize_xls_bundle,
                 "normalize_runtime_library_identity",
                 return_value = ["libxls-v0.38.0.so"],
+            ):
+                materialize_xls_bundle.stage_runtime_payload(
+                    repo_root,
+                    {
+                        "tools_root": tools_root,
+                        "dslx_stdlib_root": stdlib_root,
+                        "libxls": libxls_path,
+                        "runtime_files": [runtime_companion],
+                    },
+                )
+
+            metadata = dict(
+                line.split("=", 1)
+                for line in (repo_root / "runtime_metadata.txt").read_text(encoding = "utf-8").splitlines()
+                if line
+            )
+            self.assertEqual(metadata["libxls_name"], "libxls.so")
+            self.assertEqual(metadata["libxls_runtime_aliases"], "libxls-v0.38.0.so")
+            self.assertEqual(metadata["libxls_runtime_files"], "libc++.so.1")
+            self.assertTrue((repo_root / "libc++.so.1").is_file())
+
+    def test_materialize_toolchain_surface_records_driver_capabilities(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            input_root = repo_root / "_inputs"
+            stdlib_root = input_root / "xls" / "dslx" / "stdlib"
+            stdlib_root.mkdir(parents = True)
+            (stdlib_root / "std.x").write_text("// stdlib\n", encoding = "utf-8")
+
+            driver_path = input_root / "xlsynth-driver"
+            driver_path.write_text("", encoding = "utf-8")
+            libxls_path = input_root / "libxls.so"
+            libxls_path.write_text("xls\n", encoding = "utf-8")
+            runtime_companion = input_root / "libc++.so.1"
+            runtime_companion.write_text("runtime\n", encoding = "utf-8")
+
+            with mock.patch.object(
+                materialize_xls_bundle,
+                "resolve_materialization_inputs",
+                return_value = {
+                    "mode": "installed",
+                    "driver": driver_path,
+                    "dslx_stdlib_root": stdlib_root,
+                    "libxls": libxls_path,
+                    "runtime_files": [runtime_companion],
+                },
             ):
                 with mock.patch.object(
                     materialize_xls_bundle,
@@ -401,24 +470,24 @@ Tag        Type                         Name/Value
                         "driver_supports_sv_struct_field_ordering": False,
                     },
                 ):
-                    materialize_xls_bundle.materialize_bundle(
-                        repo_root,
-                        {
-                            "mode": "installed",
-                            "tools_root": tools_root,
-                            "dslx_stdlib_root": stdlib_root,
-                            "driver": driver_path,
-                            "libxls": libxls_path,
-                        },
-                    )
+                    with mock.patch.object(
+                        materialize_xls_bundle,
+                        "normalize_runtime_library_identity",
+                        return_value = [],
+                    ):
+                        materialize_xls_bundle.materialize_toolchain_surface(
+                            repo_root,
+                            {"mode": "installed"},
+                        )
 
             metadata = dict(
                 line.split("=", 1)
-                for line in (repo_root / "bundle_metadata.txt").read_text(encoding = "utf-8").splitlines()
+                for line in (repo_root / "toolchain_metadata.txt").read_text(encoding = "utf-8").splitlines()
                 if line
             )
-            self.assertEqual(metadata["libxls_name"], "libxls.so")
-            self.assertEqual(metadata["libxls_runtime_aliases"], "libxls-v0.38.0.so")
+            self.assertEqual(metadata["driver_supports_sv_enum_case_naming_policy"], "true")
+            self.assertEqual(metadata["driver_supports_sv_struct_field_ordering"], "false")
+            self.assertTrue((repo_root / "xlsynth-driver").exists())
 
 
 if __name__ == "__main__":

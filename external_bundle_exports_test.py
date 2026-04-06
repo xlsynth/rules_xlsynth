@@ -18,7 +18,7 @@ class ExternalBundleExportsTest(unittest.TestCase):
         self.assertTrue(location_file.is_file())
         self.assertEqual(Path(location_file.read_text(encoding = "utf-8").strip()).name, "dslx_stdlib")
 
-        stdlib_dir = Path(runfiles_lookup.Rlocation("rules_xlsynth_selftest_xls/dslx_stdlib"))
+        stdlib_dir = Path(runfiles_lookup.Rlocation("rules_xlsynth_selftest_xls_runtime/dslx_stdlib"))
         self.assertTrue(stdlib_dir.is_dir())
         self.assertTrue(any(stdlib_dir.glob("*.x")))
 
@@ -68,7 +68,7 @@ class ExternalBundleExportsTest(unittest.TestCase):
         runfiles_lookup = runfiles.Create()
         config_path = Path(
             runfiles_lookup.Rlocation(
-                "rules_xlsynth_selftest_xls/artifact_config/xlsynth_artifact_config.toml",
+                "rules_xlsynth_selftest_xls_runtime/artifact_config/xlsynth_artifact_config.toml",
             ),
         )
         self.assertTrue(config_path.is_file())

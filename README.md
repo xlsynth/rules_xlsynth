@@ -6,8 +6,9 @@
 
 `rules_xlsynth` now selects XLS artifacts from `MODULE.bazel` through the `xls`
 module extension. A workspace instantiates one or more named bundles with
-`xls.toolchain(...)`, exposes them with `use_repo(...)`, and registers one
-default bundle with `register_toolchains("@<name>//:all")`.
+`xls.toolchain(...)`, exposes the derived runtime and toolchain repos with
+`use_repo(...)`, and registers one default toolchain repo with
+`register_toolchains("@<name>_toolchain//:all")`.
 
 ```starlark
 bazel_dep(name = "rules_xlsynth", version = "<release>")
@@ -16,7 +17,7 @@ xls = use_extension("@rules_xlsynth//:extensions.bzl", "xls")
 
 xls.toolchain(
     name = "workspace_xls",
-    xls_version = "0.39.0",
+    xls_version = "0.40.0",
     xlsynth_driver_version = "0.36.0",
     artifact_source = "auto",
     installed_tools_root_prefix = "/opt/xlsynth",
@@ -30,8 +31,14 @@ xls.toolchain(
     artifact_source = "download_only",
 )
 
-use_repo(xls, "workspace_xls", "legacy_xls")
-register_toolchains("@workspace_xls//:all")
+use_repo(
+    xls,
+    "workspace_xls_runtime",
+    "workspace_xls_toolchain",
+    "legacy_xls_runtime",
+    "legacy_xls_toolchain",
+)
+register_toolchains("@workspace_xls_toolchain//:all")
 ```
 
 `artifact_source` chooses how each bundle repo is materialized:
@@ -69,22 +76,27 @@ running module resolution must have `rustup` available. If the nightly
 toolchain is missing, `rules_xlsynth` bootstraps a repo-local `rustup` home
 before installing the driver.
 
-Each `xls.toolchain(...)` call exports a small repo surface:
+Each `xls.toolchain(...)` call now exports two repos:
 
-- `@<name>//:all` for `register_toolchains(...)`
-- `@<name>//:bundle` for explicit `xls_bundle` overrides
-- `@<name>//:libxls` and `@<name>//:libxls_link` for native consumers
-- `@<name>//:dslx_stdlib` for packages that need the standard library tree
-- `@<name>//:xlsynth_sys_artifact_config` for the modern single-file
+- `@<name>_runtime` for runtime files, `xlsynth-sys` wiring, tools, and `libxls`
+- `@<name>_toolchain` for `:bundle`, `:toolchain`, and `register_toolchains(...)`
+
+The runtime repo exposes:
+
+- `@<name>_runtime//:libxls` and `@<name>_runtime//:libxls_link` for native consumers
+- `@<name>_runtime//:dslx_stdlib` for packages that need the standard library tree
+- `@<name>_runtime//:xlsynth_sys_artifact_config` for the modern single-file
   `xlsynth-sys` build-script contract
-- `@<name>//:xlsynth_sys_legacy_stdlib` and
-  `@<name>//:xlsynth_sys_legacy_dso` for frozen `xlsynth-sys` releases that
+- `@<name>_runtime//:xlsynth_sys_legacy_stdlib` and
+  `@<name>_runtime//:xlsynth_sys_legacy_dso` for frozen `xlsynth-sys` releases that
   still use the paired `DSLX_STDLIB_PATH` / `XLS_DSO_PATH` contract
-- `@<name>//:xlsynth_sys_dep` for the preferred `xlsynth-sys`
+- `@<name>_runtime//:xlsynth_sys_dep` for the preferred `xlsynth-sys`
   runtime-plus-link contract
-- `@<name>//:xlsynth_sys_runtime_files` and `@<name>//:xlsynth_sys_link_dep`
+- `@<name>_runtime//:xlsynth_sys_runtime_files` and `@<name>_runtime//:xlsynth_sys_link_dep`
   as compatibility exports for callers that still spell runtime and link
   separately
+- `@<name>_runtime//:libxls_runtime_files`, which now means the closed native
+  runtime file set for the selected `libxls`
 
 `xlsynth-sys` consumers should prefer `xlsynth_sys_artifact_config`,
 `xlsynth_sys_dep`, and, for frozen releases, `xlsynth_sys_legacy_stdlib` plus
@@ -93,7 +105,7 @@ Each `xls.toolchain(...)` call exports a small repo surface:
 downstream `MODULE.bazel` files.
 
 Supported DSLX rules may opt out of the registered default bundle with
-`xls_bundle = "@<name>//:bundle"`. Today that escape hatch is available on
+`xls_bundle = "@<name>_toolchain//:bundle"`. Today that escape hatch is available on
 `dslx_library`, `dslx_test`, `dslx_to_ir`, `dslx_prove_quickcheck_test`,
 `dslx_to_sv_types`, `dslx_to_pipeline`, `dslx_to_pipeline_eco`, and
 `dslx_stitch_pipeline`.
@@ -105,7 +117,7 @@ dslx_to_pipeline(
     pipeline_stages = 1,
     top = "main",
     deps = [":my_dslx_library"],
-    xls_bundle = "@legacy_xls//:bundle",
+    xls_bundle = "@legacy_xls_toolchain//:bundle",
 )
 ```
 

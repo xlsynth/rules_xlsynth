@@ -15,8 +15,23 @@ XlsArtifactBundleInfo = provider(
         "dslx_stdlib": "The DSLX stdlib root tree artifact.",
         "dslx_stdlib_path": "Directory path containing the DSLX stdlib sources.",
         "libxls": "The libxls shared library file.",
+        "runtime_files": "Declared runtime files needed to load libxls.",
         "runtime_library_path": "Directory containing libxls for runtime loading.",
         "tools_root": "The XLS tool root tree artifact.",
+        "tools_path": "Directory path containing the XLS tool binaries.",
+    },
+)
+
+XlsRuntimeSurfaceInfo = provider(
+    doc = "Runtime-only XLS surface materialized by the module extension.",
+    fields = {
+        "artifact_inputs": "Declared files needed by runtime-only XLS consumers.",
+        "dslx_stdlib": "The DSLX stdlib root tree artifact.",
+        "dslx_stdlib_path": "Directory path containing the DSLX stdlib sources.",
+        "libxls": "The libxls shared library file.",
+        "runtime_files": "Declared runtime files needed to load libxls.",
+        "runtime_library_path": "Directory containing libxls for runtime loading.",
+        "tools_root": "One XLS tool artifact from the selected tools root.",
         "tools_path": "Directory path containing the XLS tool binaries.",
     },
 )
@@ -70,9 +85,22 @@ def _bundle_struct_from_provider(bundle):
         dslx_stdlib = bundle.dslx_stdlib,
         dslx_stdlib_path = bundle.dslx_stdlib_path,
         libxls = bundle.libxls,
+        runtime_files = bundle.runtime_files,
         runtime_library_path = bundle.runtime_library_path,
         tools_root = bundle.tools_root,
         tools_path = bundle.tools_path,
+    )
+
+def _runtime_struct_from_provider(runtime):
+    return struct(
+        artifact_inputs = runtime.artifact_inputs,
+        dslx_stdlib = runtime.dslx_stdlib,
+        dslx_stdlib_path = runtime.dslx_stdlib_path,
+        libxls = runtime.libxls,
+        runtime_files = runtime.runtime_files,
+        runtime_library_path = runtime.runtime_library_path,
+        tools_root = runtime.tools_root,
+        tools_path = runtime.tools_path,
     )
 
 def _toolchain_with_semantics(artifact_selection, ctx):
@@ -93,6 +121,7 @@ def _toolchain_with_semantics(artifact_selection, ctx):
         dslx_stdlib = artifact_selection.dslx_stdlib,
         dslx_stdlib_path = artifact_selection.dslx_stdlib_path,
         libxls = artifact_selection.libxls,
+        runtime_files = artifact_selection.runtime_files,
         runtime_library_path = artifact_selection.runtime_library_path,
         driver_supports_sv_enum_case_naming_policy = artifact_selection.driver_supports_sv_enum_case_naming_policy,
         driver_supports_sv_struct_field_ordering = artifact_selection.driver_supports_sv_struct_field_ordering,
@@ -123,25 +152,61 @@ xls_toolchain = rule(
     },
 )
 
-def _xls_bundle_impl(ctx):
+def _dedupe_artifacts(artifacts):
+    deduped = []
+    for artifact in artifacts:
+        if artifact not in deduped:
+            deduped.append(artifact)
+    return deduped
+
+def _xls_runtime_surface_impl(ctx):
     tool_files = ctx.attr.tools_root[DefaultInfo].files.to_list()
     dslx_stdlib = _single_directory_artifact(ctx.attr.dslx_stdlib, "dslx_stdlib")
-    driver = _single_artifact(ctx.attr.driver, "driver")
     libxls = _single_artifact(ctx.attr.libxls, "libxls")
-    artifact_inputs = tool_files + [dslx_stdlib, driver, libxls]
+    runtime_files = _dedupe_artifacts(ctx.files.runtime_files)
+    artifact_inputs = _dedupe_artifacts(tool_files + [dslx_stdlib] + runtime_files)
     tools_path = _artifact_directory(tool_files, "tools_root")
+    return [
+        XlsRuntimeSurfaceInfo(
+            artifact_inputs = artifact_inputs,
+            dslx_stdlib = dslx_stdlib,
+            dslx_stdlib_path = dslx_stdlib.path,
+            libxls = libxls,
+            runtime_files = runtime_files,
+            runtime_library_path = libxls.dirname,
+            tools_root = tool_files[0],
+            tools_path = tools_path,
+        ),
+        DefaultInfo(files = depset(direct = artifact_inputs)),
+    ]
+
+xls_runtime_surface = rule(
+    implementation = _xls_runtime_surface_impl,
+    attrs = {
+        "dslx_stdlib": attr.label(mandatory = True),
+        "libxls": attr.label(allow_files = True, mandatory = True),
+        "runtime_files": attr.label_list(allow_files = True),
+        "tools_root": attr.label(mandatory = True),
+    },
+)
+
+def _xls_bundle_impl(ctx):
+    runtime = _runtime_struct_from_provider(ctx.attr.runtime[XlsRuntimeSurfaceInfo])
+    driver = _single_artifact(ctx.attr.driver, "driver")
+    artifact_inputs = _dedupe_artifacts(runtime.artifact_inputs + [driver])
     return [
         XlsArtifactBundleInfo(
             artifact_inputs = artifact_inputs,
             driver = driver,
             driver_supports_sv_enum_case_naming_policy = ctx.attr.driver_supports_sv_enum_case_naming_policy,
             driver_supports_sv_struct_field_ordering = ctx.attr.driver_supports_sv_struct_field_ordering,
-            dslx_stdlib = dslx_stdlib,
-            dslx_stdlib_path = dslx_stdlib.path,
-            libxls = libxls,
-            runtime_library_path = libxls.dirname,
-            tools_root = tool_files[0],
-            tools_path = tools_path,
+            dslx_stdlib = runtime.dslx_stdlib,
+            dslx_stdlib_path = runtime.dslx_stdlib_path,
+            libxls = runtime.libxls,
+            runtime_files = runtime.runtime_files,
+            runtime_library_path = runtime.runtime_library_path,
+            tools_root = runtime.tools_root,
+            tools_path = runtime.tools_path,
         ),
         DefaultInfo(files = depset(direct = artifact_inputs)),
     ]
@@ -152,9 +217,7 @@ xls_bundle = rule(
         "driver": attr.label(allow_files = True, mandatory = True),
         "driver_supports_sv_enum_case_naming_policy": attr.bool(default = False),
         "driver_supports_sv_struct_field_ordering": attr.bool(default = False),
-        "dslx_stdlib": attr.label(mandatory = True),
-        "libxls": attr.label(allow_files = True, mandatory = True),
-        "tools_root": attr.label(mandatory = True),
+        "runtime": attr.label(mandatory = True, providers = [XlsRuntimeSurfaceInfo]),
     },
 )
 
@@ -178,6 +241,7 @@ def _merge_toolchain_with_bundle(toolchain, bundle):
         dslx_stdlib = artifact_selection.dslx_stdlib,
         dslx_stdlib_path = artifact_selection.dslx_stdlib_path,
         libxls = artifact_selection.libxls,
+        runtime_files = artifact_selection.runtime_files,
         runtime_library_path = artifact_selection.runtime_library_path,
         tools_root = artifact_selection.tools_root,
         tools_path = artifact_selection.tools_path,
@@ -279,10 +343,12 @@ def get_toolchain_artifact_inputs(toolchain):
 
 def _bundle_runtime_inputs(toolchain):
     inputs = []
-    for field_name in ["dslx_stdlib", "libxls"]:
-        artifact = getattr(toolchain, field_name, None)
-        if artifact != None:
-            inputs.append(artifact)
+    dslx_stdlib = getattr(toolchain, "dslx_stdlib", None)
+    if dslx_stdlib != None:
+        inputs.append(dslx_stdlib)
+    for runtime_file in getattr(toolchain, "runtime_files", []):
+        if runtime_file not in inputs:
+            inputs.append(runtime_file)
     return inputs
 
 def _bundle_tool_input(toolchain, tool_name):

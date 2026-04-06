@@ -157,7 +157,7 @@ DslxToPipelineAttrs = {
         mandatory = True,
     ),
     "xls_bundle": attr.label(
-        doc = "Optional override bundle repo label, for example @legacy_xls//:bundle.",
+        doc = "Optional override bundle repo label, for example @legacy_xls_toolchain//:bundle.",
         providers = [XlsArtifactBundleInfo],
     ),
 }

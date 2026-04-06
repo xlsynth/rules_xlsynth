@@ -41,7 +41,7 @@ dslx_to_sv_types(
 dslx_to_sv_types(
     name = "imported_pkg_explicit_bundle",
     sv_enum_case_naming_policy = "unqualified",
-    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
+    xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
     deps = [":imported"],
 )
 
@@ -85,7 +85,7 @@ dslx_library(
     name = "sample_explicit_bundle",
     srcs = ["sample.x"],
     deps = [":imported"],
-    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
+    xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
 )
 
 build_test(
@@ -103,7 +103,7 @@ dslx_to_ir(
     name = "sample_ir_explicit_bundle",
     lib = ":sample_explicit_bundle",
     top = "main",
-    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
+    xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
 )
 
 build_test(
@@ -179,7 +179,7 @@ dslx_test(
 dslx_test(
     name = "sample_explicit_bundle_test",
     deps = [":sample_explicit_bundle"],
-    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
+    xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
 )
 
 dslx_test(
@@ -288,7 +288,7 @@ dslx_prove_quickcheck_test(
     name = "sample_prove_quickcheck_explicit_bundle_test",
     lib = ":sample_explicit_bundle",
     top = "quickcheck_main",
-    xls_bundle = "@rules_xlsynth_selftest_xls//:bundle",
+    xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
 )
 
 # Pipeline stitching example
