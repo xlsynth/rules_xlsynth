@@ -93,11 +93,18 @@ jobs:
         run: |
           cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }}
 
-      - name: Note xlsynth-driver version
+      - name: Prove split toolchain materialization
         run: |
-          ldd $(which xlsynth-driver)
-          LD_DEBUG=libs xlsynth-driver version
-          #xlsynth-driver version
+          PROOF_ROOT=$(mktemp -d /tmp/rules_xls_toolchain_materialization.XXXXXX)
+          python3 materialize_xls_bundle.py \
+            --repo-root "${PROOF_ROOT}" \
+            --artifact-source download_only \
+            --surface toolchain \
+            --xls-version "${DSO_VERSION#v}" \
+            --xlsynth-driver-version "${CRATE_VERSION}"
+          test -f "${PROOF_ROOT}/toolchain_metadata.txt"
+          cat "${PROOF_ROOT}/toolchain_metadata.txt"
+          file "${PROOF_ROOT}/xlsynth-driver"
 
       - name: Set up Bazelisk
         run: |
@@ -234,10 +241,18 @@ jobs:
         run: |
           cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }}
 
-      - name: Note xlsynth-driver version
+      - name: Prove split toolchain materialization
         run: |
-          ldd $(which xlsynth-driver)
-          LD_DEBUG=libs xlsynth-driver version
+          PROOF_ROOT=$(mktemp -d /tmp/rules_xls_toolchain_materialization.XXXXXX)
+          python3.6 materialize_xls_bundle.py \
+            --repo-root "${PROOF_ROOT}" \
+            --artifact-source download_only \
+            --surface toolchain \
+            --xls-version "${DSO_VERSION#v}" \
+            --xlsynth-driver-version "${CRATE_VERSION}"
+          test -f "${PROOF_ROOT}/toolchain_metadata.txt"
+          cat "${PROOF_ROOT}/toolchain_metadata.txt"
+          file "${PROOF_ROOT}/xlsynth-driver"
 
       - name: Set up Bazelisk
         run: |
