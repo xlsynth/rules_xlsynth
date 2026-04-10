@@ -190,6 +190,110 @@ xls_runtime_surface = rule(
     },
 )
 
+def _xlsynth_driver_binary_impl(ctx):
+    runtime = _runtime_struct_from_provider(ctx.attr.runtime[XlsRuntimeSurfaceInfo])
+    output = ctx.actions.declare_file(ctx.label.name)
+    host_driver_inputs = [ctx.file.host_driver] if ctx.file.host_driver else []
+    action_inputs = _dedupe_artifacts(
+        [ctx.file._materializer, runtime.libxls, runtime.dslx_stdlib] +
+        host_driver_inputs +
+        runtime.runtime_files
+    )
+    action_env = {"PATH": ctx.attr.action_path}
+    if ctx.attr.action_ld_library_path:
+        action_env["LD_LIBRARY_PATH"] = ctx.attr.action_ld_library_path
+    if ctx.attr.action_dyld_library_path:
+        action_env["DYLD_LIBRARY_PATH"] = ctx.attr.action_dyld_library_path
+    ctx.actions.run_shell(
+        inputs = action_inputs,
+        outputs = [output],
+        arguments = [
+            ctx.file._materializer.path,
+            output.path,
+            runtime.libxls.path,
+            runtime.dslx_stdlib.path,
+            ctx.attr.artifact_source,
+            ctx.attr.xlsynth_driver_version,
+            ctx.attr.installed_driver_root_prefix,
+            ctx.attr.local_driver_path,
+            ctx.attr.rustup_path,
+            ctx.file.host_driver.path if ctx.file.host_driver else "",
+        ],
+        command = """
+            set -euo pipefail
+            script="$1"
+            output="$2"
+            runtime_libxls="$3"
+            runtime_stdlib="$4"
+            artifact_source="$5"
+            driver_version="$6"
+            installed_driver_root_prefix="$7"
+            local_driver_path="$8"
+            rustup_path="$9"
+            host_driver="${10}"
+
+            work="${TMPDIR:-/tmp}/rules_xlsynth_driver_${RANDOM}"
+            rm -rf "$work"
+            mkdir -p "$work"
+            trap 'rm -rf "$work"' EXIT
+
+            command=(
+                python3
+                "$script"
+                --repo-root "$work"
+                --artifact-source "$artifact_source"
+                --surface toolchain
+                --driver-output "$output"
+                --driver-runtime-libxls "$runtime_libxls"
+                --driver-runtime-stdlib "$runtime_stdlib"
+            )
+            if [[ -n "$driver_version" ]]; then
+                command+=(--xlsynth-driver-version "$driver_version")
+            fi
+            if [[ -n "$installed_driver_root_prefix" ]]; then
+                command+=(--installed-driver-root-prefix "$installed_driver_root_prefix")
+            fi
+            if [[ -n "$local_driver_path" ]]; then
+                command+=(--local-driver-path "$local_driver_path")
+            fi
+            if [[ -n "$host_driver" ]]; then
+                command+=(--driver-input "$host_driver")
+            fi
+            if [[ -n "$rustup_path" ]]; then
+                command+=(--rustup-path "$rustup_path")
+            fi
+            "${command[@]}"
+        """,
+        env = action_env,
+        progress_message = "Materializing xlsynth-driver for {}".format(ctx.label),
+        mnemonic = "XlsynthDriverBinary",
+    )
+    return DefaultInfo(
+        files = depset(direct = [output]),
+        executable = output,
+    )
+
+xlsynth_driver_binary = rule(
+    implementation = _xlsynth_driver_binary_impl,
+    attrs = {
+        "action_dyld_library_path": attr.string(),
+        "action_ld_library_path": attr.string(),
+        "action_path": attr.string(mandatory = True),
+        "artifact_source": attr.string(mandatory = True),
+        "host_driver": attr.label(allow_single_file = True),
+        "installed_driver_root_prefix": attr.string(),
+        "local_driver_path": attr.string(),
+        "runtime": attr.label(mandatory = True, providers = [XlsRuntimeSurfaceInfo]),
+        "rustup_path": attr.string(),
+        "xlsynth_driver_version": attr.string(),
+        "_materializer": attr.label(
+            default = Label("//:materialize_xls_bundle.py"),
+            allow_single_file = True,
+        ),
+    },
+    executable = True,
+)
+
 def _xls_bundle_impl(ctx):
     runtime = _runtime_struct_from_provider(ctx.attr.runtime[XlsRuntimeSurfaceInfo])
     driver = _single_artifact(ctx.attr.driver, "driver")

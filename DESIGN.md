@@ -10,11 +10,15 @@ flags.
 
 ## Bundle repos and exported targets
 
-Each `xls.toolchain(...)` call materializes two repos. `@<name>_runtime`
-contains the selected tool binaries, the DSLX stdlib tree, the matching
-`libxls` shared library, and the runtime-facing exports. `@<name>_toolchain`
-contains the local `xlsynth-driver`, the `:bundle` target, and the registered
-toolchain target. The public split is:
+Each `xls.toolchain(...)` call exposes one runtime repo and one toolchain repo.
+`@<name>_runtime` contains the selected tool binaries, the DSLX stdlib tree,
+the matching `libxls` shared library, and the runtime-facing exports.
+`@<name>_toolchain` contains the `:bundle` target, the registered toolchain
+target, and a declared `:xlsynth-driver` target. Loading or registering the
+toolchain repo is metadata-only; the driver target copies, validates,
+downloads, or installs `xlsynth-driver` only when `:xlsynth-driver` is built
+directly or a rule action consumes the driver from `:bundle`. The public split
+is:
 
 - `@<name>_runtime//:libxls`
 - `@<name>_runtime//:libxls_link`
@@ -26,8 +30,17 @@ toolchain target. The public split is:
 - `@<name>_runtime//:xlsynth_sys_runtime_files`
 - `@<name>_runtime//:xlsynth_sys_link_dep`
 - `@<name>_runtime//:libxls_runtime_files`
+- `@<name>_toolchain//:xlsynth-driver`
 - `@<name>_toolchain//:bundle`
-- `@<name>_toolchain//:all`
+- `@<name>_toolchain//:toolchain`
+
+Workspaces still register the selected default with
+`register_toolchains("@<name>_toolchain//:all")`; that is the registration
+pattern for the package, not a separate exported target. When a local or
+installed driver path is configured, the module extension creates a private
+generated repo that exposes that host driver file as a declared input to
+`@<name>_toolchain//:xlsynth-driver`. Downstream workspaces do not use that
+repo directly.
 
 The `xlsynth_sys_*` exports are the intended downstream contract for
 `rules_rust` `crate_extension.annotation(...)` wiring. The preferred modern
@@ -48,12 +61,19 @@ generic bundle internals.
 - `local_paths` uses explicit local paths and is the documented escape hatch
   for `/tmp/xls-local-dev/` style setups.
 
-For the installed-layout modes, the provider derives the concrete paths from
-the toolchain declaration instead of hard-coding a repository-global install
-root: `<installed_tools_root_prefix>/v<xls_version>` for the tools tree and
+For the installed-layout modes, runtime materialization derives the concrete
+tools and library paths from the toolchain declaration instead of hard-coding a
+repository-global install root: `<installed_tools_root_prefix>/v<xls_version>`
+for the tools tree, DSLX stdlib, and `libxls`. Driver materialization derives
 `<installed_driver_root_prefix>/<xlsynth_driver_version>/bin/xlsynth-driver`
-for the driver binary. The provider owns the version-derived suffixes; the
-consumer workspace owns the root prefixes.
+inside the declared driver target. The provider owns the version-derived
+suffixes; the consumer workspace owns the root prefixes.
+
+For `local_paths`, runtime materialization uses `local_tools_path`,
+`local_dslx_stdlib_path`, and `local_libxls_path`. The local driver path is
+needed only by driver-backed actions. This lets runtime consumers depend on
+`@<name>_runtime` or register `@<name>_toolchain` without materializing,
+probing, downloading, or compiling `xlsynth-driver`.
 
 ## Default bundles and explicit overrides
 

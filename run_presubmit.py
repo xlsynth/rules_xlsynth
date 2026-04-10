@@ -133,6 +133,19 @@ def bazel_build_opt(
     resolved_workspace_dir = config.repo_root if workspace_dir is None else workspace_dir
     _run_bazel(resolved_workspace_dir, 'build', targets, flags, capture_output = capture_output)
 
+
+def run_python_script(config: PresubmitConfig, script_name: str, args: Tuple[str, ...] = ()):
+    assert isinstance(args, tuple), args
+    cmdline = [
+        sys.executable,
+        str(config.repo_root / script_name),
+        *args,
+    ]
+    env = dict(os.environ)
+    env['PYTHONDONTWRITEBYTECODE'] = '1'
+    print('Running command: ' + subprocess.list2cmdline(cmdline))
+    subprocess.run(cmdline, check = True, cwd = str(config.repo_root), env = env)
+
 @register
 def run_sample(config: PresubmitConfig):
     bazel_test_opt(('//sample/...',), config)
@@ -432,6 +445,11 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
         ),
         config,
     )
+
+
+@register
+def run_registered_toolchain_smoke(config: PresubmitConfig):
+    run_python_script(config, 'registered_toolchain_smoke.py')
 
 
 def _stage_local_dev_example_tree(config: PresubmitConfig) -> Path:

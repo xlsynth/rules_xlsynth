@@ -43,6 +43,47 @@ class ArtifactResolutionTest(unittest.TestCase):
         self.assertEqual(plan["xls_version"], "0.38.0")
         self.assertEqual(plan["driver_version"], "0.33.0")
 
+    def test_runtime_surface_does_not_require_or_select_driver(self):
+        observed_paths = []
+
+        def exists_fn(path):
+            observed_paths.append(path)
+            return path != "/tools/xlsynth/v0.38.0/xlsynth-driver-sentinel"
+
+        plan = materialize_xls_bundle.resolve_artifact_plan(
+            artifact_source = "auto",
+            xls_version = "0.38.0",
+            driver_version = "",
+            surface = "runtime",
+            installed_tools_root_prefix = "/tools/xlsynth",
+            installed_driver_root_prefix = "",
+            exists_fn = exists_fn,
+        )
+        self.assertEqual(plan["mode"], "installed")
+        self.assertNotIn("driver", plan)
+        self.assertNotIn("driver_version", plan)
+        self.assertEqual(
+            observed_paths,
+            [
+                "/tools/xlsynth/v0.38.0",
+                "/tools/xlsynth/v0.38.0/xls/dslx/stdlib",
+                "/tools/xlsynth/v0.38.0/libxls.dylib" if sys.platform == "darwin" else "/tools/xlsynth/v0.38.0/libxls.so",
+            ],
+        )
+
+    def test_runtime_local_paths_does_not_require_local_driver_path(self):
+        plan = materialize_xls_bundle.resolve_artifact_plan(
+            artifact_source = "local_paths",
+            xls_version = "",
+            driver_version = "",
+            surface = "runtime",
+            local_tools_path = "/tmp/xls-local-dev/tools",
+            local_dslx_stdlib_path = "/tmp/xls-local-dev/stdlib",
+            local_libxls_path = "/tmp/xls-local-dev/libxls.so",
+        )
+        self.assertEqual(plan["mode"], "local_paths")
+        self.assertNotIn("driver", plan)
+
     def test_auto_requires_installed_prefixes(self):
         with self.assertRaises(ValueError):
             materialize_xls_bundle.resolve_artifact_plan(
@@ -94,6 +135,129 @@ class ArtifactResolutionTest(unittest.TestCase):
             materialize_xls_bundle.derive_runtime_library_path(plan["libxls"]),
             "/tmp/xls-local-dev",
         )
+
+    def test_resolve_driver_plan_prefers_installed_driver(self):
+        plan = materialize_xls_bundle.resolve_driver_plan(
+            artifact_source = "auto",
+            driver_version = "0.33.0",
+            installed_driver_root_prefix = "/tools/xlsynth-driver",
+            exists_fn = lambda path: True,
+        )
+        self.assertEqual(plan["mode"], "installed")
+        self.assertEqual(plan["driver"], Path("/tools/xlsynth-driver/0.33.0/bin/xlsynth-driver"))
+
+    def test_resolve_driver_plan_auto_falls_back_to_download(self):
+        plan = materialize_xls_bundle.resolve_driver_plan(
+            artifact_source = "auto",
+            driver_version = "0.33.0",
+            installed_driver_root_prefix = "/tools/xlsynth-driver",
+            exists_fn = lambda path: False,
+        )
+        self.assertEqual(plan, {"mode": "download", "driver_version": "0.33.0"})
+
+    def test_resolve_driver_plan_uses_declared_installed_driver_input(self):
+        plan = materialize_xls_bundle.resolve_driver_plan(
+            artifact_source = "auto",
+            driver_version = "0.33.0",
+            installed_driver_root_prefix = "/unavailable/xlsynth-driver",
+            driver_input = "external/toolchain/host_xlsynth-driver",
+            exists_fn = lambda path: False,
+        )
+        self.assertEqual(plan["mode"], "auto_driver_input")
+        self.assertEqual(plan["driver"], Path("external/toolchain/host_xlsynth-driver"))
+        self.assertEqual(plan["driver_version"], "0.33.0")
+        self.assertEqual(plan["installed_driver_root_prefix"], "/unavailable/xlsynth-driver")
+
+    def test_resolve_driver_plan_rejects_declared_local_driver_input_without_plan_path(self):
+        with self.assertRaisesRegex(ValueError, "local_paths driver materialization requires local_driver_path"):
+            materialize_xls_bundle.resolve_driver_plan(
+                artifact_source = "local_paths",
+                driver_version = "",
+                local_driver_path = "",
+                driver_input = "external/toolchain/host_xlsynth-driver",
+            )
+
+    def test_resolve_driver_plan_rejects_declared_local_driver_input_mismatch(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            configured_driver = root / "configured" / "xlsynth-driver"
+            configured_driver.parent.mkdir()
+            configured_driver.write_text("#!/bin/sh\nexit 0\n", encoding = "utf-8")
+            configured_driver.chmod(0o755)
+            declared_driver = root / "declared" / "host_xlsynth-driver"
+            declared_driver.parent.mkdir()
+            declared_driver.write_text("#!/bin/sh\nexit 127\n", encoding = "utf-8")
+            declared_driver.chmod(0o755)
+
+            with self.assertRaisesRegex(ValueError, "local_paths declared driver input must match local_driver_path"):
+                materialize_xls_bundle.resolve_driver_plan(
+                    artifact_source = "local_paths",
+                    driver_version = "",
+                    local_driver_path = str(configured_driver),
+                    driver_input = str(declared_driver),
+                )
+
+    def test_resolve_driver_plan_uses_declared_local_driver_input_matching_plan_path(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            configured_driver = root / "configured" / "xlsynth-driver"
+            configured_driver.parent.mkdir()
+            configured_driver.write_text("#!/bin/sh\nexit 0\n", encoding = "utf-8")
+            configured_driver.chmod(0o755)
+            declared_driver = root / "declared" / "host_xlsynth-driver"
+            declared_driver.parent.mkdir()
+            declared_driver.symlink_to(configured_driver)
+
+            plan = materialize_xls_bundle.resolve_driver_plan(
+                artifact_source = "local_paths",
+                driver_version = "",
+                local_driver_path = str(configured_driver),
+                driver_input = str(declared_driver),
+            )
+            self.assertEqual(
+                plan,
+                {
+                    "mode": "local_paths",
+                    "driver": declared_driver,
+                },
+            )
+
+    def test_auto_driver_input_materialization_falls_back_when_declared_input_fails(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            declared_driver = root / "declared" / "host_xlsynth-driver"
+            declared_driver.parent.mkdir()
+            declared_driver.write_text("", encoding = "utf-8")
+            declared_driver.chmod(0o755)
+
+            fallback_driver = root / "installed" / "0.33.0" / "bin" / "xlsynth-driver"
+            fallback_driver.parent.mkdir(parents = True)
+            fallback_driver.write_text(
+                """#!/bin/sh
+if [ "${1:-}" = "--version" ]; then
+  printf 'xlsynth-driver 0.33.0 fallback\\n'
+  exit 0
+fi
+printf 'fallback body\\n'
+""",
+                encoding = "utf-8",
+            )
+            fallback_driver.chmod(0o755)
+
+            output_driver = root / "out" / "xlsynth-driver"
+            materialize_xls_bundle.materialize_driver_binary(
+                repo_root = root / "repo",
+                plan = {
+                    "mode": "auto_driver_input",
+                    "driver": declared_driver,
+                    "driver_version": "0.33.0",
+                    "installed_driver_root_prefix": str(root / "installed"),
+                },
+                driver_output = output_driver,
+                libxls_path = root / "runtime" / "libxls.so",
+                dslx_stdlib_path = root / "stdlib",
+            )
+            self.assertIn("fallback body", output_driver.read_text(encoding = "utf-8"))
 
     def test_download_only_rejects_installed_prefixes(self):
         with self.assertRaises(ValueError):
@@ -488,6 +652,32 @@ Tag        Type                         Name/Value
             self.assertEqual(metadata["driver_supports_sv_enum_case_naming_policy"], "true")
             self.assertEqual(metadata["driver_supports_sv_struct_field_ordering"], "false")
             self.assertTrue((repo_root / "xlsynth-driver").exists())
+
+    def test_materialize_driver_binary_copies_local_driver_output(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            source_driver = repo_root / "input-driver"
+            source_driver.write_text("#!/bin/sh\nexit 0\n", encoding = "utf-8")
+            source_driver.chmod(0o755)
+            driver_output = repo_root / "out" / "xlsynth-driver"
+            libxls_path = repo_root / "libxls.so"
+            libxls_path.write_text("xls\n", encoding = "utf-8")
+            stdlib_root = repo_root / "stdlib"
+            stdlib_root.mkdir()
+
+            materialize_xls_bundle.materialize_driver_binary(
+                repo_root,
+                {
+                    "mode": "local_paths",
+                    "driver": source_driver,
+                },
+                driver_output,
+                libxls_path,
+                stdlib_root,
+            )
+
+            self.assertEqual(driver_output.read_text(encoding = "utf-8"), "#!/bin/sh\nexit 0\n")
+            self.assertTrue(os.access(driver_output, os.X_OK))
 
 
 if __name__ == "__main__":

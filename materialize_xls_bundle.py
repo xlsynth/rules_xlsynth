@@ -78,6 +78,19 @@ def derive_installed_paths(
     }
 
 
+def derive_installed_runtime_paths(
+        xls_version,
+        installed_tools_root_prefix,
+        sys_platform = sys.platform):
+    normalized_xls_version = normalize_version(xls_version)
+    tools_root = Path(installed_tools_root_prefix) / "v{}".format(normalized_xls_version)
+    return {
+        "tools_root": tools_root,
+        "dslx_stdlib_root": tools_root / "xls" / "dslx" / "stdlib",
+        "libxls": tools_root / libxls_name_for_platform(sys_platform),
+    }
+
+
 def validate_stdlib_root(stdlib_root):
     if not stdlib_root.exists():
         raise ValueError("DSLX stdlib root does not exist: {}".format(stdlib_root))
@@ -92,6 +105,7 @@ def resolve_artifact_plan(
     artifact_source,
     xls_version,
     driver_version,
+    surface = "toolchain",
     installed_tools_root_prefix = "",
     installed_driver_root_prefix = "",
     local_tools_path = "",
@@ -100,88 +114,195 @@ def resolve_artifact_plan(
     local_libxls_path = "",
     exists_fn = os.path.exists,
 ):
+    if surface not in ("runtime", "toolchain"):
+        raise ValueError("Unknown XLS bundle surface: {}".format(surface))
+    include_driver = surface == "toolchain"
+
     if artifact_source == "local_paths":
         if xls_version or driver_version:
             raise ValueError("local_paths does not accept xls_version or xlsynth_driver_version")
         required = {
             "local_tools_path": local_tools_path,
             "local_dslx_stdlib_path": local_dslx_stdlib_path,
-            "local_driver_path": local_driver_path,
             "local_libxls_path": local_libxls_path,
         }
+        if include_driver:
+            required["local_driver_path"] = local_driver_path
         missing = [name for name, value in required.items() if not value]
         if missing:
             raise ValueError("local_paths requires {}".format(", ".join(sorted(missing))))
-        return {
+        plan = {
             "mode": "local_paths",
             "tools_root": Path(local_tools_path),
             "dslx_stdlib_root": Path(local_dslx_stdlib_path),
-            "driver": Path(local_driver_path),
             "libxls": Path(local_libxls_path),
         }
+        if include_driver:
+            plan["driver"] = Path(local_driver_path)
+        return plan
 
     if artifact_source not in ("auto", "installed_only", "download_only"):
         raise ValueError("Unknown artifact_source: {}".format(artifact_source))
-    if not xls_version or not driver_version:
-        raise ValueError("{} requires xls_version and xlsynth_driver_version".format(artifact_source))
+    if not xls_version:
+        raise ValueError("{} requires xls_version".format(artifact_source))
+    if include_driver and not driver_version:
+        raise ValueError("{} toolchain surface requires xlsynth_driver_version".format(artifact_source))
     if local_tools_path or local_dslx_stdlib_path or local_driver_path or local_libxls_path:
         raise ValueError("{} does not accept local_paths attrs".format(artifact_source))
     if artifact_source == "download_only":
         if installed_tools_root_prefix or installed_driver_root_prefix:
             raise ValueError("download_only does not accept installed_* attrs")
     else:
-        missing_installed = [
-            name
-            for name, value in {
-                "installed_tools_root_prefix": installed_tools_root_prefix,
-                "installed_driver_root_prefix": installed_driver_root_prefix,
-            }.items()
-            if not value
-        ]
+        required_installed = {"installed_tools_root_prefix": installed_tools_root_prefix}
+        if include_driver:
+            required_installed["installed_driver_root_prefix"] = installed_driver_root_prefix
+        missing_installed = [name for name, value in required_installed.items() if not value]
         if missing_installed:
             raise ValueError("{} requires {}".format(artifact_source, ", ".join(sorted(missing_installed))))
 
-    installed_paths = derive_installed_paths(
-        xls_version = xls_version,
-        driver_version = driver_version,
-        installed_tools_root_prefix = installed_tools_root_prefix,
-        installed_driver_root_prefix = installed_driver_root_prefix,
-    )
+    if include_driver:
+        installed_paths = derive_installed_paths(
+            xls_version = xls_version,
+            driver_version = driver_version,
+            installed_tools_root_prefix = installed_tools_root_prefix,
+            installed_driver_root_prefix = installed_driver_root_prefix,
+        )
+    else:
+        installed_paths = derive_installed_runtime_paths(
+            xls_version = xls_version,
+            installed_tools_root_prefix = installed_tools_root_prefix,
+        )
+
     if artifact_source == "download_only":
-        return {
+        plan = {
             "mode": "download",
             "xls_version": normalize_version(xls_version),
-            "driver_version": normalize_version(driver_version),
         }
+        if include_driver:
+            plan["driver_version"] = normalize_version(driver_version)
+        return plan
 
     installed_paths_present = all(exists_fn(str(path)) for path in installed_paths.values())
     if artifact_source == "auto" and installed_paths_present:
-        return {
+        plan = {
             "mode": "installed",
             "tools_root": installed_paths["tools_root"],
             "dslx_stdlib_root": installed_paths["dslx_stdlib_root"],
-            "driver": installed_paths["driver"],
             "libxls": installed_paths["libxls"],
         }
+        if include_driver:
+            plan["driver"] = installed_paths["driver"]
+        return plan
     if artifact_source == "installed_only":
         if not installed_paths_present:
-            raise ValueError(
-                "installed_only requires exact-version installed paths for XLS {} and driver {}".format(
-                    normalize_version(xls_version),
-                    normalize_version(driver_version),
-                )
+            message = "installed_only requires exact-version installed paths for XLS {}".format(
+                normalize_version(xls_version),
             )
-        return {
+            if include_driver:
+                message = "{} and driver {}".format(message, normalize_version(driver_version))
+            raise ValueError(message)
+        plan = {
             "mode": "installed",
             "tools_root": installed_paths["tools_root"],
             "dslx_stdlib_root": installed_paths["dslx_stdlib_root"],
-            "driver": installed_paths["driver"],
             "libxls": installed_paths["libxls"],
         }
-    return {
+        if include_driver:
+            plan["driver"] = installed_paths["driver"]
+        return plan
+    plan = {
         "mode": "download",
         "xls_version": normalize_version(xls_version),
-        "driver_version": normalize_version(driver_version),
+    }
+    if include_driver:
+        plan["driver_version"] = normalize_version(driver_version)
+    return plan
+
+
+def resolve_driver_plan(
+    artifact_source,
+    driver_version,
+    installed_driver_root_prefix = "",
+    local_driver_path = "",
+    driver_input = "",
+    exists_fn = os.path.exists,
+):
+    if artifact_source == "local_paths":
+        if not local_driver_path:
+            raise ValueError("local_paths driver materialization requires local_driver_path")
+        if driver_input:
+            resolved_driver_input = Path(driver_input).resolve()
+            resolved_local_driver_path = Path(local_driver_path).resolve()
+            if resolved_driver_input != resolved_local_driver_path:
+                raise ValueError(
+                    "local_paths declared driver input must match local_driver_path: {} != {}".format(
+                        driver_input,
+                        local_driver_path,
+                    )
+                )
+            return {
+                "mode": "local_paths",
+                "driver": Path(driver_input),
+            }
+        return {
+            "mode": "local_paths",
+            "driver": Path(local_driver_path),
+        }
+
+    if driver_input:
+        if artifact_source == "auto":
+            if not driver_version:
+                raise ValueError("auto declared driver input requires xlsynth_driver_version")
+            return {
+                "mode": "auto_driver_input",
+                "driver": Path(driver_input),
+                "driver_version": normalize_version(driver_version),
+                "installed_driver_root_prefix": installed_driver_root_prefix,
+            }
+        if artifact_source in ("auto", "installed_only"):
+            if not driver_version:
+                raise ValueError("{} declared driver input requires xlsynth_driver_version".format(artifact_source))
+            return {
+                "mode": "installed",
+                "driver": Path(driver_input),
+                "driver_version": normalize_version(driver_version),
+            }
+        if artifact_source == "download_only":
+            raise ValueError("download_only driver materialization does not accept driver_input")
+        raise ValueError("Unknown artifact_source: {}".format(artifact_source))
+
+    if artifact_source not in ("auto", "installed_only", "download_only"):
+        raise ValueError("Unknown artifact_source: {}".format(artifact_source))
+    if not driver_version:
+        raise ValueError("{} driver materialization requires xlsynth_driver_version".format(artifact_source))
+    if artifact_source == "download_only":
+        if installed_driver_root_prefix:
+            raise ValueError("download_only driver materialization does not accept installed_driver_root_prefix")
+        return {
+            "mode": "download",
+            "driver_version": normalize_version(driver_version),
+        }
+
+    if not installed_driver_root_prefix:
+        raise ValueError("{} driver materialization requires installed_driver_root_prefix".format(artifact_source))
+
+    normalized_driver_version = normalize_version(driver_version)
+    installed_driver = Path(installed_driver_root_prefix) / normalized_driver_version / "bin" / "xlsynth-driver"
+    if exists_fn(str(installed_driver)):
+        return {
+            "mode": "installed",
+            "driver": installed_driver,
+            "driver_version": normalized_driver_version,
+        }
+    if artifact_source == "installed_only":
+        raise ValueError(
+            "installed_only driver materialization requires installed path for driver {}".format(
+                normalized_driver_version,
+            )
+        )
+    return {
+        "mode": "download",
+        "driver_version": normalized_driver_version,
     }
 
 
@@ -498,11 +619,14 @@ def ensure_rustup_nightly_toolchain(rustup_path, env):
 
 
 def validate_installed_driver(driver_path, env, driver_version):
-    result = run_captured_text_command(
-        [str(driver_path), "--version"],
-        check = False,
-        env = env,
-    )
+    try:
+        result = run_captured_text_command(
+            [str(driver_path), "--version"],
+            check = False,
+            env = env,
+        )
+    except OSError as error:
+        raise RuntimeError("Failed to execute installed xlsynth-driver at {}: {}".format(driver_path, error)) from error
     if result.returncode != 0:
         raise RuntimeError(
             "Installed xlsynth-driver is not runnable at {}\nstdout:\n{}\nstderr:\n{}".format(
@@ -524,7 +648,7 @@ def validate_installed_driver(driver_path, env, driver_version):
         )
 
 
-def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
+def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path, rustup_path = ""):
     host_platform = detect_host_platform()
     install_root = driver_install_root(repo_root, driver_version, host_platform)
     rustup_home = rustup_home_root(repo_root, host_platform)
@@ -546,7 +670,7 @@ def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path):
             ensure_clean_path(install_root)
             install_root.mkdir(parents = True, exist_ok = True)
 
-    rustup = shutil.which("rustup")
+    rustup = rustup_path or shutil.which("rustup")
     if rustup is None:
         raise RuntimeError(
             "rules_xlsynth download fallback requires rustup to install xlsynth-driver {}".format(
@@ -729,6 +853,59 @@ def materialize_toolchain_surface(repo_root, plan):
     write_toolchain_metadata(repo_root, driver_capabilities)
 
 
+def materialize_driver_binary(
+        repo_root,
+        plan,
+        driver_output,
+        libxls_path,
+        dslx_stdlib_path,
+        rustup_path = ""):
+    driver_env = build_driver_environment(libxls_path, dslx_stdlib_path)
+    if plan["mode"] == "auto_driver_input":
+        try:
+            validate_installed_driver(
+                plan["driver"],
+                driver_env,
+                plan["driver_version"],
+            )
+            driver_path = plan["driver"]
+        except RuntimeError:
+            fallback_plan = resolve_driver_plan(
+                artifact_source = "auto",
+                driver_version = plan["driver_version"],
+                installed_driver_root_prefix = plan["installed_driver_root_prefix"],
+            )
+            materialize_driver_binary(
+                repo_root,
+                fallback_plan,
+                driver_output,
+                libxls_path,
+                dslx_stdlib_path,
+                rustup_path = rustup_path,
+            )
+            return
+    elif plan["mode"] == "download":
+        driver_path = install_driver(
+            repo_root,
+            plan["driver_version"],
+            libxls_path,
+            dslx_stdlib_path,
+            rustup_path = rustup_path,
+        )
+    else:
+        driver_path = plan["driver"]
+        if plan["mode"] == "installed":
+            validate_installed_driver(
+                driver_path,
+                driver_env,
+                plan["driver_version"],
+            )
+
+    driver_output.parent.mkdir(parents = True, exist_ok = True)
+    copy_path(driver_path, driver_output)
+    driver_output.chmod(driver_output.stat().st_mode | 0o111)
+
+
 def parse_args(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", required = True)
@@ -742,6 +919,11 @@ def parse_args(argv):
     parser.add_argument("--local-dslx-stdlib-path", default = "")
     parser.add_argument("--local-driver-path", default = "")
     parser.add_argument("--local-libxls-path", default = "")
+    parser.add_argument("--driver-output", default = "")
+    parser.add_argument("--driver-input", default = "")
+    parser.add_argument("--driver-runtime-libxls", default = "")
+    parser.add_argument("--driver-runtime-stdlib", default = "")
+    parser.add_argument("--rustup-path", default = "")
     return parser.parse_args(argv)
 
 
@@ -749,10 +931,30 @@ def main(argv):
     args = parse_args(argv)
     repo_root = Path(args.repo_root)
     repo_root.mkdir(parents = True, exist_ok = True)
+    if args.driver_output:
+        if not args.driver_runtime_libxls or not args.driver_runtime_stdlib:
+            raise ValueError("--driver-output requires --driver-runtime-libxls and --driver-runtime-stdlib")
+        driver_plan = resolve_driver_plan(
+            artifact_source = args.artifact_source,
+            driver_version = args.xlsynth_driver_version,
+            installed_driver_root_prefix = args.installed_driver_root_prefix,
+            local_driver_path = args.local_driver_path,
+            driver_input = args.driver_input,
+        )
+        materialize_driver_binary(
+            repo_root,
+            driver_plan,
+            Path(args.driver_output).resolve(),
+            Path(args.driver_runtime_libxls).resolve(),
+            Path(args.driver_runtime_stdlib).resolve(),
+            rustup_path = args.rustup_path,
+        )
+        return
     plan = resolve_artifact_plan(
         artifact_source = args.artifact_source,
         xls_version = args.xls_version,
         driver_version = args.xlsynth_driver_version,
+        surface = args.surface,
         installed_tools_root_prefix = args.installed_tools_root_prefix,
         installed_driver_root_prefix = args.installed_driver_root_prefix,
         local_tools_path = args.local_tools_path,
