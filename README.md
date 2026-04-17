@@ -47,8 +47,7 @@ register_toolchains("@workspace_xls_toolchain//:all")
   release artifacts.
 - `installed_only` requires the matching installed layout.
 - `download_only` always downloads the release artifacts.
-- `local_paths` uses `local_tools_path`, `local_dslx_stdlib_path`,
-  `local_driver_path`, and `local_libxls_path`.
+- `local_paths` uses explicit paths supplied by the consumer workspace.
 
 For the installed-layout modes, `rules_xlsynth` derives exact-version paths as:
 
@@ -59,27 +58,46 @@ For the installed-layout modes, `rules_xlsynth` derives exact-version paths as:
 - `<installed_driver_root_prefix>/<xlsynth_driver_version>/bin/xlsynth-driver`
   for the driver binary
 
-The attributes accepted by each mode are strict:
+The attributes accepted by each mode are strict, but runtime and driver inputs
+are resolved at different times:
 
-- `local_paths` requires all four `local_*` attrs and does not accept
-  `xls_version` or `xlsynth_driver_version`.
-- `auto` and `installed_only` require `xls_version`,
-  `xlsynth_driver_version`, `installed_tools_root_prefix`, and
-  `installed_driver_root_prefix`, and do not accept any `local_*` attrs.
-- `download_only` requires `xls_version` and `xlsynth_driver_version`, and
-  does not accept any `local_*` or `installed_*` attrs.
+- The runtime repo for `local_paths` requires `local_tools_path`,
+  `local_dslx_stdlib_path`, and `local_libxls_path`. `local_driver_path` is
+  required only when a driver-backed bundle/action is built.
+- The runtime repo for `auto` and `installed_only` requires `xls_version` and
+  `installed_tools_root_prefix`. `xlsynth_driver_version` and
+  `installed_driver_root_prefix` are required only when a driver-backed
+  bundle/action is built.
+- `download_only` requires `xls_version` for the runtime repo.
+  `xlsynth_driver_version` is required only when the driver action has to
+  install the driver.
+- `local_paths` does not accept `xls_version` or `xlsynth_driver_version`;
+  the other modes do not accept any `local_*` attrs.
+- `download_only` does not accept any `installed_*` attrs.
 
-Download-backed modes also have one host prerequisite: when `auto` falls back
-to downloading, or when `download_only` is selected, the repository rule
-installs `xlsynth-driver` with `rustup run nightly cargo install`. The host
-running module resolution must have `rustup` available. If the nightly
-toolchain is missing, `rules_xlsynth` bootstraps a repo-local `rustup` home
-before installing the driver.
+Registering or loading `@<name>_toolchain` is metadata-only: it defines the
+toolchain, bundle, and `xlsynth-driver` targets, but does not copy, execute,
+download, or compile the driver. Driver materialization is a declared Bazel
+action behind `@<name>_toolchain//:xlsynth-driver` and behind rule actions that
+consume the driver from `@<name>_toolchain//:bundle`.
 
-Each `xls.toolchain(...)` call now exports two repos:
+Download-backed driver actions have one host prerequisite: when `auto` falls
+back to downloading the driver, or when `download_only` is selected and a
+driver-backed action is built, that action installs `xlsynth-driver` with
+`rustup run nightly cargo install`. The execution host must have `rustup`
+available. If the nightly toolchain is missing, `rules_xlsynth` bootstraps a
+repo-local `rustup` home before installing the driver.
+
+Each `xls.toolchain(...)` call now exports two public repos:
 
 - `@<name>_runtime` for runtime files, `xlsynth-sys` wiring, tools, and `libxls`
-- `@<name>_toolchain` for `:bundle`, `:toolchain`, and `register_toolchains(...)`
+- `@<name>_toolchain` for `:bundle`, `:toolchain`, `:xlsynth-driver`, and
+  the `@<name>_toolchain//:all` registration pattern
+
+When a local or installed driver path is configured, the module extension
+creates a private generated repo that exposes that host driver file as a
+declared input to `@<name>_toolchain//:xlsynth-driver`. Downstream workspaces
+do not use that repo directly or publish it with `use_repo(...)`.
 
 The runtime repo exposes:
 
