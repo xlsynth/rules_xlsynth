@@ -81,6 +81,7 @@ class ExternalBundleExportsTest(unittest.TestCase):
         expected_dso_name = expected_libxls_name()
         self.assertEqual(config_lines["dso_path"].strip('"'), expected_dso_name)
         self.assertEqual(config_lines["dslx_stdlib_path"].strip('"'), "dslx_stdlib")
+        self.assertNotIn("aot_runtime_path", config_lines)
         self.assertTrue((config_path.parent / expected_dso_name).is_file())
         self.assertTrue((config_path.parent / "dslx_stdlib").is_dir())
 

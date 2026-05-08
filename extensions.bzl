@@ -76,14 +76,29 @@ def _driver_supports_sv_struct_field_ordering(driver_version):
         return True
     return _version_at_least(driver_version, "0.36.0")
 
-def _runtime_build_file(libxls_name, runtime_files, runtime_aliases):
+def _runtime_build_file(libxls_name, xls_aot_runtime_name, runtime_files, runtime_aliases):
     tool_list = ",\n        ".join(['"{}"'.format(name) for name in _TOOL_BINARIES])
-    exported_files = ",\n    ".join(
-        ['"{}"'.format(name) for name in _TOOL_BINARIES + [libxls_name] + runtime_files + runtime_aliases],
-    )
+    exported_names = _TOOL_BINARIES + [libxls_name] + runtime_files + runtime_aliases
+    if xls_aot_runtime_name:
+        exported_names.append(xls_aot_runtime_name)
+    exported_files = ",\n    ".join(['"{}"'.format(name) for name in exported_names])
     runtime_file_srcs = ",\n        ".join(['"{}"'.format(name) for name in runtime_files])
     runtime_alias_srcs = ",\n        ".join(['"{}"'.format(name) for name in runtime_aliases])
     lib_target = libxls_name
+    aot_runtime_rule = """
+filegroup(
+    name = "xls_aot_runtime_file",
+    srcs = ["{xls_aot_runtime_name}"],
+    visibility = ["//visibility:public"],
+)
+cc_import(
+    name = "xls_aot_runtime",
+    static_library = ":xls_aot_runtime_file",
+    visibility = ["//visibility:public"],
+)
+""".format(
+        xls_aot_runtime_name = xls_aot_runtime_name,
+    ) if xls_aot_runtime_name else ""
     lib_file_rule = """
 filegroup(
     name = "libxls_file",
@@ -135,12 +150,14 @@ copy_flat_files_to_directory(
 )
 
 {lib_file_rule}
+{aot_runtime_rule}
 
 xlsynth_artifact_config(
     name = "artifact_config",
     dso_name = "{libxls_name}",
     dslx_stdlib = ":dslx_stdlib",
     shared_library = ":libxls_file",
+    static_aot_runtime = {static_aot_runtime},
     visibility = ["//visibility:public"],
 )
 
@@ -188,6 +205,7 @@ xls_runtime_surface(
     name = "runtime",
     dslx_stdlib = ":dslx_stdlib",
     libxls = ":libxls_file",
+    xls_aot_runtime = {static_aot_runtime},
     runtime_files = [":libxls_runtime_files"],
     tools_root = ":tools_root_files",
     visibility = ["//visibility:public"],
@@ -197,6 +215,8 @@ xls_runtime_surface(
         tool_list = tool_list,
         libxls_name = libxls_name,
         lib_file_rule = lib_file_rule.strip(),
+        aot_runtime_rule = aot_runtime_rule.strip(),
+        static_aot_runtime = '":xls_aot_runtime_file"' if xls_aot_runtime_name else "None",
     )
 
 def _string_attr_line(name, value):
@@ -347,6 +367,8 @@ def _materialize_bundle_args(repo_ctx, surface):
         args.extend(["--local-driver-path", repo_ctx.attr.local_driver_path])
     if repo_ctx.attr.local_libxls_path:
         args.extend(["--local-libxls-path", repo_ctx.attr.local_libxls_path])
+    if repo_ctx.attr.local_xls_aot_runtime_path:
+        args.extend(["--local-xls-aot-runtime-path", repo_ctx.attr.local_xls_aot_runtime_path])
     return args
 
 def _runtime_repo_impl(repo_ctx):
@@ -375,6 +397,7 @@ def _runtime_repo_impl(repo_ctx):
         "BUILD.bazel",
         _runtime_build_file(
             libxls_name = metadata["libxls_name"],
+            xls_aot_runtime_name = metadata["xls_aot_runtime_name"],
             runtime_files = runtime_files,
             runtime_aliases = runtime_aliases,
         ),
@@ -415,6 +438,7 @@ _runtime_repo_attrs = {
     "local_driver_path": attr.string(),
     "local_dslx_stdlib_path": attr.string(),
     "local_libxls_path": attr.string(),
+    "local_xls_aot_runtime_path": attr.string(),
     "local_tools_path": attr.string(),
     "xls_version": attr.string(),
     "xlsynth_driver_version": attr.string(),
@@ -428,6 +452,7 @@ _toolchain_repo_attrs = {
     "local_driver_path": attr.string(),
     "local_dslx_stdlib_path": attr.string(),
     "local_libxls_path": attr.string(),
+    "local_xls_aot_runtime_path": attr.string(),
     "local_tools_path": attr.string(),
     "repo_alias": attr.string(mandatory = True),
     "runtime_repo_name": attr.string(mandatory = True),
@@ -470,6 +495,7 @@ _toolchain_tag = tag_class(attrs = {
     "local_driver_path": attr.string(),
     "local_dslx_stdlib_path": attr.string(),
     "local_libxls_path": attr.string(),
+    "local_xls_aot_runtime_path": attr.string(),
     "local_tools_path": attr.string(),
     "name": attr.string(mandatory = True),
     "xls_version": attr.string(),
@@ -490,6 +516,7 @@ def _xls_extension_impl(module_ctx):
                 local_driver_path = toolchain.local_driver_path,
                 local_dslx_stdlib_path = toolchain.local_dslx_stdlib_path,
                 local_libxls_path = toolchain.local_libxls_path,
+                local_xls_aot_runtime_path = toolchain.local_xls_aot_runtime_path,
                 local_tools_path = toolchain.local_tools_path,
                 xls_version = toolchain.xls_version,
                 xlsynth_driver_version = toolchain.xlsynth_driver_version,
@@ -508,6 +535,7 @@ def _xls_extension_impl(module_ctx):
                 local_driver_path = toolchain.local_driver_path,
                 local_dslx_stdlib_path = toolchain.local_dslx_stdlib_path,
                 local_libxls_path = toolchain.local_libxls_path,
+                local_xls_aot_runtime_path = toolchain.local_xls_aot_runtime_path,
                 local_tools_path = toolchain.local_tools_path,
                 repo_alias = toolchain_name,
                 runtime_repo_name = runtime_name,

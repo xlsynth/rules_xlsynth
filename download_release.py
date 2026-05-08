@@ -56,6 +56,10 @@ def build_dso_release_filename(platform, version_tuple):
     return filename
 
 
+def build_static_aot_runtime_release_filename(platform):
+    return "libxls_aot_runtime-{}.a".format(platform)
+
+
 def build_runtime_tarball_release_filename(platform):
     return "libxls-runtime-{}.tar.gz".format(platform)
 
@@ -258,6 +262,15 @@ def main():
 
     for artifact, is_binary in artifacts:
         high_integrity_download(base_url, artifact, options.output_dir, options.max_attempts, is_binary, options.platform)
+
+    if options.dso:
+        try_high_integrity_download(
+            base_url,
+            build_static_aot_runtime_release_filename(options.platform),
+            options.output_dir,
+            options.max_attempts,
+            is_binary = False,
+        )
 
     # Download and extract dslx_stdlib.tar.gz
     stdlib_filename = "dslx_stdlib.tar.gz"
