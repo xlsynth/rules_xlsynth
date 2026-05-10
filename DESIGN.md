@@ -25,6 +25,7 @@ is:
 - `@<name>_runtime//:libxls_link`
 - `@<name>_runtime//:xls_aot_runtime` when the selected XLS line provides the archive
 - `@<name>_runtime//:xls_aot_runtime_file` when the selected XLS line provides the archive
+- `@<name>_runtime//:xls_aot_runtime_link_config_file` when the selected XLS line provides the archive
 - `@<name>_runtime//:dslx_stdlib`
 - `@<name>_runtime//:xlsynth_sys_artifact_config`
 - `@<name>_runtime//:xlsynth_sys_legacy_stdlib`
