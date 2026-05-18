@@ -12,7 +12,8 @@ flags.
 
 Each `xls.toolchain(...)` call exposes one runtime repo and one toolchain repo.
 `@<name>_runtime` contains the selected tool binaries, the DSLX stdlib tree,
-the matching `libxls` shared library, and the runtime-facing exports.
+the matching `libxls` shared library, the standalone AOT static runtime archive
+when that XLS line provides one, and the runtime-facing exports.
 `@<name>_toolchain` contains the `:bundle` target, the registered toolchain
 target, and a declared `:xlsynth-driver` target. Loading or registering the
 toolchain repo is metadata-only; the driver target copies, validates,
@@ -22,6 +23,8 @@ is:
 
 - `@<name>_runtime//:libxls`
 - `@<name>_runtime//:libxls_link`
+- `@<name>_runtime//:xls_aot_runtime` when the selected XLS line provides the archive
+- `@<name>_runtime//:xls_aot_runtime_file` when the selected XLS line provides the archive
 - `@<name>_runtime//:dslx_stdlib`
 - `@<name>_runtime//:xlsynth_sys_artifact_config`
 - `@<name>_runtime//:xlsynth_sys_legacy_stdlib`
@@ -46,7 +49,11 @@ The `xlsynth_sys_*` exports are the intended downstream contract for
 `rules_rust` `crate_extension.annotation(...)` wiring. The preferred modern
 shape is `build_script_data` / `build_script_env` for the build-script
 contract, plus `deps = ["@<name>_runtime//:xlsynth_sys_dep"]` for the combined
-runtime-plus-link contract. The compatibility exports
+runtime-plus-link contract. `xlsynth-aot-runtime` reuses the same artifact
+config file so its build script can find the matching standalone runtime archive
+without a parallel bundle surface. Bundle lines that predate the archive may
+omit it; that preserves non-AOT consumers while still causing an AOT build to
+fail if it selects an archive-less bundle. The compatibility exports
 `xlsynth_sys_runtime_files` and `xlsynth_sys_link_dep` remain available for
 callers that still spell those phases separately. This lets root `MODULE.bazel`
 files choose only a bundle and a build-script mode instead of coupling to

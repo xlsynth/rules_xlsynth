@@ -72,6 +72,16 @@ class DownloadReleaseTest(unittest.TestCase):
             "libxls-runtime-ubuntu2004-manifest.json",
         )
 
+    def test_static_aot_runtime_release_filename_is_platform_scoped(self):
+        self.assertEqual(
+            download_release.build_static_aot_runtime_release_filename("arm64"),
+            "libxls_aot_runtime-arm64.a",
+        )
+        self.assertEqual(
+            download_release.build_static_aot_runtime_release_filename("ubuntu2004"),
+            "libxls_aot_runtime-ubuntu2004.a",
+        )
+
     def test_copy_url_to_path_retries_after_stream_reset(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             destination_path = f"{temp_dir}/artifact"
