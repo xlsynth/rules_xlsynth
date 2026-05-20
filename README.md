@@ -102,8 +102,11 @@ do not use that repo directly or publish it with `use_repo(...)`.
 The runtime repo exposes:
 
 - `@<name>_runtime//:libxls` and `@<name>_runtime//:libxls_link` for native consumers
-- `@<name>_runtime//:xls_aot_runtime` and `@<name>_runtime//:xls_aot_runtime_file`
-  when the selected XLS line provides the standalone AOT static runtime archive
+- `@<name>_runtime//:xls_aot_runtime`,
+  `@<name>_runtime//:xls_aot_runtime_file`, and
+  `@<name>_runtime//:xls_aot_runtime_link_config_file` when the selected XLS
+  line provides the standalone AOT static runtime archive plus its producer-owned
+  link metadata
 - `@<name>_runtime//:dslx_stdlib` for packages that need the standard library tree
 - `@<name>_runtime//:xlsynth_sys_artifact_config` for the modern single-file
   build-script contract shared by `xlsynth-sys` and `xlsynth-aot-runtime`
@@ -124,10 +127,11 @@ The runtime repo exposes:
 `artifact_config`, `libxls_file`, `libxls`, or `dslx_stdlib` directly in
 downstream `MODULE.bazel` files. `xlsynth-aot-runtime` consumers should reuse
 the same artifact-config export so their build scripts receive the matching
-standalone runtime archive without a second bundle contract. Older bundles may
-omit the archive entirely; that keeps non-AOT consumers on old XLS lines valid
-while making an AOT consumer fail locally if it selects a bundle that cannot
-provide the archive it needs.
+standalone runtime archive and its producer-owned link config without a second
+bundle contract. Older bundles may omit the archive pair entirely; that keeps
+non-AOT consumers on old XLS lines valid while making an AOT consumer fail
+locally if it selects a bundle that cannot provide the runtime artifacts it
+needs.
 
 Supported DSLX rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>_toolchain//:bundle"`. Today that escape hatch is available on

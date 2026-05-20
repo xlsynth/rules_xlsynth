@@ -558,21 +558,33 @@ def _xlsynth_artifact_config_impl(ctx):
     config_output = ctx.actions.declare_file("{}/xlsynth_artifact_config.toml".format(bundle_root))
     dso_output = ctx.actions.declare_file("{}/{}".format(bundle_root, ctx.attr.dso_name))
     aot_runtime_output = None
+    aot_runtime_link_config_output = None
     if ctx.file.static_aot_runtime:
+        if not ctx.file.static_aot_runtime_link_config:
+            fail("static_aot_runtime_link_config is required with static_aot_runtime")
         aot_runtime_output = ctx.actions.declare_file(
             "{}/{}".format(bundle_root, ctx.file.static_aot_runtime.basename),
         )
+        aot_runtime_link_config_output = ctx.actions.declare_file(
+            "{}/{}".format(bundle_root, ctx.file.static_aot_runtime_link_config.basename),
+        )
+    elif ctx.file.static_aot_runtime_link_config:
+        fail("static_aot_runtime is required with static_aot_runtime_link_config")
     stdlib_output = ctx.actions.declare_directory("{}/dslx_stdlib".format(bundle_root))
     dslx_stdlib = _single_directory_artifact(ctx.attr.dslx_stdlib, "dslx_stdlib")
     shared_library = ctx.file.shared_library
     static_aot_runtime = ctx.file.static_aot_runtime
-    optional_inputs = [static_aot_runtime] if static_aot_runtime else []
-    optional_outputs = [aot_runtime_output] if aot_runtime_output else []
+    static_aot_runtime_link_config = ctx.file.static_aot_runtime_link_config
+    optional_inputs = [static_aot_runtime, static_aot_runtime_link_config] if static_aot_runtime else []
+    optional_outputs = [aot_runtime_output, aot_runtime_link_config_output] if aot_runtime_output else []
     optional_arguments = [
         static_aot_runtime.path,
         aot_runtime_output.path,
         static_aot_runtime.basename,
-    ] if static_aot_runtime else ["", "", ""]
+        static_aot_runtime_link_config.path,
+        aot_runtime_link_config_output.path,
+        static_aot_runtime_link_config.basename,
+    ] if static_aot_runtime else ["", "", "", "", "", ""]
     ctx.actions.run_shell(
         inputs = [dslx_stdlib, shared_library] + optional_inputs,
         outputs = [config_output, dso_output, stdlib_output] + optional_outputs,
@@ -595,6 +607,9 @@ def _xlsynth_artifact_config_impl(ctx):
             static_aot_runtime="$7"
             aot_runtime_output="$8"
             aot_runtime_name="$9"
+            static_aot_runtime_link_config="${10}"
+            aot_runtime_link_config_output="${11}"
+            aot_runtime_link_config_name="${12}"
 
             mkdir -p "$(dirname "$dso_output")" "$(dirname "$config_output")" "$stdlib_output"
             cp "$shared_library" "$dso_output"
@@ -603,7 +618,9 @@ def _xlsynth_artifact_config_impl(ctx):
                 "$dso_name" > "$config_output"
             if [[ -n "$static_aot_runtime" ]]; then
                 cp "$static_aot_runtime" "$aot_runtime_output"
+                cp "$static_aot_runtime_link_config" "$aot_runtime_link_config_output"
                 printf 'aot_runtime_path = "%s"\\n' "$aot_runtime_name" >> "$config_output"
+                printf 'aot_runtime_link_config_path = "%s"\\n' "$aot_runtime_link_config_name" >> "$config_output"
             fi
         """,
         progress_message = "Packaging xlsynth artifact config for {}".format(ctx.label),
@@ -621,6 +638,7 @@ xlsynth_artifact_config = rule(
         "dslx_stdlib": attr.label(mandatory = True),
         "shared_library": attr.label(allow_single_file = True, mandatory = True),
         "static_aot_runtime": attr.label(allow_single_file = True),
+        "static_aot_runtime_link_config": attr.label(allow_single_file = True),
     },
 )
 

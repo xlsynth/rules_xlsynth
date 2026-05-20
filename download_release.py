@@ -60,6 +60,10 @@ def build_static_aot_runtime_release_filename(platform):
     return "libxls_aot_runtime-{}.a".format(platform)
 
 
+def build_static_aot_runtime_link_config_release_filename(platform):
+    return "libxls_aot_runtime_link-{}.toml".format(platform)
+
+
 def build_runtime_tarball_release_filename(platform):
     return "libxls-runtime-{}.tar.gz".format(platform)
 
@@ -264,13 +268,30 @@ def main():
         high_integrity_download(base_url, artifact, options.output_dir, options.max_attempts, is_binary, options.platform)
 
     if options.dso:
-        try_high_integrity_download(
+        static_aot_runtime = build_static_aot_runtime_release_filename(options.platform)
+        static_aot_runtime_link_config = build_static_aot_runtime_link_config_release_filename(
+            options.platform
+        )
+        archive_present = try_high_integrity_download(
             base_url,
-            build_static_aot_runtime_release_filename(options.platform),
+            static_aot_runtime,
             options.output_dir,
             options.max_attempts,
             is_binary = False,
         )
+        link_config_present = try_high_integrity_download(
+            base_url,
+            static_aot_runtime_link_config,
+            options.output_dir,
+            options.max_attempts,
+            is_binary = False,
+        )
+        if archive_present != link_config_present:
+            print("Ignoring partial standalone AOT runtime asset set for {}".format(options.platform))
+            for partial_name in [static_aot_runtime, static_aot_runtime_link_config]:
+                partial_path = os.path.join(options.output_dir, partial_name)
+                if os.path.exists(partial_path):
+                    os.remove(partial_path)
 
     # Download and extract dslx_stdlib.tar.gz
     stdlib_filename = "dslx_stdlib.tar.gz"
