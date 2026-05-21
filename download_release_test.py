@@ -89,6 +89,10 @@ class DownloadReleaseTest(unittest.TestCase):
             download_release.build_static_aot_runtime_link_config_release_filename("ubuntu2004"),
             "libxls_aot_runtime_link-ubuntu2004.toml",
         )
+        self.assertEqual(
+            download_release.build_static_aot_runtime_source_release_filename(),
+            "xls-aot-runtime-source.tar.gz",
+        )
 
     def test_copy_url_to_path_retries_after_stream_reset(self):
         with tempfile.TemporaryDirectory() as temp_dir:

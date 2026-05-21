@@ -64,6 +64,10 @@ def build_static_aot_runtime_link_config_release_filename(platform):
     return "libxls_aot_runtime_link-{}.toml".format(platform)
 
 
+def build_static_aot_runtime_source_release_filename():
+    return "xls-aot-runtime-source.tar.gz"
+
+
 def build_runtime_tarball_release_filename(platform):
     return "libxls-runtime-{}.tar.gz".format(platform)
 
@@ -292,6 +296,13 @@ def main():
                 partial_path = os.path.join(options.output_dir, partial_name)
                 if os.path.exists(partial_path):
                     os.remove(partial_path)
+        try_high_integrity_download(
+            base_url,
+            build_static_aot_runtime_source_release_filename(),
+            options.output_dir,
+            options.max_attempts,
+            is_binary = False,
+        )
 
     # Download and extract dslx_stdlib.tar.gz
     stdlib_filename = "dslx_stdlib.tar.gz"
