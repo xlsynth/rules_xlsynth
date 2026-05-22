@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import sys
+import tarfile
 import tempfile
 import unittest
 from unittest import mock
@@ -70,6 +71,7 @@ class ArtifactResolutionTest(unittest.TestCase):
                 "/tools/xlsynth/v0.38.0/libxls.dylib" if sys.platform == "darwin" else "/tools/xlsynth/v0.38.0/libxls.so",
                 "/tools/xlsynth/v0.38.0/libxls_aot_runtime.a",
                 "/tools/xlsynth/v0.38.0/libxls_aot_runtime_link.toml",
+                "/tools/xlsynth/v0.38.0/xls-aot-runtime-source.tar.gz",
             ],
         )
 
@@ -132,6 +134,19 @@ class ArtifactResolutionTest(unittest.TestCase):
         )
         self.assertEqual(plan["mode"], "download")
         self.assertEqual(observed_paths, [])
+
+    def test_download_only_can_use_local_aot_runtime_source(self):
+        plan = materialize_xls_bundle.resolve_artifact_plan(
+            artifact_source = "download_only",
+            xls_version = "0.38.0",
+            driver_version = "0.33.0",
+            local_xls_aot_runtime_source_path = "/tmp/review/xls-aot-runtime-source.tar.gz",
+        )
+        self.assertEqual(plan["mode"], "download")
+        self.assertEqual(
+            plan["xls_aot_runtime_source"],
+            Path("/tmp/review/xls-aot-runtime-source.tar.gz"),
+        )
 
     def test_local_paths_bypass_versioned_selection(self):
         plan = materialize_xls_bundle.resolve_artifact_plan(
@@ -340,6 +355,10 @@ printf 'fallback body\\n'
             plan["xls_aot_runtime_link_config"].name,
             "libxls_aot_runtime_link.toml",
         )
+        self.assertEqual(
+            plan["xls_aot_runtime_source"].name,
+            "xls-aot-runtime-source.tar.gz",
+        )
 
     def test_build_driver_environment_sets_runtime_library_search_path(self):
         libxls_path = "/tmp/xls-bundle/libxls.dylib" if sys.platform == "darwin" else "/tmp/xls-bundle/libxls.so"
@@ -450,6 +469,7 @@ printf 'fallback body\\n'
             (download_root / "libxls-v0.38.0-arm64.dylib").write_text("", encoding = "utf-8")
             (download_root / "libxls_aot_runtime-arm64.a").write_text("", encoding = "utf-8")
             (download_root / "libxls_aot_runtime_link-arm64.toml").write_text("", encoding = "utf-8")
+            (download_root / "xls-aot-runtime-source.tar.gz").write_text("", encoding = "utf-8")
 
             with mock.patch.object(materialize_xls_bundle, "detect_host_platform", return_value = "arm64"):
                 with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
@@ -468,6 +488,10 @@ printf 'fallback body\\n'
             self.assertEqual(
                 resolved["xls_aot_runtime_link_config"],
                 download_root / "libxls_aot_runtime_link-arm64.toml",
+            )
+            self.assertEqual(
+                resolved["xls_aot_runtime_source"],
+                download_root / "xls-aot-runtime-source.tar.gz",
             )
             self.assertEqual(resolved["runtime_files"], [])
             mock_run.assert_not_called()
@@ -488,6 +512,7 @@ printf 'fallback body\\n'
 
             self.assertIsNone(resolved["xls_aot_runtime"])
             self.assertIsNone(resolved["xls_aot_runtime_link_config"])
+            self.assertIsNone(resolved["xls_aot_runtime_source"])
             mock_run.assert_not_called()
 
     def test_load_runtime_manifest_returns_runtime_files(self):
@@ -658,6 +683,15 @@ Tag        Type                         Name/Value
             xls_aot_runtime_path.write_text("aot\n", encoding = "utf-8")
             xls_aot_runtime_link_config_path = input_root / "libxls_aot_runtime_link.toml"
             xls_aot_runtime_link_config_path.write_text("format_version = 1\n", encoding = "utf-8")
+            source_repo_root = input_root / "source_repo"
+            source_repo_root.mkdir()
+            (source_repo_root / "BUILD.bazel").write_text(
+                'alias(name = "standalone_aot_runtime", actual = "//:dummy")\n',
+                encoding = "utf-8",
+            )
+            xls_aot_runtime_source_path = input_root / "xls-aot-runtime-source.tar.gz"
+            with tarfile.open(xls_aot_runtime_source_path, "w:gz") as archive:
+                archive.add(source_repo_root / "BUILD.bazel", arcname = "BUILD.bazel")
             runtime_companion = input_root / "libc++.so.1"
             runtime_companion.write_text("runtime\n", encoding = "utf-8")
 
@@ -674,6 +708,7 @@ Tag        Type                         Name/Value
                         "libxls": libxls_path,
                         "xls_aot_runtime": xls_aot_runtime_path,
                         "xls_aot_runtime_link_config": xls_aot_runtime_link_config_path,
+                        "xls_aot_runtime_source": xls_aot_runtime_source_path,
                         "runtime_files": [runtime_companion],
                     },
                 )
@@ -692,6 +727,7 @@ Tag        Type                         Name/Value
                 metadata["xls_aot_runtime_link_config_name"],
                 "libxls_aot_runtime_link.toml",
             )
+            self.assertEqual(metadata["xls_aot_runtime_source_repo"], "xls_aot_runtime_source")
             self.assertEqual(metadata["libxls_runtime_aliases"], "libxls-v0.38.0.so")
             self.assertEqual(metadata["libxls_runtime_files"], "libc++.so.1")
             self.assertIn('aot_runtime_path = "libxls_aot_runtime.a"', artifact_config)
@@ -701,6 +737,7 @@ Tag        Type                         Name/Value
             )
             self.assertTrue((repo_root / "libxls_aot_runtime.a").is_file())
             self.assertTrue((repo_root / "libxls_aot_runtime_link.toml").is_file())
+            self.assertTrue((repo_root / "xls_aot_runtime_source" / "BUILD.bazel").is_file())
             self.assertTrue((repo_root / "libc++.so.1").is_file())
 
     def test_materialize_toolchain_surface_records_driver_capabilities(self):

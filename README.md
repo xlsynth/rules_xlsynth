@@ -107,6 +107,10 @@ The runtime repo exposes:
   `@<name>_runtime//:xls_aot_runtime_link_config_file` when the selected XLS
   line provides the standalone AOT static runtime archive plus its producer-owned
   link metadata
+- `@<name>_runtime//:xls_aot_runtime_source_dep` when the selected XLS line
+  provides the source-backed standalone AOT runtime asset, for Bazel final
+  links that declare native runtime ownership instead of importing the
+  flattened archive
 - `@<name>_runtime//:dslx_stdlib` for packages that need the standard library tree
 - `@<name>_runtime//:xlsynth_sys_artifact_config` for the modern single-file
   build-script contract shared by `xlsynth-sys` and `xlsynth-aot-runtime`
@@ -132,6 +136,24 @@ bundle contract. Older bundles may omit the archive pair entirely; that keeps
 non-AOT consumers on old XLS lines valid while making an AOT consumer fail
 locally if it selects a bundle that cannot provide the runtime artifacts it
 needs.
+
+For direct Cargo linking, `xlsynth-aot-runtime` uses its default native mode
+and requests the released `libxls_aot_runtime.a` archive. For Bazel linking,
+pair `@<name>_runtime//:xls_aot_runtime_source_dep` with
+`XLS_AOT_RUNTIME_LINK_MODE = "declared"` in the crate build-script
+environment:
+
+```text
+Bazel target
+  -> depends on @<name>_runtime//:xls_aot_runtime_source_dep
+  -> depends on xlsynth-aot-runtime configured with declared link mode
+
+xlsynth-aot-runtime
+  -> emits no native runtime archive link request
+```
+
+Declared link mode changes only which build graph supplies the native runtime
+symbols; it does not change standalone AOT runtime execution.
 
 Supported DSLX rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>_toolchain//:bundle"`. Today that escape hatch is available on

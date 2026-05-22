@@ -80,6 +80,7 @@ def _runtime_build_file(
         libxls_name,
         xls_aot_runtime_name,
         xls_aot_runtime_link_config_name,
+        xls_aot_runtime_source_repo,
         runtime_files,
         runtime_aliases):
     tool_list = ",\n        ".join(['"{}"'.format(name) for name in _TOOL_BINARIES])
@@ -111,6 +112,15 @@ cc_import(
         xls_aot_runtime_name = xls_aot_runtime_name,
         xls_aot_runtime_link_config_name = xls_aot_runtime_link_config_name,
     ) if xls_aot_runtime_name else ""
+    aot_runtime_source_rule = """
+alias(
+    name = "xls_aot_runtime_source_dep",
+    actual = "//{xls_aot_runtime_source_repo}:standalone_aot_runtime",
+    visibility = ["//visibility:public"],
+)
+""".format(
+        xls_aot_runtime_source_repo = xls_aot_runtime_source_repo,
+    ) if xls_aot_runtime_source_repo else ""
     lib_file_rule = """
 filegroup(
     name = "libxls_file",
@@ -163,6 +173,7 @@ copy_flat_files_to_directory(
 
 {lib_file_rule}
 {aot_runtime_rule}
+{aot_runtime_source_rule}
 
 xlsynth_artifact_config(
     name = "artifact_config",
@@ -229,6 +240,7 @@ xls_runtime_surface(
         libxls_name = libxls_name,
         lib_file_rule = lib_file_rule.strip(),
         aot_runtime_rule = aot_runtime_rule.strip(),
+        aot_runtime_source_rule = aot_runtime_source_rule.strip(),
         static_aot_runtime = '":xls_aot_runtime_file"' if xls_aot_runtime_name else "None",
         static_aot_runtime_link_config = '":xls_aot_runtime_link_config_file"' if xls_aot_runtime_name else "None",
     )
@@ -388,6 +400,11 @@ def _materialize_bundle_args(repo_ctx, surface):
             "--local-xls-aot-runtime-link-config-path",
             repo_ctx.attr.local_xls_aot_runtime_link_config_path,
         ])
+    if repo_ctx.attr.local_xls_aot_runtime_source_path:
+        args.extend([
+            "--local-xls-aot-runtime-source-path",
+            repo_ctx.attr.local_xls_aot_runtime_source_path,
+        ])
     return args
 
 def _runtime_repo_impl(repo_ctx):
@@ -418,6 +435,7 @@ def _runtime_repo_impl(repo_ctx):
             libxls_name = metadata["libxls_name"],
             xls_aot_runtime_name = metadata["xls_aot_runtime_name"],
             xls_aot_runtime_link_config_name = metadata["xls_aot_runtime_link_config_name"],
+            xls_aot_runtime_source_repo = metadata["xls_aot_runtime_source_repo"],
             runtime_files = runtime_files,
             runtime_aliases = runtime_aliases,
         ),
@@ -460,6 +478,7 @@ _runtime_repo_attrs = {
     "local_libxls_path": attr.string(),
     "local_xls_aot_runtime_path": attr.string(),
     "local_xls_aot_runtime_link_config_path": attr.string(),
+    "local_xls_aot_runtime_source_path": attr.string(),
     "local_tools_path": attr.string(),
     "xls_version": attr.string(),
     "xlsynth_driver_version": attr.string(),
@@ -475,6 +494,7 @@ _toolchain_repo_attrs = {
     "local_libxls_path": attr.string(),
     "local_xls_aot_runtime_path": attr.string(),
     "local_xls_aot_runtime_link_config_path": attr.string(),
+    "local_xls_aot_runtime_source_path": attr.string(),
     "local_tools_path": attr.string(),
     "repo_alias": attr.string(mandatory = True),
     "runtime_repo_name": attr.string(mandatory = True),
@@ -519,6 +539,7 @@ _toolchain_tag = tag_class(attrs = {
     "local_libxls_path": attr.string(),
     "local_xls_aot_runtime_path": attr.string(),
     "local_xls_aot_runtime_link_config_path": attr.string(),
+    "local_xls_aot_runtime_source_path": attr.string(),
     "local_tools_path": attr.string(),
     "name": attr.string(mandatory = True),
     "xls_version": attr.string(),
@@ -541,6 +562,7 @@ def _xls_extension_impl(module_ctx):
                 local_libxls_path = toolchain.local_libxls_path,
                 local_xls_aot_runtime_path = toolchain.local_xls_aot_runtime_path,
                 local_xls_aot_runtime_link_config_path = toolchain.local_xls_aot_runtime_link_config_path,
+                local_xls_aot_runtime_source_path = toolchain.local_xls_aot_runtime_source_path,
                 local_tools_path = toolchain.local_tools_path,
                 xls_version = toolchain.xls_version,
                 xlsynth_driver_version = toolchain.xlsynth_driver_version,
@@ -561,6 +583,7 @@ def _xls_extension_impl(module_ctx):
                 local_libxls_path = toolchain.local_libxls_path,
                 local_xls_aot_runtime_path = toolchain.local_xls_aot_runtime_path,
                 local_xls_aot_runtime_link_config_path = toolchain.local_xls_aot_runtime_link_config_path,
+                local_xls_aot_runtime_source_path = toolchain.local_xls_aot_runtime_source_path,
                 local_tools_path = toolchain.local_tools_path,
                 repo_alias = toolchain_name,
                 runtime_repo_name = runtime_name,
