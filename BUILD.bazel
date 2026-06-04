@@ -1,4 +1,5 @@
 load("@rules_python//python:defs.bzl", "py_test")
+load("//:trusted_identity_boundary_test.bzl", "trusted_identity_boundary_test_suite")
 
 py_test(
     name = "make_env_helpers_test",
@@ -32,6 +33,10 @@ py_test(
         "download_release.py",
         "download_release_test.py",
     ],
+)
+
+trusted_identity_boundary_test_suite(
+    name = "trusted_identity_boundary_test",
 )
 
 genrule(
@@ -79,11 +84,30 @@ genrule(
     cmd = "printf '%s\\n' '$(locations @rules_xlsynth_selftest_xls_runtime//:xlsynth_sys_legacy_dso)' '$(locations @rules_xlsynth_selftest_xls_runtime//:xlsynth_sys_legacy_stdlib)' > $@",
 )
 
+genrule(
+    name = "resolved_identity_probe",
+    srcs = ["@rules_xlsynth_selftest_xls_toolchain"],
+    outs = ["resolved_identity_location.txt"],
+    cmd = """
+set -e
+for path in $(locations @rules_xlsynth_selftest_xls_toolchain//:rules_xlsynth_selftest_xls_toolchain); do
+  case "$$path" in
+    *xlsynth-driver.resolved_identity.json)
+      printf '%s\\n' "$$path" > "$@"
+      exit 0
+      ;;
+  esac
+done
+exit 1
+""",
+)
+
 py_test(
     name = "external_bundle_exports_test",
     srcs = ["external_bundle_exports_test.py"],
     data = [
         ":bundle_alias_probe",
+        ":resolved_identity_probe",
         ":stdlib_location_probe",
         ":xlsynth_sys_artifact_config_probe",
         ":xlsynth_sys_dep_probe",

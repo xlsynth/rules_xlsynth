@@ -522,12 +522,14 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
                 output_user_root,
                 workspace_root,
                 env,
-                ["query", "@lazy_xls_toolchain//:all"],
+                ["query", "--output=build", "@lazy_xls_toolchain//:bundle"],
             )
 
         combined_output = "{}\n{}".format(result.stdout, result.stderr)
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("@lazy_xls_toolchain//:xlsynth-driver", combined_output)
+        self.assertIn("driver_supports_sv_enum_case_naming_policy = False", result.stdout)
+        self.assertIn("driver_supports_sv_struct_field_ordering = False", result.stdout)
         self.assertNotIn("Installing xlsynth-driver", combined_output)
         self.assertNotIn("Compiling xlsynth-driver", combined_output)
         self.assertNotIn("rustup", combined_output)

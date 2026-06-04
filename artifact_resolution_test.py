@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 import os
 from pathlib import Path
 import sys
@@ -207,7 +208,7 @@ class ArtifactResolutionTest(unittest.TestCase):
             installed_driver_root_prefix = "/tools/xlsynth-driver",
             exists_fn = lambda path: True,
         )
-        self.assertEqual(plan["mode"], "installed")
+        self.assertEqual(plan["mode"], "auto_installed")
         self.assertEqual(plan["driver"], Path("/tools/xlsynth-driver/0.33.0/bin/xlsynth-driver"))
 
     def test_resolve_driver_plan_auto_falls_back_to_download(self):
@@ -309,17 +310,30 @@ printf 'fallback body\\n'
             fallback_driver.chmod(0o755)
 
             output_driver = root / "out" / "xlsynth-driver"
-            materialize_xls_bundle.materialize_driver_binary(
-                repo_root = root / "repo",
-                plan = {
-                    "mode": "auto_driver_input",
-                    "driver": declared_driver,
-                    "driver_version": "0.33.0",
-                    "installed_driver_root_prefix": str(root / "installed"),
-                },
-                driver_output = output_driver,
-                libxls_path = root / "runtime" / "libxls.so",
-                dslx_stdlib_path = root / "stdlib",
+            with mock.patch.object(
+                materialize_xls_bundle,
+                "install_driver",
+                return_value = fallback_driver,
+            ) as mock_install:
+                materialize_xls_bundle.materialize_driver_binary(
+                    repo_root = root / "repo",
+                    plan = {
+                        "mode": "auto_driver_input",
+                        "driver": declared_driver,
+                        "driver_version": "0.33.0",
+                        "installed_driver_root_prefix": str(root / "installed"),
+                    },
+                    driver_output = output_driver,
+                    libxls_path = root / "runtime" / "libxls.so",
+                    dslx_stdlib_path = root / "stdlib",
+                )
+            mock_install.assert_called_once_with(
+                root / "repo",
+                "0.33.0",
+                root / "runtime" / "libxls.so",
+                root / "stdlib",
+                rustup_path = "",
+                driver_git_revision = "",
             )
             self.assertIn("fallback body", output_driver.read_text(encoding = "utf-8"))
 
@@ -423,6 +437,274 @@ printf 'fallback body\\n'
             ],
         )
 
+    def test_build_driver_git_install_command_uses_exact_revision(self):
+        revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        command = materialize_xls_bundle.build_driver_git_install_command(
+            "/usr/bin/rustup",
+            "/tmp/xls-driver-root",
+            revision,
+        )
+        self.assertEqual(
+            command,
+            [
+                "/usr/bin/rustup",
+                "run",
+                "nightly",
+                "cargo",
+                "install",
+                "--locked",
+                "--root",
+                "/tmp/xls-driver-root",
+                "--git",
+                "https://github.com/xlsynth/xlsynth-crate.git",
+                "--rev",
+                revision,
+                "xlsynth-driver",
+            ],
+        )
+
+    def test_resolve_driver_plan_uses_git_revision_as_installed_layout_key(self):
+        revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        plan = materialize_xls_bundle.resolve_driver_plan(
+            artifact_source = "auto",
+            driver_version = "",
+            driver_git_revision = revision,
+            installed_driver_root_prefix = "/tools/xlsynth-driver",
+            exists_fn = lambda path: True,
+        )
+        self.assertEqual(plan["mode"], "auto_installed")
+        self.assertEqual(
+            plan["driver"],
+            Path("/tools/xlsynth-driver") / revision / "bin" / "xlsynth-driver",
+        )
+        self.assertEqual(plan["driver_git_revision"], revision)
+
+    def test_resolve_archive_identity_keeps_crate_and_xls_versions_independent(self):
+        crate_revision = "c6a302d21568ce424143d49c1b31b3e14ed70035"
+        xls_revision = "8c5c112b4563401d33b4da1dcd4d7f69db54e0e5"
+        observed_urls = []
+
+        def list_remote_tags(repo_url):
+            if repo_url == "https://github.com/xlsynth/xlsynth-crate.git":
+                return {"v0.50.0": crate_revision}
+            return {"v0.50.1": xls_revision}
+
+        def read_text(url):
+            observed_urls.append(url)
+            return 'const RELEASE_LIB_VERSION_TAG: &str = "v0.50.1";\n'
+
+        identity = materialize_xls_bundle.resolve_archive_identity(
+            xls_version = "0.50.1",
+            xls_git_revision = "",
+            driver_version = "0.50.0",
+            driver_git_revision = "",
+            list_remote_tags_fn = list_remote_tags,
+            read_text_fn = read_text,
+        )
+
+        self.assertEqual(
+            identity,
+            {
+                "schema_version": 1,
+                "xlsynth_crate_pin": {
+                    "kind": "release_tag",
+                    "value": "v0.50.0",
+                },
+                "xls_pin": {
+                    "kind": "release_tag",
+                    "value": "v0.50.1",
+                },
+                "resolved_xlsynth_crate_revision": crate_revision,
+                "crate_implied_xls_release_tag": "v0.50.1",
+                "resolved_xls_release_tag": "v0.50.1",
+                "resolved_xls_revision": xls_revision,
+            },
+        )
+        self.assertEqual(
+            observed_urls,
+            [
+                "https://raw.githubusercontent.com/xlsynth/xlsynth-crate/{}/xlsynth-sys/build.rs".format(
+                    crate_revision,
+                ),
+            ],
+        )
+
+    def test_resolve_archive_identity_accepts_fetchable_crate_git_revision(self):
+        crate_revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        xls_revision = "8c5c112b4563401d33b4da1dcd4d7f69db54e0e5"
+        observed_urls = []
+
+        def read_text(url):
+            observed_urls.append(url)
+            return 'const RELEASE_LIB_VERSION_TAG: &str = "v0.50.1";\n'
+
+        identity = materialize_xls_bundle.resolve_archive_identity(
+            xls_version = "v0.50.1",
+            xls_git_revision = "",
+            driver_version = "",
+            driver_git_revision = crate_revision,
+            list_remote_tags_fn = lambda _repo_url: {"v0.50.1": xls_revision},
+            read_text_fn = read_text,
+        )
+
+        self.assertEqual(identity["xlsynth_crate_pin"]["kind"], "git_revision")
+        self.assertEqual(identity["resolved_xlsynth_crate_revision"], crate_revision)
+        self.assertEqual(
+            observed_urls,
+            [
+                "https://raw.githubusercontent.com/xlsynth/xlsynth-crate/{}/xlsynth-sys/build.rs".format(
+                    crate_revision,
+                ),
+            ],
+        )
+
+    def test_resolve_archive_identity_rejects_unresolvable_crate_git_revision(self):
+        with self.assertRaisesRegex(ValueError, "could not be resolved"):
+            materialize_xls_bundle.resolve_archive_identity(
+                xls_version = "v0.50.1",
+                xls_git_revision = "",
+                driver_version = "",
+                driver_git_revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be",
+                list_remote_tags_fn = lambda _repo_url: {
+                    "v0.50.1": "8c5c112b4563401d33b4da1dcd4d7f69db54e0e5",
+                },
+                read_text_fn = lambda _url: (_ for _ in ()).throw(OSError("not found")),
+            )
+
+    def test_resolve_archive_identity_maps_xls_git_revision_to_published_release(self):
+        crate_revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        xls_revision = "8c5c112b4563401d33b4da1dcd4d7f69db54e0e5"
+        identity = materialize_xls_bundle.resolve_archive_identity(
+            xls_version = "",
+            xls_git_revision = xls_revision,
+            driver_version = "",
+            driver_git_revision = crate_revision,
+            list_remote_tags_fn = lambda _repo_url: {"v0.50.1": xls_revision},
+            read_text_fn = lambda _url: 'const RELEASE_LIB_VERSION_TAG: &str = "v0.50.1";\n',
+        )
+
+        self.assertEqual(
+            identity["xls_pin"],
+            {
+                "kind": "git_revision",
+                "value": xls_revision,
+            },
+        )
+        self.assertEqual(identity["resolved_xls_release_tag"], "v0.50.1")
+
+    def test_resolve_archive_identity_rejects_unpublished_xls_git_revision(self):
+        with self.assertRaisesRegex(ValueError, "does not map to a published XLS release tag"):
+            materialize_xls_bundle.resolve_archive_identity(
+                xls_version = "",
+                xls_git_revision = "8c5c112b4563401d33b4da1dcd4d7f69db54e0e5",
+                driver_version = "",
+                driver_git_revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be",
+                list_remote_tags_fn = lambda _repo_url: {},
+                read_text_fn = lambda _url: 'const RELEASE_LIB_VERSION_TAG: &str = "v0.50.1";\n',
+            )
+
+    def test_resolve_archive_identity_requires_explicit_mismatch_override(self):
+        kwargs = {
+            "xls_version": "v0.50.1",
+            "xls_git_revision": "",
+            "driver_version": "",
+            "driver_git_revision": "0910ee19072a39a960b8df85b4f1e25199a4b4be",
+            "list_remote_tags_fn": lambda _repo_url: {
+                "v0.50.1": "8c5c112b4563401d33b4da1dcd4d7f69db54e0e5",
+            },
+            "read_text_fn": lambda _url: 'const RELEASE_LIB_VERSION_TAG: &str = "v0.49.0";\n',
+        }
+        with self.assertRaisesRegex(ValueError, "allow_xls_pin_mismatch"):
+            materialize_xls_bundle.resolve_archive_identity(**kwargs)
+
+        identity = materialize_xls_bundle.resolve_archive_identity(
+            allow_xls_pin_mismatch = True,
+            **kwargs
+        )
+        self.assertEqual(identity["crate_implied_xls_release_tag"], "v0.49.0")
+        self.assertEqual(identity["resolved_xls_release_tag"], "v0.50.1")
+
+    def test_write_resolved_identity_is_stable_json(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            materialize_xls_bundle.write_resolved_identity(
+                repo_root,
+                {
+                    "schema_version": 1,
+                    "xls_pin": {
+                        "kind": "release_tag",
+                        "value": "v0.50.1",
+                    },
+                },
+            )
+
+            self.assertEqual(
+                (repo_root / "resolved_identity.json").read_text(encoding = "utf-8"),
+                """{
+  "schema_version": 1,
+  "xls_pin": {
+    "kind": "release_tag",
+    "value": "v0.50.1"
+  }
+}
+""",
+            )
+
+    def test_materialize_runtime_surface_removes_stale_resolved_identity(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            (repo_root / "resolved_identity.json").write_text("stale\n", encoding = "utf-8")
+            with mock.patch.object(
+                materialize_xls_bundle,
+                "resolve_materialization_inputs",
+                return_value = {},
+            ):
+                with mock.patch.object(materialize_xls_bundle, "stage_runtime_payload"):
+                    materialize_xls_bundle.materialize_runtime_surface(repo_root, {})
+
+            self.assertFalse((repo_root / "resolved_identity.json").exists())
+
+    def test_materialize_runtime_surface_rejects_private_filename_collision(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            with mock.patch.object(
+                materialize_xls_bundle,
+                "resolve_materialization_inputs",
+                return_value = {
+                    "runtime_files": [repo_root / "inputs" / "resolved_identity.json"],
+                },
+            ):
+                with mock.patch.object(
+                    materialize_xls_bundle,
+                    "stage_runtime_payload",
+                ) as mock_stage:
+                    with self.assertRaisesRegex(ValueError, "reserved private filenames"):
+                        materialize_xls_bundle.materialize_runtime_surface(repo_root, {})
+            mock_stage.assert_not_called()
+
+    def test_trusted_resolved_identity_requires_download_only_artifacts(self):
+        materialize_xls_bundle.validate_resolved_identity_inputs(
+            "download_only",
+            "",
+        )
+        for artifact_source in ["auto", "installed_only", "local_paths"]:
+            with self.subTest(artifact_source = artifact_source):
+                with self.assertRaisesRegex(ValueError, "requires artifact_source=download_only"):
+                    materialize_xls_bundle.validate_resolved_identity_inputs(
+                        artifact_source,
+                        "",
+                    )
+
+    def test_trusted_resolved_identity_rejects_local_aot_runtime_source(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "cannot use local_xls_aot_runtime_source_path",
+        ):
+            materialize_xls_bundle.validate_resolved_identity_inputs(
+                "download_only",
+                "/tmp/review/xls-aot-runtime-source.tar.gz",
+            )
+
     def test_build_rustup_toolchain_install_command_uses_minimal_profile(self):
         command = materialize_xls_bundle.build_rustup_toolchain_install_command("/usr/bin/rustup")
         self.assertEqual(
@@ -446,6 +728,7 @@ printf 'fallback body\\n'
             host_platform = "arm64",
         )
         self.assertEqual(env["RUSTUP_HOME"], "/tmp/xls-bundle-repo/_rustup_home/arm64")
+        self.assertEqual(env["CARGO_HOME"], "/tmp/xls-bundle-repo/_cargo_home/arm64")
         self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target/arm64")
 
     def test_driver_install_root_is_version_and_platform_scoped(self):
@@ -572,6 +855,159 @@ printf 'fallback body\\n'
                 universal_newlines = True,
                 env = mock.ANY,
             )
+
+    def test_install_driver_uses_exact_git_revision(self):
+        revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            install_root = repo_root / "_cargo_driver" / "arm64" / revision
+            with mock.patch.object(materialize_xls_bundle, "detect_host_platform", return_value = "arm64"):
+                with mock.patch.object(materialize_xls_bundle.shutil, "which", return_value = "/usr/bin/rustup"):
+                    with mock.patch.object(materialize_xls_bundle, "ensure_rustup_nightly_toolchain"):
+                        with mock.patch.object(materialize_xls_bundle, "validate_installed_driver"):
+                            with mock.patch.object(materialize_xls_bundle, "write_driver_git_provenance"):
+                                with mock.patch.object(materialize_xls_bundle.subprocess, "run") as mock_run:
+                                    materialize_xls_bundle.install_driver(
+                                        repo_root = repo_root,
+                                        driver_version = "",
+                                        driver_git_revision = revision,
+                                        libxls_path = "/tmp/xls-bundle/libxls.dylib" if sys.platform == "darwin" else "/tmp/xls-bundle/libxls.so",
+                                        dslx_stdlib_path = "/tmp/xls-bundle",
+                                    )
+
+            mock_run.assert_called_once_with(
+                [
+                    "/usr/bin/rustup",
+                    "run",
+                    "nightly",
+                    "cargo",
+                    "install",
+                    "--locked",
+                    "--root",
+                    str(install_root),
+                    "--git",
+                    "https://github.com/xlsynth/xlsynth-crate.git",
+                    "--rev",
+                    revision,
+                    "xlsynth-driver",
+                ],
+                check = True,
+                env = mock.ANY,
+            )
+
+    def test_git_driver_provenance_binds_revision_and_driver_bytes(self):
+        revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        with tempfile.TemporaryDirectory() as tempdir:
+            driver_path = Path(tempdir) / "bin" / "xlsynth-driver"
+            driver_path.parent.mkdir()
+            driver_path.write_bytes(b"driver bytes")
+
+            materialize_xls_bundle.write_driver_git_provenance(driver_path, revision)
+            materialize_xls_bundle.validate_driver_git_provenance(driver_path, revision)
+
+            driver_path.write_bytes(b"different driver bytes")
+            with self.assertRaisesRegex(RuntimeError, "does not match"):
+                materialize_xls_bundle.validate_driver_git_provenance(driver_path, revision)
+
+    def test_git_driver_provenance_is_required_for_installed_revision(self):
+        revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        with tempfile.TemporaryDirectory() as tempdir:
+            driver_path = Path(tempdir) / "bin" / "xlsynth-driver"
+            driver_path.parent.mkdir()
+            driver_path.write_bytes(b"driver bytes")
+
+            with self.assertRaisesRegex(RuntimeError, "requires valid provenance"):
+                materialize_xls_bundle.validate_driver_git_provenance(driver_path, revision)
+
+    def test_installed_git_driver_materialization_requires_provenance(self):
+        revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            driver_path = root / "bin" / "xlsynth-driver"
+            driver_path.parent.mkdir()
+            driver_path.write_text("#!/bin/sh\nexit 0\n", encoding = "utf-8")
+            driver_path.chmod(0o755)
+
+            with self.assertRaisesRegex(RuntimeError, "requires valid provenance"):
+                materialize_xls_bundle.materialize_driver_binary(
+                    repo_root = root / "repo",
+                    plan = {
+                        "mode": "installed",
+                        "driver": driver_path,
+                        "driver_version": "",
+                        "driver_git_revision": revision,
+                    },
+                    driver_output = root / "out" / "xlsynth-driver",
+                    libxls_path = root / "runtime" / "libxls.so",
+                    dslx_stdlib_path = root / "stdlib",
+                )
+
+    def test_installed_git_driver_materialization_accepts_matching_provenance(self):
+        revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            driver_path = root / "bin" / "xlsynth-driver"
+            driver_path.parent.mkdir()
+            driver_path.write_text("#!/bin/sh\nexit 0\n", encoding = "utf-8")
+            driver_path.chmod(0o755)
+            materialize_xls_bundle.write_driver_git_provenance(driver_path, revision)
+            output_path = root / "out" / "xlsynth-driver"
+
+            materialize_xls_bundle.materialize_driver_binary(
+                repo_root = root / "repo",
+                plan = {
+                    "mode": "installed",
+                    "driver": driver_path,
+                    "driver_version": "",
+                    "driver_git_revision": revision,
+                },
+                driver_output = output_path,
+                libxls_path = root / "runtime" / "libxls.so",
+                dslx_stdlib_path = root / "stdlib",
+            )
+
+            self.assertEqual(output_path.read_bytes(), driver_path.read_bytes())
+
+    def test_auto_git_driver_materialization_reinstalls_without_provenance(self):
+        revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            declared_driver = root / "declared" / "xlsynth-driver"
+            declared_driver.parent.mkdir()
+            declared_driver.write_text("#!/bin/sh\nexit 0\n", encoding = "utf-8")
+            declared_driver.chmod(0o755)
+            fallback_driver = root / "fallback" / "xlsynth-driver"
+            fallback_driver.parent.mkdir()
+            fallback_driver.write_text("#!/bin/sh\nprintf 'fallback\\n'\n", encoding = "utf-8")
+            fallback_driver.chmod(0o755)
+
+            with mock.patch.object(
+                materialize_xls_bundle,
+                "install_driver",
+                return_value = fallback_driver,
+            ) as mock_install:
+                materialize_xls_bundle.materialize_driver_binary(
+                    repo_root = root / "repo",
+                    plan = {
+                        "mode": "auto_driver_input",
+                        "driver": declared_driver,
+                        "driver_version": "",
+                        "driver_git_revision": revision,
+                    },
+                    driver_output = root / "out" / "xlsynth-driver",
+                    libxls_path = root / "runtime" / "libxls.so",
+                    dslx_stdlib_path = root / "stdlib",
+                )
+
+            mock_install.assert_called_once_with(
+                root / "repo",
+                "",
+                root / "runtime" / "libxls.so",
+                root / "stdlib",
+                rustup_path = "",
+                driver_git_revision = revision,
+            )
+            self.assertIn("fallback", (root / "out" / "xlsynth-driver").read_text(encoding = "utf-8"))
 
     def test_parse_readelf_soname_finds_soname(self):
         self.assertEqual(
@@ -821,6 +1257,234 @@ Tag        Type                         Name/Value
 
             self.assertEqual(driver_output.read_text(encoding = "utf-8"), "#!/bin/sh\nexit 0\n")
             self.assertTrue(os.access(driver_output, os.X_OK))
+
+    def test_driver_resolved_identity_must_match_selected_driver_pin(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            identity_input = root / "runtime_identity.json"
+            identity_output = root / "driver_identity.json"
+            identity_input.write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "xlsynth_crate_pin": {
+                        "kind": "release_tag",
+                        "value": "v0.50.0",
+                    },
+                    "xls_pin": {
+                        "kind": "release_tag",
+                        "value": "v0.50.1",
+                    },
+                    "resolved_xlsynth_crate_revision": "a" * 40,
+                    "crate_implied_xls_release_tag": "v0.50.1",
+                    "resolved_xls_release_tag": "v0.50.1",
+                    "resolved_xls_revision": "b" * 40,
+                }),
+                encoding = "utf-8",
+            )
+            plan = {
+                "driver_version": "0.50.0",
+            }
+
+            materialize_xls_bundle.validate_and_copy_driver_resolved_identity(
+                identity_input,
+                identity_output,
+                plan,
+            )
+            self.assertEqual(identity_output.read_bytes(), identity_input.read_bytes())
+
+            plan["driver_version"] = "0.51.0"
+            with self.assertRaisesRegex(ValueError, "does not match selected driver pin"):
+                materialize_xls_bundle.validate_and_copy_driver_resolved_identity(
+                    identity_input,
+                    identity_output,
+                    plan,
+                )
+
+    def test_driver_resolved_identity_rejects_incomplete_manifest(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            identity_input = root / "runtime_identity.json"
+            identity_output = root / "driver_identity.json"
+            identity_input.write_text(
+                json.dumps({
+                    "xlsynth_crate_pin": {
+                        "kind": "release_tag",
+                        "value": "v0.50.0",
+                    },
+                }),
+                encoding = "utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "required schema fields"):
+                materialize_xls_bundle.validate_and_copy_driver_resolved_identity(
+                    identity_input,
+                    identity_output,
+                    {"driver_version": "0.50.0"},
+                )
+
+    def test_driver_resolved_identity_rejects_malformed_typed_values(self):
+        valid_identity = {
+            "schema_version": 1,
+            "xlsynth_crate_pin": {
+                "kind": "release_tag",
+                "value": "v0.50.0",
+            },
+            "xls_pin": {
+                "kind": "release_tag",
+                "value": "v0.50.1",
+            },
+            "resolved_xlsynth_crate_revision": "a" * 40,
+            "crate_implied_xls_release_tag": "v0.50.1",
+            "resolved_xls_release_tag": "v0.50.1",
+            "resolved_xls_revision": "b" * 40,
+        }
+        malformed_cases = [
+            (
+                "crate Git revision",
+                {
+                    **valid_identity,
+                    "xlsynth_crate_pin": {
+                        "kind": "git_revision",
+                        "value": "A" * 40,
+                    },
+                },
+                "lowercase exact SHA",
+            ),
+            (
+                "XLS release pin",
+                {
+                    **valid_identity,
+                    "xls_pin": {
+                        "kind": "release_tag",
+                        "value": "vnext",
+                    },
+                },
+                "not an XLS release tag",
+            ),
+            (
+                "resolved XLS release",
+                {
+                    **valid_identity,
+                    "resolved_xls_release_tag": "vnext",
+                },
+                "not an XLS release tag",
+            ),
+        ]
+        for label, identity, error in malformed_cases:
+            with self.subTest(label):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    root = Path(tempdir)
+                    identity_input = root / "runtime_identity.json"
+                    identity_output = root / "driver_identity.json"
+                    identity_input.write_text(json.dumps(identity), encoding = "utf-8")
+
+                    with self.assertRaisesRegex(ValueError, error):
+                        materialize_xls_bundle.validate_and_copy_driver_resolved_identity(
+                            identity_input,
+                            identity_output,
+                            {"driver_version": "0.50.0"},
+                        )
+
+    def test_driver_resolved_identity_rejects_contradictory_typed_values(self):
+        crate_revision = "a" * 40
+        xls_revision = "b" * 40
+        valid_release_identity = {
+            "schema_version": 1,
+            "xlsynth_crate_pin": {
+                "kind": "release_tag",
+                "value": "v0.50.0",
+            },
+            "xls_pin": {
+                "kind": "release_tag",
+                "value": "v0.50.1",
+            },
+            "resolved_xlsynth_crate_revision": crate_revision,
+            "crate_implied_xls_release_tag": "v0.50.1",
+            "resolved_xls_release_tag": "v0.50.1",
+            "resolved_xls_revision": xls_revision,
+        }
+        cases = [
+            (
+                {
+                    **valid_release_identity,
+                    "xls_pin": {
+                        "kind": "git_revision",
+                        "value": "c" * 40,
+                    },
+                },
+                {"driver_version": "0.50.0"},
+                "XLS Git pin",
+            ),
+            (
+                {
+                    **valid_release_identity,
+                    "resolved_xls_release_tag": "v0.49.0",
+                },
+                {"driver_version": "0.50.0"},
+                "XLS release pin",
+            ),
+            (
+                {
+                    **valid_release_identity,
+                    "xlsynth_crate_pin": {
+                        "kind": "git_revision",
+                        "value": "c" * 40,
+                    },
+                },
+                {"driver_git_revision": "c" * 40},
+                "xlsynth-crate Git pin",
+            ),
+        ]
+        for identity, plan, expected_error in cases:
+            with self.subTest(expected_error):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    root = Path(tempdir)
+                    identity_input = root / "runtime_identity.json"
+                    identity_output = root / "driver_identity.json"
+                    identity_input.write_text(json.dumps(identity), encoding = "utf-8")
+
+                    with self.assertRaisesRegex(ValueError, expected_error):
+                        materialize_xls_bundle.validate_and_copy_driver_resolved_identity(
+                            identity_input,
+                            identity_output,
+                            plan,
+                        )
+
+    def test_driver_resolved_identity_requires_explicit_xls_mismatch_override(self):
+        identity = {
+            "schema_version": 1,
+            "xlsynth_crate_pin": {
+                "kind": "release_tag",
+                "value": "v0.36.0",
+            },
+            "xls_pin": {
+                "kind": "release_tag",
+                "value": "v0.40.0",
+            },
+            "resolved_xlsynth_crate_revision": "a" * 40,
+            "crate_implied_xls_release_tag": "v0.39.0",
+            "resolved_xls_release_tag": "v0.40.0",
+            "resolved_xls_revision": "b" * 40,
+        }
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            identity_input = root / "runtime_identity.json"
+            identity_output = root / "driver_identity.json"
+            identity_input.write_text(json.dumps(identity), encoding = "utf-8")
+
+            with self.assertRaisesRegex(ValueError, "explicit development override"):
+                materialize_xls_bundle.validate_and_copy_driver_resolved_identity(
+                    identity_input,
+                    identity_output,
+                    {"driver_version": "0.36.0"},
+                )
+            materialize_xls_bundle.validate_and_copy_driver_resolved_identity(
+                identity_input,
+                identity_output,
+                {"driver_version": "0.36.0"},
+                allow_xls_pin_mismatch = True,
+            )
+            self.assertEqual(identity_output.read_bytes(), identity_input.read_bytes())
 
 
 if __name__ == "__main__":

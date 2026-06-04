@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import unittest
@@ -111,6 +112,30 @@ class ExternalBundleExportsTest(unittest.TestCase):
         basenames = [Path(path).name for path in locations_file.read_text(encoding = "utf-8").split()]
         self.assertIn("dslx_stdlib", basenames)
         self.assertTrue(any(name.startswith("libxls") for name in basenames))
+
+    def test_resolved_identity_is_exported_as_declared_bundle_input(self):
+        runfiles_lookup = runfiles.Create()
+        workspace = os.environ["TEST_WORKSPACE"]
+
+        location_file = Path(
+            runfiles_lookup.Rlocation("{}/resolved_identity_location.txt".format(workspace)),
+        )
+        self.assertTrue(location_file.is_file())
+        self.assertEqual(
+            Path(location_file.read_text(encoding = "utf-8").strip()).name,
+            "xlsynth-driver.resolved_identity.json",
+        )
+
+        identity_path = Path(
+            runfiles_lookup.Rlocation(
+                "rules_xlsynth_selftest_xls_toolchain/xlsynth-driver.resolved_identity.json",
+            ),
+        )
+        identity = json.loads(identity_path.read_text(encoding = "utf-8"))
+        self.assertEqual(identity["xlsynth_crate_pin"], {"kind": "release_tag", "value": "v0.36.0"})
+        self.assertEqual(identity["xls_pin"], {"kind": "release_tag", "value": "v0.40.0"})
+        self.assertEqual(identity["crate_implied_xls_release_tag"], "v0.39.0")
+        self.assertEqual(identity["resolved_xls_release_tag"], "v0.40.0")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+"""Defines XLS artifact bundles, registered toolchains, and action helpers."""
+
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
 load("@rules_cc//cc:defs.bzl", "CcInfo", "cc_common")
@@ -17,9 +19,19 @@ XlsArtifactBundleInfo = provider(
         "libxls": "The libxls shared library file.",
         "runtime_files": "Declared runtime files needed to load libxls.",
         "runtime_library_path": "Directory containing libxls for runtime loading.",
+        "resolved_identity": "Machine-readable resolved producer identity manifest, when requested.",
         "tools_root": "The XLS tool root tree artifact.",
         "tools_path": "Directory path containing the XLS tool binaries.",
         "xls_aot_runtime": "The standalone AOT static runtime archive.",
+    },
+)
+
+_XlsynthDriverBinaryInfo = provider(
+    doc = "Generated xlsynth-driver artifact and its trusted producer identity, when requested.",
+    fields = {
+        "driver": "The generated xlsynth-driver binary.",
+        "resolved_identity": "Driver-validated producer identity sidecar.",
+        "runtime_label": "Runtime target whose artifacts were used to materialize the driver.",
     },
 )
 
@@ -89,6 +101,7 @@ def _bundle_struct_from_provider(bundle):
         libxls = bundle.libxls,
         runtime_files = bundle.runtime_files,
         runtime_library_path = bundle.runtime_library_path,
+        resolved_identity = bundle.resolved_identity,
         tools_root = bundle.tools_root,
         tools_path = bundle.tools_path,
         xls_aot_runtime = bundle.xls_aot_runtime,
@@ -127,6 +140,7 @@ def _toolchain_with_semantics(artifact_selection, ctx):
         libxls = artifact_selection.libxls,
         runtime_files = artifact_selection.runtime_files,
         runtime_library_path = artifact_selection.runtime_library_path,
+        resolved_identity = artifact_selection.resolved_identity,
         driver_supports_sv_enum_case_naming_policy = artifact_selection.driver_supports_sv_enum_case_naming_policy,
         driver_supports_sv_struct_field_ordering = artifact_selection.driver_supports_sv_struct_field_ordering,
         dslx_path = _split_nonempty(ctx.attr._dslx_path_flag[BuildSettingInfo].value, ":"),
@@ -198,15 +212,70 @@ xls_runtime_surface = rule(
     },
 )
 
+def _validate_trusted_identity_binding(ctx, resolved_identity):
+    driver_label = ctx.label
+    runtime_label = ctx.attr.runtime.label
+    identity_label = ctx.attr.resolved_identity.label
+    toolchain_repository = driver_label.repo_name
+    runtime_repository = runtime_label.repo_name
+    identity_repository = identity_label.repo_name
+
+    if ctx.attr.artifact_source != "download_only":
+        fail("trusted resolved identity requires artifact_source=download_only")
+    if (
+        not toolchain_repository or
+        "+" not in toolchain_repository or
+        not toolchain_repository.endswith("_toolchain")
+    ):
+        fail(
+            "trusted resolved identity requires an extension-generated " +
+            "*_toolchain repository",
+        )
+    expected_runtime_repository = toolchain_repository[:-len("_toolchain")] + "_runtime"
+    if runtime_repository != expected_runtime_repository:
+        fail(
+            "trusted resolved identity requires the runtime repository paired " +
+            "with the extension-generated toolchain repository",
+        )
+    if identity_repository != runtime_repository:
+        fail(
+            "trusted resolved identity must come from the same extension-generated " +
+            "runtime repository as the selected runtime",
+        )
+    if driver_label.package != "" or driver_label.name != "xlsynth-driver":
+        fail("trusted resolved identity requires the generated //:xlsynth-driver target")
+    if runtime_label.package != "" or runtime_label.name != "runtime":
+        fail("trusted resolved identity requires the generated runtime //:runtime target")
+    if identity_label.package != "" or identity_label.name != "resolved_identity_for_toolchain":
+        fail(
+            "trusted resolved identity requires the generated " +
+            "runtime //:resolved_identity_for_toolchain target",
+        )
+    if resolved_identity.basename != "resolved_identity.json":
+        fail("trusted resolved identity source must be named resolved_identity.json")
+
 def _xlsynth_driver_binary_impl(ctx):
     runtime = _runtime_struct_from_provider(ctx.attr.runtime[XlsRuntimeSurfaceInfo])
     output = ctx.actions.declare_file(ctx.label.name)
-    host_driver_inputs = [ctx.file.host_driver] if ctx.file.host_driver else []
+    resolved_identity = ctx.file.resolved_identity
+    if resolved_identity:
+        _validate_trusted_identity_binding(ctx, resolved_identity)
+    identity_output = (
+        ctx.actions.declare_file(ctx.label.name + ".resolved_identity.json") if resolved_identity else None
+    )
+    if ctx.file.host_driver_provenance and not ctx.file.host_driver:
+        fail("host_driver_provenance requires host_driver")
+    host_driver_inputs = (
+        [ctx.file.host_driver, ctx.file.host_driver_provenance] if ctx.file.host_driver_provenance else [ctx.file.host_driver] if ctx.file.host_driver else []
+    )
+    identity_inputs = [resolved_identity] if resolved_identity else []
     action_inputs = _dedupe_artifacts(
         [ctx.file._materializer, runtime.libxls, runtime.dslx_stdlib] +
         host_driver_inputs +
-        runtime.runtime_files
+        identity_inputs +
+        runtime.runtime_files,
     )
+    action_outputs = [output] + ([identity_output] if identity_output else [])
     action_env = {"PATH": ctx.attr.action_path}
     if ctx.attr.action_ld_library_path:
         action_env["LD_LIBRARY_PATH"] = ctx.attr.action_ld_library_path
@@ -220,7 +289,7 @@ def _xlsynth_driver_binary_impl(ctx):
         action_env["RUSTUP_HOME"] = ctx.attr.action_rustup_home
     ctx.actions.run_shell(
         inputs = action_inputs,
-        outputs = [output],
+        outputs = action_outputs,
         arguments = [
             ctx.file._materializer.path,
             output.path,
@@ -228,10 +297,14 @@ def _xlsynth_driver_binary_impl(ctx):
             runtime.dslx_stdlib.path,
             ctx.attr.artifact_source,
             ctx.attr.xlsynth_driver_version,
+            ctx.attr.xlsynth_driver_git_revision,
             ctx.attr.installed_driver_root_prefix,
             ctx.attr.local_driver_path,
             ctx.attr.rustup_path,
             ctx.file.host_driver.path if ctx.file.host_driver else "",
+            resolved_identity.path if resolved_identity else "",
+            identity_output.path if identity_output else "",
+            "true" if ctx.attr.allow_xls_pin_mismatch else "false",
         ],
         command = """
             set -euo pipefail
@@ -241,10 +314,14 @@ def _xlsynth_driver_binary_impl(ctx):
             runtime_stdlib="$4"
             artifact_source="$5"
             driver_version="$6"
-            installed_driver_root_prefix="$7"
-            local_driver_path="$8"
-            rustup_path="$9"
-            host_driver="${10}"
+            driver_git_revision="$7"
+            installed_driver_root_prefix="$8"
+            local_driver_path="$9"
+            rustup_path="${10}"
+            host_driver="${11}"
+            resolved_identity_input="${12}"
+            resolved_identity_output="${13}"
+            allow_xls_pin_mismatch="${14}"
 
             work="${TMPDIR:-/tmp}/rules_xlsynth_driver_${RANDOM}"
             rm -rf "$work"
@@ -264,6 +341,9 @@ def _xlsynth_driver_binary_impl(ctx):
             if [[ -n "$driver_version" ]]; then
                 command+=(--xlsynth-driver-version "$driver_version")
             fi
+            if [[ -n "$driver_git_revision" ]]; then
+                command+=(--xlsynth-driver-git-revision "$driver_git_revision")
+            fi
             if [[ -n "$installed_driver_root_prefix" ]]; then
                 command+=(--installed-driver-root-prefix "$installed_driver_root_prefix")
             fi
@@ -276,16 +356,32 @@ def _xlsynth_driver_binary_impl(ctx):
             if [[ -n "$rustup_path" ]]; then
                 command+=(--rustup-path "$rustup_path")
             fi
+            if [[ -n "$resolved_identity_input" ]]; then
+                command+=(
+                    --driver-resolved-identity-input "$resolved_identity_input"
+                    --driver-resolved-identity-output "$resolved_identity_output"
+                )
+                if [[ "$allow_xls_pin_mismatch" == "true" ]]; then
+                    command+=(--allow-xls-pin-mismatch)
+                fi
+            fi
             "${command[@]}"
         """,
         env = action_env,
         progress_message = "Materializing xlsynth-driver for {}".format(ctx.label),
         mnemonic = "XlsynthDriverBinary",
     )
-    return DefaultInfo(
-        files = depset(direct = [output]),
-        executable = output,
-    )
+    return [
+        _XlsynthDriverBinaryInfo(
+            driver = output,
+            resolved_identity = identity_output,
+            runtime_label = ctx.attr.runtime.label,
+        ),
+        DefaultInfo(
+            files = depset(direct = [output]),
+            executable = output,
+        ),
+    ]
 
 xlsynth_driver_binary = rule(
     implementation = _xlsynth_driver_binary_impl,
@@ -296,13 +392,17 @@ xlsynth_driver_binary = rule(
         "action_ld_library_path": attr.string(),
         "action_path": attr.string(mandatory = True),
         "action_rustup_home": attr.string(),
+        "allow_xls_pin_mismatch": attr.bool(),
         "artifact_source": attr.string(mandatory = True),
         "host_driver": attr.label(allow_single_file = True),
+        "host_driver_provenance": attr.label(allow_single_file = True),
         "installed_driver_root_prefix": attr.string(),
         "local_driver_path": attr.string(),
+        "resolved_identity": attr.label(allow_single_file = True),
         "runtime": attr.label(mandatory = True, providers = [XlsRuntimeSurfaceInfo]),
         "rustup_path": attr.string(),
         "xlsynth_driver_version": attr.string(),
+        "xlsynth_driver_git_revision": attr.string(),
         "_materializer": attr.label(
             default = Label("//:materialize_xls_bundle.py"),
             allow_single_file = True,
@@ -314,7 +414,16 @@ xlsynth_driver_binary = rule(
 def _xls_bundle_impl(ctx):
     runtime = _runtime_struct_from_provider(ctx.attr.runtime[XlsRuntimeSurfaceInfo])
     driver = _single_artifact(ctx.attr.driver, "driver")
+    driver_identity = (
+        ctx.attr.driver[_XlsynthDriverBinaryInfo] if _XlsynthDriverBinaryInfo in ctx.attr.driver else None
+    )
+    if driver_identity != None and driver_identity.resolved_identity:
+        if driver_identity.runtime_label != ctx.attr.runtime.label:
+            fail("identity-bearing xlsynth_driver_binary requires its matching runtime")
+    resolved_identity = driver_identity.resolved_identity if driver_identity != None else None
     artifact_inputs = _dedupe_artifacts(runtime.artifact_inputs + [driver])
+    if resolved_identity:
+        artifact_inputs = _dedupe_artifacts(artifact_inputs + [resolved_identity])
     return [
         XlsArtifactBundleInfo(
             artifact_inputs = artifact_inputs,
@@ -326,6 +435,7 @@ def _xls_bundle_impl(ctx):
             libxls = runtime.libxls,
             runtime_files = runtime.runtime_files,
             runtime_library_path = runtime.runtime_library_path,
+            resolved_identity = resolved_identity,
             tools_root = runtime.tools_root,
             tools_path = runtime.tools_path,
             xls_aot_runtime = runtime.xls_aot_runtime,
@@ -365,6 +475,7 @@ def _merge_toolchain_with_bundle(toolchain, bundle):
         libxls = artifact_selection.libxls,
         runtime_files = artifact_selection.runtime_files,
         runtime_library_path = artifact_selection.runtime_library_path,
+        resolved_identity = artifact_selection.resolved_identity,
         tools_root = artifact_selection.tools_root,
         tools_path = artifact_selection.tools_path,
         dslx_path = toolchain.dslx_path,
@@ -377,6 +488,14 @@ def _merge_toolchain_with_bundle(toolchain, bundle):
     )
 
 def require_driver_toolchain(ctx):
+    """Returns the selected driver-capable XLS toolchain.
+
+    Args:
+      ctx: Rule context with XLS toolchain access.
+
+    Returns:
+      The selected XLS toolchain.
+    """
     toolchain = get_xls_toolchain(ctx)
     if not toolchain.driver_path:
         fail("rules_xlsynth requires a configured xlsynth-driver")
@@ -421,6 +540,21 @@ def declare_xls_toolchain_toml(
         use_system_verilog = "",
         add_invariant_assertions = "",
         array_index_bounds_checking = ""):
+    """Declares a toolchain TOML file for the selected XLS bundle.
+
+    Args:
+      ctx: Rule context used to declare the output.
+      name: Stable output-name component.
+      toolchain: Optional already-selected XLS toolchain.
+      gate_format: Optional codegen gate format override.
+      assert_format: Optional codegen assertion format override.
+      use_system_verilog: Optional tri-state SystemVerilog override.
+      add_invariant_assertions: Optional tri-state invariant assertion override.
+      array_index_bounds_checking: Optional array-bounds-checking override.
+
+    Returns:
+      The declared toolchain TOML file.
+    """
     resolved_toolchain = require_tools_toolchain(ctx) if toolchain == None else toolchain
 
     resolved_use_system_verilog = _resolve_tri_state(resolved_toolchain.use_system_verilog, use_system_verilog)

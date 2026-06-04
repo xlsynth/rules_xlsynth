@@ -83,6 +83,49 @@ needed only by driver-backed actions. This lets runtime consumers depend on
 `@<name>_runtime` or register `@<name>_toolchain` without materializing,
 probing, downloading, or compiling `xlsynth-driver`.
 
+## Resolved producer identity
+
+Consumers that mint durable identities can set `emit_resolved_identity = True`.
+The runtime repository creates `resolved_identity.json` as a private input
+visible only to its paired generated toolchain repository. Public runtime
+providers do not carry identity. The generated driver action validates its
+selected `xlsynth-crate` pin and the manifest's internal pin relationships,
+then emits the identity sidecar exported by the bundle. Consumers receive
+producer identity only through `XlsArtifactBundleInfo`, which keeps the
+executed bundle and its producer identity in one Bazel-owned handoff instead of
+asking a downstream action to restate or pair identity separately.
+Identity-bearing driver targets are valid only at the generated root targets in
+the canonical paired `*_runtime` and `*_toolchain` repositories. This rejects
+hand-written public-rule assembly before action execution.
+
+The manifest records typed `xlsynth-crate` and XLS pins, exact resolved source
+revisions, the published XLS release used for artifacts, and the XLS release
+implied by the selected crate's `xlsynth-sys/build.rs`. Crate releases and XLS
+releases are independently versioned; matching version text is not a binding
+rule. By default, identity materialization rejects an explicit XLS pin that
+does not resolve to the crate-implied XLS release.
+`allow_xls_pin_mismatch = True` is reserved for deliberate development
+overrides. Trusted identity emission requires `artifact_source =
+"download_only"`: the installed-layout modes intentionally trust
+consumer-owned directories and therefore cannot mint an authoritative archive
+identity. It also rejects `local_xls_aot_runtime_source_path`, because those
+source bytes are not covered by the resolved XLS identity.
+
+An exact `xlsynth_driver_git_revision` is materialized by Cargo
+`--git ... --rev <SHA>`. Reusing an installed Git-pinned driver additionally
+requires an adjacent provenance record that binds the canonical source
+repository, exact revision, and driver digest. `auto` reinstalls if that proof
+is missing or stale, while `installed_only` fails. An exact `xls_git_revision`
+reuses published release artifacts only when the SHA maps to one published XLS
+release tag. Building arbitrary XLS source revisions is intentionally outside
+this contract. `local_paths` remains useful for non-provenance-sensitive
+development but cannot emit trusted resolved identity.
+
+The trusted handoff assumes the consumer controls the selected
+`rules_xlsynth` source and module graph. It is not cryptographic attestation
+against a root module that replaces `rules_xlsynth`, overrides generated
+repositories, or deliberately constructs a lying fork.
+
 ## Default bundles and explicit overrides
 
 Most rules use the registered default workspace bundle through normal Bazel

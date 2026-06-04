@@ -442,6 +442,7 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
             '//:artifact_resolution_test',
             '//:download_release_test',
             '//:external_bundle_exports_test',
+            '//:trusted_identity_boundary_test',
         ),
         config,
     )
