@@ -77,6 +77,32 @@ def _driver_supports_sv_struct_field_ordering(driver_version):
         return False
     return _version_at_least(driver_version, "0.36.0")
 
+def _toolchain_driver_supports_sv_enum_case_naming_policy(
+        artifact_source,
+        local_driver_path,
+        xlsynth_driver_git_revision,
+        xlsynth_driver_version):
+    if artifact_source == "local_paths" and local_driver_path:
+        supports = True
+    elif xlsynth_driver_git_revision:
+        supports = False
+    else:
+        supports = _driver_supports_sv_enum_case_naming_policy(xlsynth_driver_version)
+    return supports
+
+def _toolchain_driver_supports_sv_struct_field_ordering(
+        artifact_source,
+        local_driver_path,
+        xlsynth_driver_git_revision,
+        xlsynth_driver_version):
+    if artifact_source == "local_paths" and local_driver_path:
+        supports = True
+    elif xlsynth_driver_git_revision:
+        supports = False
+    else:
+        supports = _driver_supports_sv_struct_field_ordering(xlsynth_driver_version)
+    return supports
+
 def _runtime_build_file(
         libxls_name,
         xls_aot_runtime_name,
@@ -346,8 +372,8 @@ toolchain(
         action_path = _quoted(action_path),
         allow_xls_pin_mismatch = "True" if allow_xls_pin_mismatch else "False",
         driver_attrs = driver_attrs,
-        driver_supports_sv_enum_case_naming_policy = "True" if not xlsynth_driver_git_revision and _driver_supports_sv_enum_case_naming_policy(xlsynth_driver_version) else "False",
-        driver_supports_sv_struct_field_ordering = "True" if not xlsynth_driver_git_revision and _driver_supports_sv_struct_field_ordering(xlsynth_driver_version) else "False",
+        driver_supports_sv_enum_case_naming_policy = "True" if _toolchain_driver_supports_sv_enum_case_naming_policy(artifact_source, local_driver_path, xlsynth_driver_git_revision, xlsynth_driver_version) else "False",
+        driver_supports_sv_struct_field_ordering = "True" if _toolchain_driver_supports_sv_struct_field_ordering(artifact_source, local_driver_path, xlsynth_driver_git_revision, xlsynth_driver_version) else "False",
         repo_alias = repo_alias,
         runtime_repo_name = runtime_repo_name,
     )
