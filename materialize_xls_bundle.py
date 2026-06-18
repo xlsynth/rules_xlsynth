@@ -958,6 +958,7 @@ def build_rustup_toolchain_install_command(rustup_path):
         "nightly",
         "--profile",
         "minimal",
+        "--no-self-update",
     ]
 
 

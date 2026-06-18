@@ -716,6 +716,7 @@ printf 'fallback body\\n'
                 "nightly",
                 "--profile",
                 "minimal",
+                "--no-self-update",
             ],
         )
 
