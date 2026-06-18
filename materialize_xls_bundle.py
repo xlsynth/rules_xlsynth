@@ -3,12 +3,15 @@
 """Materializes an XLS bundle repository for the rules_xlsynth module extension."""
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
+from urllib import request as urlrequest
 
 TOOL_BINARIES = [
     "dslx_interpreter_main",
@@ -27,6 +30,20 @@ _DRIVER_CAPABILITY_FLAGS = {
     "driver_supports_sv_enum_case_naming_policy": "--sv_enum_case_naming_policy",
     "driver_supports_sv_struct_field_ordering": "--sv_struct_field_ordering",
 }
+
+_XLSYNTH_REPO_URL = "https://github.com/xlsynth/xlsynth.git"
+_XLSYNTH_CRATE_REPO_URL = "https://github.com/xlsynth/xlsynth-crate.git"
+_XLSYNTH_CRATE_BUILD_RS_URL = (
+    "https://raw.githubusercontent.com/xlsynth/xlsynth-crate/{}/xlsynth-sys/build.rs"
+)
+_GIT_REVISION_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+_RELEASE_TAG_RE = re.compile(r"^v[0-9A-Za-z][0-9A-Za-z.+-]*$")
+_XLS_RELEASE_TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9]+)?$")
+_CRATE_IMPLIED_XLS_RELEASE_RE = re.compile(
+    r'RELEASE_LIB_VERSION_TAG\s*:\s*&str\s*=\s*"([^"]+)"'
+)
+_DRIVER_GIT_PROVENANCE_FILENAME = "xlsynth-driver.provenance.json"
+_PRIVATE_RUNTIME_FILENAMES = {"resolved_identity.json"}
 
 
 def run_captured_text_command(args, check, env = None):
@@ -50,6 +67,208 @@ def normalize_version(version):
 
 def version_tag(version):
     return "v{}".format(normalize_version(version))
+
+
+def normalize_git_revision(revision):
+    if not _GIT_REVISION_RE.fullmatch(revision):
+        raise ValueError("Expected exact 40-character Git revision, got: {}".format(revision))
+    return revision.lower()
+
+
+def normalize_release_tag(version):
+    tag = version_tag(version)
+    if not _RELEASE_TAG_RE.fullmatch(tag):
+        raise ValueError("Expected release tag, got: {}".format(version))
+    return tag
+
+
+def producer_pin(version, git_revision, label):
+    if version and git_revision:
+        raise ValueError("{} accepts either a release tag or a Git revision, not both".format(label))
+    if version:
+        return {
+            "kind": "release_tag",
+            "value": normalize_release_tag(version),
+        }
+    if git_revision:
+        return {
+            "kind": "git_revision",
+            "value": normalize_git_revision(git_revision),
+        }
+    raise ValueError("{} requires either a release tag or a Git revision".format(label))
+
+
+def list_remote_tag_revisions(repo_url):
+    result = run_captured_text_command(
+        ["git", "ls-remote", "--tags", repo_url],
+        check = False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Failed to list tags from {}\nstdout:\n{}\nstderr:\n{}".format(
+                repo_url,
+                result.stdout,
+                result.stderr,
+            )
+        )
+    direct_revisions = {}
+    peeled_revisions = {}
+    for line in result.stdout.splitlines():
+        if not line:
+            continue
+        revision, ref = line.split("\t", 1)
+        if not ref.startswith("refs/tags/"):
+            continue
+        tag = ref[len("refs/tags/"):]
+        if tag.endswith("^{}"):
+            peeled_revisions[tag[:-3]] = revision.lower()
+        else:
+            direct_revisions[tag] = revision.lower()
+    direct_revisions.update(peeled_revisions)
+    return direct_revisions
+
+
+def read_url_text(url):
+    with urlrequest.urlopen(url) as response:
+        return response.read().decode("utf-8")
+
+
+def resolve_release_tag_revision(repo_url, release_tag, list_remote_tags_fn = list_remote_tag_revisions):
+    revisions = list_remote_tags_fn(repo_url)
+    revision = revisions.get(release_tag)
+    if revision is None:
+        raise ValueError("{} does not publish release tag {}".format(repo_url, release_tag))
+    return normalize_git_revision(revision)
+
+
+def resolve_xls_pin(pin, list_remote_tags_fn = list_remote_tag_revisions):
+    if pin["kind"] == "release_tag":
+        release_tag = pin["value"]
+        if not _XLS_RELEASE_TAG_RE.fullmatch(release_tag):
+            raise ValueError("Expected XLS semantic release tag, got: {}".format(release_tag))
+        return {
+            "release_tag": release_tag,
+            "revision": resolve_release_tag_revision(
+                _XLSYNTH_REPO_URL,
+                release_tag,
+                list_remote_tags_fn = list_remote_tags_fn,
+            ),
+        }
+
+    revision = normalize_git_revision(pin["value"])
+    matching_tags = sorted(
+        tag
+        for tag, tag_revision in list_remote_tags_fn(_XLSYNTH_REPO_URL).items()
+        if tag_revision == revision and _XLS_RELEASE_TAG_RE.fullmatch(tag)
+    )
+    if not matching_tags:
+        raise ValueError(
+            "XLS Git revision {} does not map to a published XLS release tag".format(revision)
+        )
+    if len(matching_tags) != 1:
+        raise ValueError(
+            "XLS Git revision {} maps to multiple published XLS release tags: {}".format(
+                revision,
+                ", ".join(matching_tags),
+            )
+        )
+    return {
+        "release_tag": matching_tags[0],
+        "revision": revision,
+    }
+
+
+def crate_implied_xls_release_tag(crate_pin, read_text_fn = read_url_text):
+    try:
+        build_rs = read_text_fn(_XLSYNTH_CRATE_BUILD_RS_URL.format(crate_pin["value"]))
+    except Exception as error:
+        raise ValueError(
+            "xlsynth-crate Git revision {} could not be resolved".format(crate_pin["value"])
+        ) from error
+    match = _CRATE_IMPLIED_XLS_RELEASE_RE.search(build_rs)
+    if match is None:
+        raise ValueError(
+            "xlsynth-crate {} does not declare RELEASE_LIB_VERSION_TAG".format(
+                crate_pin["value"],
+            )
+        )
+    release_tag = match.group(1)
+    if not _XLS_RELEASE_TAG_RE.fullmatch(release_tag):
+        raise ValueError(
+            "xlsynth-crate {} declares invalid XLS release tag {}".format(
+                crate_pin["value"],
+                release_tag,
+            )
+        )
+    return release_tag
+
+
+def resolve_archive_identity(
+        xls_version,
+        xls_git_revision,
+        driver_version,
+        driver_git_revision,
+        allow_xls_pin_mismatch = False,
+        list_remote_tags_fn = list_remote_tag_revisions,
+        read_text_fn = read_url_text):
+    xlsynth_crate_pin = producer_pin(driver_version, driver_git_revision, "xlsynth-crate pin")
+    xls_pin = producer_pin(xls_version, xls_git_revision, "XLS pin")
+    resolved_xls = resolve_xls_pin(xls_pin, list_remote_tags_fn = list_remote_tags_fn)
+    if xlsynth_crate_pin["kind"] == "release_tag":
+        resolved_crate_revision = resolve_release_tag_revision(
+            _XLSYNTH_CRATE_REPO_URL,
+            xlsynth_crate_pin["value"],
+            list_remote_tags_fn = list_remote_tags_fn,
+        )
+    else:
+        resolved_crate_revision = xlsynth_crate_pin["value"]
+    implied_xls_release_tag = crate_implied_xls_release_tag(
+        {
+            "value": resolved_crate_revision,
+        },
+        read_text_fn = read_text_fn,
+    )
+    if implied_xls_release_tag != resolved_xls["release_tag"] and not allow_xls_pin_mismatch:
+        raise ValueError(
+            "xlsynth-crate {} implies XLS release {}, but explicit XLS pin resolves to {}; "
+            "set allow_xls_pin_mismatch only for deliberate development overrides".format(
+                xlsynth_crate_pin["value"],
+                implied_xls_release_tag,
+                resolved_xls["release_tag"],
+            )
+        )
+    return {
+        "schema_version": 1,
+        "xlsynth_crate_pin": xlsynth_crate_pin,
+        "xls_pin": xls_pin,
+        "resolved_xlsynth_crate_revision": resolved_crate_revision,
+        "crate_implied_xls_release_tag": implied_xls_release_tag,
+        "resolved_xls_release_tag": resolved_xls["release_tag"],
+        "resolved_xls_revision": resolved_xls["revision"],
+    }
+
+
+def write_resolved_identity(repo_root, identity):
+    (repo_root / "resolved_identity.json").write_text(
+        json.dumps(identity, indent = 2, sort_keys = True) + "\n",
+        encoding = "utf-8",
+    )
+
+
+def validate_resolved_identity_inputs(
+    artifact_source,
+    local_xls_aot_runtime_source_path,
+):
+    if artifact_source != "download_only":
+        raise ValueError(
+            "trusted resolved identity requires artifact_source=download_only; "
+            "{} may reuse consumer-owned artifacts".format(artifact_source)
+        )
+    elif local_xls_aot_runtime_source_path:
+        raise ValueError(
+            "trusted resolved identity cannot use local_xls_aot_runtime_source_path; "
+            "the local source is not covered by the resolved XLS identity"
+        )
 
 
 def libxls_name_for_platform(sys_platform):
@@ -123,6 +342,7 @@ def resolve_artifact_plan(
     artifact_source,
     xls_version,
     driver_version,
+    driver_git_revision = "",
     surface = "toolchain",
     installed_tools_root_prefix = "",
     installed_driver_root_prefix = "",
@@ -138,10 +358,13 @@ def resolve_artifact_plan(
     if surface not in ("runtime", "toolchain"):
         raise ValueError("Unknown XLS bundle surface: {}".format(surface))
     include_driver = surface == "toolchain"
+    if driver_version and driver_git_revision:
+        raise ValueError("XLS bundle accepts either an xlsynth driver release tag or Git revision, not both")
+    driver_identity = normalize_git_revision(driver_git_revision) if driver_git_revision else normalize_version(driver_version)
 
     if artifact_source == "local_paths":
-        if xls_version or driver_version:
-            raise ValueError("local_paths does not accept xls_version or xlsynth_driver_version")
+        if xls_version or driver_identity:
+            raise ValueError("local_paths does not accept XLS or xlsynth driver release or Git pins")
         required = {
             "local_tools_path": local_tools_path,
             "local_dslx_stdlib_path": local_dslx_stdlib_path,
@@ -182,8 +405,8 @@ def resolve_artifact_plan(
         raise ValueError("Unknown artifact_source: {}".format(artifact_source))
     if not xls_version:
         raise ValueError("{} requires xls_version".format(artifact_source))
-    if include_driver and not driver_version:
-        raise ValueError("{} toolchain surface requires xlsynth_driver_version".format(artifact_source))
+    if include_driver and not driver_identity:
+        raise ValueError("{} toolchain surface requires an xlsynth driver release or Git pin".format(artifact_source))
     if (
         local_tools_path
         or local_dslx_stdlib_path
@@ -207,7 +430,7 @@ def resolve_artifact_plan(
     if include_driver:
         installed_paths = derive_installed_paths(
             xls_version = xls_version,
-            driver_version = driver_version,
+            driver_version = driver_identity,
             installed_tools_root_prefix = installed_tools_root_prefix,
             installed_driver_root_prefix = installed_driver_root_prefix,
         )
@@ -226,6 +449,8 @@ def resolve_artifact_plan(
             plan["xls_aot_runtime_source"] = Path(local_xls_aot_runtime_source_path)
         if include_driver:
             plan["driver_version"] = normalize_version(driver_version)
+            if driver_git_revision:
+                plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
         return plan
 
     installed_paths_present = all(
@@ -273,6 +498,9 @@ def resolve_artifact_plan(
         }
         if include_driver:
             plan["driver"] = installed_paths["driver"]
+            plan["driver_version"] = normalize_version(driver_version)
+            if driver_git_revision:
+                plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
         if local_xls_aot_runtime_source_path:
             plan["xls_aot_runtime_source"] = Path(local_xls_aot_runtime_source_path)
         return plan
@@ -282,7 +510,7 @@ def resolve_artifact_plan(
                 normalize_version(xls_version),
             )
             if include_driver:
-                message = "{} and driver {}".format(message, normalize_version(driver_version))
+                message = "{} and driver {}".format(message, driver_identity)
             raise ValueError(message)
         plan = {
             "mode": "installed",
@@ -307,6 +535,9 @@ def resolve_artifact_plan(
         }
         if include_driver:
             plan["driver"] = installed_paths["driver"]
+            plan["driver_version"] = normalize_version(driver_version)
+            if driver_git_revision:
+                plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
         if local_xls_aot_runtime_source_path:
             plan["xls_aot_runtime_source"] = Path(local_xls_aot_runtime_source_path)
         return plan
@@ -318,18 +549,26 @@ def resolve_artifact_plan(
         plan["xls_aot_runtime_source"] = Path(local_xls_aot_runtime_source_path)
     if include_driver:
         plan["driver_version"] = normalize_version(driver_version)
+        if driver_git_revision:
+            plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
     return plan
 
 
 def resolve_driver_plan(
     artifact_source,
     driver_version,
+    driver_git_revision = "",
     installed_driver_root_prefix = "",
     local_driver_path = "",
     driver_input = "",
     exists_fn = os.path.exists,
 ):
+    if driver_version and driver_git_revision:
+        raise ValueError("xlsynth-driver materialization accepts either a release tag or a Git revision, not both")
+    driver_identity = normalize_git_revision(driver_git_revision) if driver_git_revision else normalize_version(driver_version)
     if artifact_source == "local_paths":
+        if driver_identity:
+            raise ValueError("local_paths does not accept xlsynth driver release or Git pins")
         if not local_driver_path:
             raise ValueError("local_paths driver materialization requires local_driver_path")
         if driver_input:
@@ -353,59 +592,73 @@ def resolve_driver_plan(
 
     if driver_input:
         if artifact_source == "auto":
-            if not driver_version:
-                raise ValueError("auto declared driver input requires xlsynth_driver_version")
-            return {
+            if not driver_identity:
+                raise ValueError("auto declared driver input requires an xlsynth driver release or Git pin")
+            plan = {
                 "mode": "auto_driver_input",
                 "driver": Path(driver_input),
                 "driver_version": normalize_version(driver_version),
                 "installed_driver_root_prefix": installed_driver_root_prefix,
             }
+            if driver_git_revision:
+                plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
+            return plan
         if artifact_source in ("auto", "installed_only"):
-            if not driver_version:
-                raise ValueError("{} declared driver input requires xlsynth_driver_version".format(artifact_source))
-            return {
+            if not driver_identity:
+                raise ValueError("{} declared driver input requires an xlsynth driver release or Git pin".format(artifact_source))
+            plan = {
                 "mode": "installed",
                 "driver": Path(driver_input),
                 "driver_version": normalize_version(driver_version),
             }
+            if driver_git_revision:
+                plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
+            return plan
         if artifact_source == "download_only":
             raise ValueError("download_only driver materialization does not accept driver_input")
         raise ValueError("Unknown artifact_source: {}".format(artifact_source))
 
     if artifact_source not in ("auto", "installed_only", "download_only"):
         raise ValueError("Unknown artifact_source: {}".format(artifact_source))
-    if not driver_version:
-        raise ValueError("{} driver materialization requires xlsynth_driver_version".format(artifact_source))
+    if not driver_identity:
+        raise ValueError("{} driver materialization requires an xlsynth driver release or Git pin".format(artifact_source))
     if artifact_source == "download_only":
         if installed_driver_root_prefix:
             raise ValueError("download_only driver materialization does not accept installed_driver_root_prefix")
-        return {
+        plan = {
             "mode": "download",
             "driver_version": normalize_version(driver_version),
         }
+        if driver_git_revision:
+            plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
+        return plan
 
     if not installed_driver_root_prefix:
         raise ValueError("{} driver materialization requires installed_driver_root_prefix".format(artifact_source))
 
-    normalized_driver_version = normalize_version(driver_version)
-    installed_driver = Path(installed_driver_root_prefix) / normalized_driver_version / "bin" / "xlsynth-driver"
+    installed_driver = Path(installed_driver_root_prefix) / driver_identity / "bin" / "xlsynth-driver"
     if exists_fn(str(installed_driver)):
-        return {
-            "mode": "installed",
+        plan = {
+            "mode": "auto_installed" if artifact_source == "auto" else "installed",
             "driver": installed_driver,
-            "driver_version": normalized_driver_version,
+            "driver_version": normalize_version(driver_version),
         }
+        if driver_git_revision:
+            plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
+        return plan
     if artifact_source == "installed_only":
         raise ValueError(
             "installed_only driver materialization requires installed path for driver {}".format(
-                normalized_driver_version,
+                driver_identity,
             )
         )
-    return {
+    plan = {
         "mode": "download",
-        "driver_version": normalized_driver_version,
+        "driver_version": normalize_version(driver_version),
     }
+    if driver_git_revision:
+        plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
+    return plan
 
 
 def derive_runtime_library_path(libxls_path):
@@ -469,12 +722,16 @@ def detect_host_platform():
     return "ubuntu2004"
 
 
-def driver_install_root(repo_root, driver_version, host_platform):
-    return repo_root / "_cargo_driver" / host_platform / normalize_version(driver_version)
+def driver_install_root(repo_root, driver_identity, host_platform):
+    return repo_root / "_cargo_driver" / host_platform / driver_identity
 
 
 def rustup_home_root(repo_root, host_platform):
     return repo_root / "_rustup_home" / host_platform
+
+
+def cargo_home_root(repo_root, host_platform):
+    return repo_root / "_cargo_home" / host_platform
 
 
 def cargo_target_root(repo_root, host_platform):
@@ -675,6 +932,24 @@ def build_driver_install_command(rustup_path, install_root, driver_version):
     ]
 
 
+def build_driver_git_install_command(rustup_path, install_root, driver_git_revision):
+    return [
+        rustup_path,
+        "run",
+        "nightly",
+        "cargo",
+        "install",
+        "--locked",
+        "--root",
+        str(install_root),
+        "--git",
+        _XLSYNTH_CRATE_REPO_URL,
+        "--rev",
+        normalize_git_revision(driver_git_revision),
+        "xlsynth-driver",
+    ]
+
+
 def build_rustup_toolchain_install_command(rustup_path):
     return [
         rustup_path,
@@ -683,6 +958,7 @@ def build_rustup_toolchain_install_command(rustup_path):
         "nightly",
         "--profile",
         "minimal",
+        "--no-self-update",
     ]
 
 
@@ -701,6 +977,7 @@ def build_driver_install_environment(
     )
     resolved_host_platform = host_platform or detect_host_platform()
     env["RUSTUP_HOME"] = str(rustup_home_root(repo_root, resolved_host_platform))
+    env["CARGO_HOME"] = str(cargo_home_root(repo_root, resolved_host_platform))
     env["CARGO_TARGET_DIR"] = str(cargo_target_root(repo_root, resolved_host_platform))
     return env
 
@@ -720,7 +997,64 @@ def ensure_rustup_nightly_toolchain(rustup_path, env):
     )
 
 
-def validate_installed_driver(driver_path, env, driver_version):
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as input_file:
+        for chunk in iter(lambda: input_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def driver_git_provenance_path(driver_path):
+    return Path(driver_path).parent / _DRIVER_GIT_PROVENANCE_FILENAME
+
+
+def write_driver_git_provenance(driver_path, driver_git_revision):
+    revision = normalize_git_revision(driver_git_revision)
+    provenance = {
+        "schema_version": 1,
+        "source_repository": _XLSYNTH_CRATE_REPO_URL,
+        "git_revision": revision,
+        "driver_sha256": sha256_file(driver_path),
+    }
+    driver_git_provenance_path(driver_path).write_text(
+        json.dumps(provenance, indent = 2, sort_keys = True) + "\n",
+        encoding = "utf-8",
+    )
+
+
+def validate_driver_git_provenance(driver_path, driver_git_revision):
+    revision = normalize_git_revision(driver_git_revision)
+    provenance_path = driver_git_provenance_path(driver_path)
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding = "utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            "Installed Git-pinned xlsynth-driver at {} requires valid provenance at {}".format(
+                driver_path,
+                provenance_path,
+            )
+        ) from error
+    expected = {
+        "schema_version": 1,
+        "source_repository": _XLSYNTH_CRATE_REPO_URL,
+        "git_revision": revision,
+        "driver_sha256": sha256_file(driver_path),
+    }
+    if provenance != expected:
+        raise RuntimeError(
+            "Installed Git-pinned xlsynth-driver provenance at {} does not match "
+            "the requested revision and driver bytes".format(provenance_path)
+        )
+
+
+def validate_installed_driver(
+        driver_path,
+        env,
+        driver_version = "",
+        driver_git_revision = ""):
+    if driver_version and driver_git_revision:
+        raise ValueError("installed driver validation accepts either a release tag or Git revision, not both")
     try:
         result = run_captured_text_command(
             [str(driver_path), "--version"],
@@ -739,7 +1073,7 @@ def validate_installed_driver(driver_path, env, driver_version):
         )
     version_text = "{}\n{}".format(result.stdout, result.stderr)
     expected_version = normalize_version(driver_version)
-    if expected_version not in version_text:
+    if expected_version and expected_version not in version_text:
         raise RuntimeError(
             "Installed xlsynth-driver at {} reported an unexpected version.\nexpected substring: {}\nstdout:\n{}\nstderr:\n{}".format(
                 driver_path,
@@ -748,12 +1082,30 @@ def validate_installed_driver(driver_path, env, driver_version):
                 result.stderr,
             )
         )
+    elif driver_git_revision:
+        validate_driver_git_provenance(driver_path, driver_git_revision)
 
 
-def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path, rustup_path = ""):
+def install_driver(
+        repo_root,
+        driver_version,
+        libxls_path,
+        dslx_stdlib_path,
+        rustup_path = "",
+        driver_git_revision = ""):
+    if driver_version and driver_git_revision:
+        raise ValueError("xlsynth-driver install accepts either a release tag or a Git revision, not both")
+    driver_identity = (
+        normalize_git_revision(driver_git_revision)
+        if driver_git_revision
+        else normalize_version(driver_version)
+    )
+    if not driver_identity:
+        raise ValueError("xlsynth-driver install requires a release tag or Git revision")
     host_platform = detect_host_platform()
-    install_root = driver_install_root(repo_root, driver_version, host_platform)
+    install_root = driver_install_root(repo_root, driver_identity, host_platform)
     rustup_home = rustup_home_root(repo_root, host_platform)
+    cargo_home = cargo_home_root(repo_root, host_platform)
     target_root = cargo_target_root(repo_root, host_platform)
     env = build_driver_install_environment(
         repo_root,
@@ -761,12 +1113,17 @@ def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path, rus
         dslx_stdlib_path,
         host_platform = host_platform,
     )
-    for path in [install_root, rustup_home, target_root]:
+    for path in [install_root, rustup_home, cargo_home, target_root]:
         path.mkdir(parents = True, exist_ok = True)
     driver_path = install_root / "bin" / "xlsynth-driver"
     if driver_path.exists():
         try:
-            validate_installed_driver(driver_path, env, driver_version)
+            validate_installed_driver(
+                driver_path,
+                env,
+                driver_version,
+                driver_git_revision,
+            )
             return driver_path
         except RuntimeError:
             ensure_clean_path(install_root)
@@ -776,16 +1133,31 @@ def install_driver(repo_root, driver_version, libxls_path, dslx_stdlib_path, rus
     if rustup is None:
         raise RuntimeError(
             "rules_xlsynth download fallback requires rustup to install xlsynth-driver {}".format(
-                driver_version
+                driver_identity
             )
         )
     ensure_rustup_nightly_toolchain(rustup, env)
+    if driver_git_revision:
+        install_command = build_driver_git_install_command(
+            rustup,
+            install_root,
+            driver_git_revision,
+        )
+    else:
+        install_command = build_driver_install_command(rustup, install_root, driver_version)
     subprocess.run(
-        build_driver_install_command(rustup, install_root, driver_version),
+        install_command,
         check = True,
         env = env,
     )
-    validate_installed_driver(driver_path, env, driver_version)
+    if driver_git_revision:
+        write_driver_git_provenance(driver_path, driver_git_revision)
+    validate_installed_driver(
+        driver_path,
+        env,
+        driver_version,
+        driver_git_revision,
+    )
     return driver_path
 
 
@@ -1035,9 +1407,23 @@ def stage_driver_probe_inputs(repo_root, resolved):
     return probe_paths
 
 
-def materialize_runtime_surface(repo_root, plan):
+def materialize_runtime_surface(repo_root, plan, resolved_identity = None):
     resolved = resolve_materialization_inputs(repo_root, plan)
+    colliding_runtime_files = sorted(
+        runtime_file.name
+        for runtime_file in resolved.get("runtime_files", [])
+        if runtime_file.name in _PRIVATE_RUNTIME_FILENAMES
+    )
+    if colliding_runtime_files:
+        raise ValueError(
+            "runtime payload uses reserved private filenames: {}".format(
+                ", ".join(colliding_runtime_files),
+            )
+        )
     stage_runtime_payload(repo_root, resolved)
+    ensure_clean_path(repo_root / "resolved_identity.json")
+    if resolved_identity is not None:
+        write_resolved_identity(repo_root, resolved_identity)
 
 
 def materialize_toolchain_surface(repo_root, plan):
@@ -1050,9 +1436,23 @@ def materialize_toolchain_surface(repo_root, plan):
             plan["driver_version"],
             probe_paths["libxls"],
             probe_paths["stdlib_root"],
+            driver_git_revision = plan.get("driver_git_revision", ""),
         )
     else:
         driver_path = resolved["driver"]
+        if (
+            plan["mode"] == "installed"
+            and (plan.get("driver_version") or plan.get("driver_git_revision"))
+        ):
+            validate_installed_driver(
+                driver_path,
+                build_driver_environment(
+                    probe_paths["libxls"],
+                    probe_paths["stdlib_root"],
+                ),
+                plan.get("driver_version", ""),
+                plan.get("driver_git_revision", ""),
+            )
 
     driver_dest = repo_root / "xlsynth-driver"
     symlink_or_copy(driver_path, driver_dest)
@@ -1073,20 +1473,22 @@ def materialize_driver_binary(
         dslx_stdlib_path,
         rustup_path = ""):
     driver_env = build_driver_environment(libxls_path, dslx_stdlib_path)
-    if plan["mode"] == "auto_driver_input":
+    if plan["mode"] in ("auto_driver_input", "auto_installed"):
         try:
             validate_installed_driver(
                 plan["driver"],
                 driver_env,
                 plan["driver_version"],
+                plan.get("driver_git_revision", ""),
             )
             driver_path = plan["driver"]
         except RuntimeError:
-            fallback_plan = resolve_driver_plan(
-                artifact_source = "auto",
-                driver_version = plan["driver_version"],
-                installed_driver_root_prefix = plan["installed_driver_root_prefix"],
-            )
+            fallback_plan = {
+                "mode": "download",
+                "driver_version": plan["driver_version"],
+            }
+            if plan.get("driver_git_revision"):
+                fallback_plan["driver_git_revision"] = plan["driver_git_revision"]
             materialize_driver_binary(
                 repo_root,
                 fallback_plan,
@@ -1103,6 +1505,7 @@ def materialize_driver_binary(
             libxls_path,
             dslx_stdlib_path,
             rustup_path = rustup_path,
+            driver_git_revision = plan.get("driver_git_revision", ""),
         )
     else:
         driver_path = plan["driver"]
@@ -1111,11 +1514,126 @@ def materialize_driver_binary(
                 driver_path,
                 driver_env,
                 plan["driver_version"],
+                plan.get("driver_git_revision", ""),
             )
 
     driver_output.parent.mkdir(parents = True, exist_ok = True)
     copy_path(driver_path, driver_output)
     driver_output.chmod(driver_output.stat().st_mode | 0o111)
+
+
+def validate_and_copy_driver_resolved_identity(
+        identity_input,
+        identity_output,
+        plan,
+        allow_xls_pin_mismatch = False):
+    identity = json.loads(Path(identity_input).read_text(encoding = "utf-8"))
+    required_fields = {
+        "schema_version",
+        "xlsynth_crate_pin",
+        "xls_pin",
+        "resolved_xlsynth_crate_revision",
+        "crate_implied_xls_release_tag",
+        "resolved_xls_release_tag",
+        "resolved_xls_revision",
+    }
+    if set(identity) != required_fields:
+        raise ValueError(
+            "resolved identity fields {} do not match required schema fields {}".format(
+                sorted(identity),
+                sorted(required_fields),
+            )
+        )
+    if identity["schema_version"] != 1:
+        raise ValueError(
+            "resolved identity schema_version {} is unsupported".format(
+                identity["schema_version"],
+            )
+        )
+    for field in ["xlsynth_crate_pin", "xls_pin"]:
+        pin = identity[field]
+        if (
+            not isinstance(pin, dict)
+            or set(pin) != {"kind", "value"}
+            or pin.get("kind") not in ("release_tag", "git_revision")
+            or not isinstance(pin.get("value"), str)
+            or not pin["value"]
+        ):
+            raise ValueError("resolved identity {} is malformed: {}".format(field, pin))
+        if pin["kind"] == "release_tag":
+            if pin["value"] != normalize_release_tag(pin["value"]):
+                raise ValueError(
+                    "resolved identity {} release tag is malformed: {}".format(field, pin["value"])
+                )
+            if field == "xls_pin" and not _XLS_RELEASE_TAG_RE.fullmatch(pin["value"]):
+                raise ValueError(
+                    "resolved identity {} is not an XLS release tag: {}".format(
+                        field,
+                        pin["value"],
+                    )
+                )
+        elif pin["value"] != normalize_git_revision(pin["value"]):
+            raise ValueError(
+                "resolved identity {} Git revision must be a lowercase exact SHA".format(field)
+            )
+    for field in ["resolved_xlsynth_crate_revision", "resolved_xls_revision"]:
+        revision = identity[field]
+        if (
+            not isinstance(revision, str)
+            or len(revision) != 40
+            or any(character not in "0123456789abcdef" for character in revision)
+        ):
+            raise ValueError(
+                "resolved identity {} is not a lowercase 40-character Git SHA".format(field)
+            )
+    for field in ["crate_implied_xls_release_tag", "resolved_xls_release_tag"]:
+        release_tag = identity[field]
+        if not isinstance(release_tag, str) or not _XLS_RELEASE_TAG_RE.fullmatch(release_tag):
+            raise ValueError("resolved identity {} is not an XLS release tag".format(field))
+    expected_pin = producer_pin(
+        plan.get("driver_version", ""),
+        plan.get("driver_git_revision", ""),
+        "xlsynth-driver materialization pin",
+    )
+    if identity.get("xlsynth_crate_pin") != expected_pin:
+        raise ValueError(
+            "resolved identity xlsynth-crate pin {} does not match selected driver pin {}".format(
+                identity.get("xlsynth_crate_pin"),
+                expected_pin,
+            )
+        )
+    # Release tag-to-SHA mappings were resolved before the private runtime
+    # repository was generated; this action verifies all local relationships.
+    crate_pin = identity["xlsynth_crate_pin"]
+    if (
+        crate_pin["kind"] == "git_revision"
+        and crate_pin["value"] != identity["resolved_xlsynth_crate_revision"]
+    ):
+        raise ValueError(
+            "resolved identity xlsynth-crate Git pin does not match "
+            "resolved_xlsynth_crate_revision"
+        )
+    xls_pin = identity["xls_pin"]
+    if xls_pin["kind"] == "git_revision":
+        if xls_pin["value"] != identity["resolved_xls_revision"]:
+            raise ValueError(
+                "resolved identity XLS Git pin does not match resolved_xls_revision"
+            )
+    elif xls_pin["value"] != identity["resolved_xls_release_tag"]:
+        raise ValueError(
+            "resolved identity XLS release pin does not match resolved_xls_release_tag"
+        )
+    if (
+        not allow_xls_pin_mismatch
+        and identity["crate_implied_xls_release_tag"] != identity["resolved_xls_release_tag"]
+    ):
+        raise ValueError(
+            "resolved identity crate-implied XLS release does not match "
+            "the resolved XLS release without an explicit development override"
+        )
+    identity_output = Path(identity_output)
+    identity_output.parent.mkdir(parents = True, exist_ok = True)
+    copy_path(Path(identity_input), identity_output)
 
 
 def parse_args(argv):
@@ -1124,7 +1642,11 @@ def parse_args(argv):
     parser.add_argument("--artifact-source", required = True)
     parser.add_argument("--surface", required = True, choices = ["runtime", "toolchain"])
     parser.add_argument("--xls-version", default = "")
+    parser.add_argument("--xls-git-revision", default = "")
     parser.add_argument("--xlsynth-driver-version", default = "")
+    parser.add_argument("--xlsynth-driver-git-revision", default = "")
+    parser.add_argument("--emit-resolved-identity", action = "store_true")
+    parser.add_argument("--allow-xls-pin-mismatch", action = "store_true")
     parser.add_argument("--installed-tools-root-prefix", default = "")
     parser.add_argument("--installed-driver-root-prefix", default = "")
     parser.add_argument("--local-tools-path", default = "")
@@ -1135,6 +1657,8 @@ def parse_args(argv):
     parser.add_argument("--driver-input", default = "")
     parser.add_argument("--driver-runtime-libxls", default = "")
     parser.add_argument("--driver-runtime-stdlib", default = "")
+    parser.add_argument("--driver-resolved-identity-input", default = "")
+    parser.add_argument("--driver-resolved-identity-output", default = "")
     parser.add_argument("--rustup-path", default = "")
     parser.add_argument("--local-xls-aot-runtime-path", default = "")
     parser.add_argument("--local-xls-aot-runtime-link-config-path", default = "")
@@ -1152,6 +1676,7 @@ def main(argv):
         driver_plan = resolve_driver_plan(
             artifact_source = args.artifact_source,
             driver_version = args.xlsynth_driver_version,
+            driver_git_revision = args.xlsynth_driver_git_revision,
             installed_driver_root_prefix = args.installed_driver_root_prefix,
             local_driver_path = args.local_driver_path,
             driver_input = args.driver_input,
@@ -1164,11 +1689,44 @@ def main(argv):
             Path(args.driver_runtime_stdlib).resolve(),
             rustup_path = args.rustup_path,
         )
+        if bool(args.driver_resolved_identity_input) != bool(args.driver_resolved_identity_output):
+            raise ValueError(
+                "--driver-resolved-identity-input and --driver-resolved-identity-output are required together"
+            )
+        if args.driver_resolved_identity_input:
+            validate_and_copy_driver_resolved_identity(
+                args.driver_resolved_identity_input,
+                args.driver_resolved_identity_output,
+                driver_plan,
+                allow_xls_pin_mismatch = args.allow_xls_pin_mismatch,
+            )
         return
+    resolved_identity = None
+    materialized_xls_version = args.xls_version
+    if args.xls_version and args.xls_git_revision:
+        raise ValueError("XLS materialization accepts either a release tag or Git revision, not both")
+    if args.emit_resolved_identity:
+        validate_resolved_identity_inputs(
+            args.artifact_source,
+            args.local_xls_aot_runtime_source_path,
+        )
+        resolved_identity = resolve_archive_identity(
+            xls_version = args.xls_version,
+            xls_git_revision = args.xls_git_revision,
+            driver_version = args.xlsynth_driver_version,
+            driver_git_revision = args.xlsynth_driver_git_revision,
+            allow_xls_pin_mismatch = args.allow_xls_pin_mismatch,
+        )
+        materialized_xls_version = resolved_identity["resolved_xls_release_tag"]
+    elif args.xls_git_revision:
+        materialized_xls_version = resolve_xls_pin(
+            producer_pin("", args.xls_git_revision, "XLS pin"),
+        )["release_tag"]
     plan = resolve_artifact_plan(
         artifact_source = args.artifact_source,
-        xls_version = args.xls_version,
+        xls_version = materialized_xls_version,
         driver_version = args.xlsynth_driver_version,
+        driver_git_revision = args.xlsynth_driver_git_revision,
         surface = args.surface,
         installed_tools_root_prefix = args.installed_tools_root_prefix,
         installed_driver_root_prefix = args.installed_driver_root_prefix,
@@ -1180,8 +1738,12 @@ def main(argv):
         local_xls_aot_runtime_link_config_path = args.local_xls_aot_runtime_link_config_path,
         local_xls_aot_runtime_source_path = args.local_xls_aot_runtime_source_path,
     )
+    if args.xlsynth_driver_git_revision:
+        if args.artifact_source == "local_paths":
+            raise ValueError("local_paths does not accept xlsynth driver Git pins")
+        plan["driver_git_revision"] = normalize_git_revision(args.xlsynth_driver_git_revision)
     if args.surface == "runtime":
-        materialize_runtime_surface(repo_root, plan)
+        materialize_runtime_surface(repo_root, plan, resolved_identity = resolved_identity)
     else:
         materialize_toolchain_surface(repo_root, plan)
 

@@ -10,6 +10,7 @@ _TOOL_BINARIES = [
     "delay_info_main",
     "check_ir_equivalence_main",
 ]
+_DRIVER_GIT_PROVENANCE_FILENAME = "xlsynth-driver.provenance.json"
 
 def _metadata_dict(repo_ctx, metadata_filename):
     metadata = {}
@@ -68,13 +69,39 @@ def _version_at_least(version, minimum):
 
 def _driver_supports_sv_enum_case_naming_policy(driver_version):
     if not driver_version:
-        return True
+        return False
     return _version_at_least(driver_version, "0.33.0")
 
 def _driver_supports_sv_struct_field_ordering(driver_version):
     if not driver_version:
-        return True
+        return False
     return _version_at_least(driver_version, "0.36.0")
+
+def _toolchain_driver_supports_sv_enum_case_naming_policy(
+        artifact_source,
+        local_driver_path,
+        xlsynth_driver_git_revision,
+        xlsynth_driver_version):
+    if artifact_source == "local_paths" and local_driver_path:
+        supports = True
+    elif xlsynth_driver_git_revision:
+        supports = False
+    else:
+        supports = _driver_supports_sv_enum_case_naming_policy(xlsynth_driver_version)
+    return supports
+
+def _toolchain_driver_supports_sv_struct_field_ordering(
+        artifact_source,
+        local_driver_path,
+        xlsynth_driver_git_revision,
+        xlsynth_driver_version):
+    if artifact_source == "local_paths" and local_driver_path:
+        supports = True
+    elif xlsynth_driver_git_revision:
+        supports = False
+    else:
+        supports = _driver_supports_sv_struct_field_ordering(xlsynth_driver_version)
+    return supports
 
 def _runtime_build_file(
         libxls_name,
@@ -82,7 +109,9 @@ def _runtime_build_file(
         xls_aot_runtime_link_config_name,
         xls_aot_runtime_source_repo,
         runtime_files,
-        runtime_aliases):
+        runtime_aliases,
+        resolved_identity,
+        toolchain_repo_name):
     tool_list = ",\n        ".join(['"{}"'.format(name) for name in _TOOL_BINARIES])
     exported_names = _TOOL_BINARIES + [libxls_name] + runtime_files + runtime_aliases
     if xls_aot_runtime_name:
@@ -121,6 +150,15 @@ alias(
 """.format(
         xls_aot_runtime_source_repo = xls_aot_runtime_source_repo,
     ) if xls_aot_runtime_source_repo else ""
+    resolved_identity_rule = """
+filegroup(
+    name = "resolved_identity_for_toolchain",
+    srcs = ["resolved_identity.json"],
+    visibility = ["@{toolchain_repo_name}//:__pkg__"],
+)
+""".format(
+        toolchain_repo_name = toolchain_repo_name,
+    ) if resolved_identity else ""
     lib_file_rule = """
 filegroup(
     name = "libxls_file",
@@ -174,6 +212,7 @@ copy_flat_files_to_directory(
 {lib_file_rule}
 {aot_runtime_rule}
 {aot_runtime_source_rule}
+{resolved_identity_rule}
 
 xlsynth_artifact_config(
     name = "artifact_config",
@@ -241,6 +280,7 @@ xls_runtime_surface(
         lib_file_rule = lib_file_rule.strip(),
         aot_runtime_rule = aot_runtime_rule.strip(),
         aot_runtime_source_rule = aot_runtime_source_rule.strip(),
+        resolved_identity_rule = resolved_identity_rule.strip(),
         static_aot_runtime = '":xls_aot_runtime_file"' if xls_aot_runtime_name else "None",
         static_aot_runtime_link_config = '":xls_aot_runtime_link_config_file"' if xls_aot_runtime_name else "None",
     )
@@ -260,10 +300,14 @@ def _toolchain_build_file(
         action_ld_library_path,
         action_rustup_home,
         artifact_source,
+        allow_xls_pin_mismatch,
+        emit_resolved_identity,
         host_driver_label,
+        host_driver_provenance_label,
         installed_driver_root_prefix,
         local_driver_path,
         rustup_path,
+        xlsynth_driver_git_revision,
         xlsynth_driver_version):
     action_env_attrs = "".join([
         _string_attr_line("action_cargo_home", action_cargo_home),
@@ -273,10 +317,15 @@ def _toolchain_build_file(
         _string_attr_line("action_rustup_home", action_rustup_home),
     ])
     driver_attrs = "".join([
+        (
+            "    resolved_identity = \"@{}//:resolved_identity_for_toolchain\",\n".format(runtime_repo_name) if emit_resolved_identity else ""
+        ),
         _string_attr_line("host_driver", host_driver_label),
+        _string_attr_line("host_driver_provenance", host_driver_provenance_label),
         _string_attr_line("installed_driver_root_prefix", installed_driver_root_prefix),
         _string_attr_line("local_driver_path", local_driver_path),
         _string_attr_line("rustup_path", rustup_path),
+        _string_attr_line("xlsynth_driver_git_revision", xlsynth_driver_git_revision),
         _string_attr_line("xlsynth_driver_version", xlsynth_driver_version),
     ])
     return """# SPDX-License-Identifier: Apache-2.0
@@ -286,7 +335,8 @@ load("@rules_xlsynth//:xls_toolchain.bzl", "xls_bundle", "xls_toolchain", "xlsyn
 xlsynth_driver_binary(
     name = "xlsynth-driver",
     action_path = {action_path},
-{action_env_attrs}    artifact_source = {artifact_source},
+{action_env_attrs}    allow_xls_pin_mismatch = {allow_xls_pin_mismatch},
+    artifact_source = {artifact_source},
     runtime = "@{runtime_repo_name}//:runtime",
 {driver_attrs})
 
@@ -320,9 +370,10 @@ toolchain(
         artifact_source = _quoted(artifact_source),
         action_env_attrs = action_env_attrs,
         action_path = _quoted(action_path),
+        allow_xls_pin_mismatch = "True" if allow_xls_pin_mismatch else "False",
         driver_attrs = driver_attrs,
-        driver_supports_sv_enum_case_naming_policy = "True" if _driver_supports_sv_enum_case_naming_policy(xlsynth_driver_version) else "False",
-        driver_supports_sv_struct_field_ordering = "True" if _driver_supports_sv_struct_field_ordering(xlsynth_driver_version) else "False",
+        driver_supports_sv_enum_case_naming_policy = "True" if _toolchain_driver_supports_sv_enum_case_naming_policy(artifact_source, local_driver_path, xlsynth_driver_git_revision, xlsynth_driver_version) else "False",
+        driver_supports_sv_struct_field_ordering = "True" if _toolchain_driver_supports_sv_struct_field_ordering(artifact_source, local_driver_path, xlsynth_driver_git_revision, xlsynth_driver_version) else "False",
         repo_alias = repo_alias,
         runtime_repo_name = runtime_repo_name,
     )
@@ -339,33 +390,56 @@ def _driver_path_to_stage(repo_ctx):
 
 def _driver_repo_impl(repo_ctx):
     link_name = "host_xlsynth-driver"
+    provenance_name = _DRIVER_GIT_PROVENANCE_FILENAME
     driver_path = _driver_path_to_stage(repo_ctx)
     if driver_path == None:
         repo_ctx.file(link_name, "#!/bin/sh\nexit 127\n", executable = True)
     else:
         repo_ctx.symlink(driver_path, link_name)
+    provenance_path = repo_ctx.path(repo_ctx.attr.driver_provenance_path)
+    if repo_ctx.attr.driver_provenance_path and provenance_path.exists:
+        repo_ctx.symlink(provenance_path, provenance_name)
+    else:
+        repo_ctx.file(provenance_name, "{}\n")
     repo_ctx.file(
         "BUILD.bazel",
         """# SPDX-License-Identifier: Apache-2.0
 
-exports_files(["host_xlsynth-driver"])
+exports_files([
+    "host_xlsynth-driver",
+    "xlsynth-driver.provenance.json",
+])
 """,
     )
 
 def _host_driver_path(toolchain):
     if toolchain.artifact_source == "local_paths":
         return toolchain.local_driver_path
-    if toolchain.artifact_source in ("auto", "installed_only") and toolchain.installed_driver_root_prefix and toolchain.xlsynth_driver_version:
-        return _installed_driver_path(toolchain.xlsynth_driver_version, toolchain.installed_driver_root_prefix)
+    if toolchain.artifact_source in ("auto", "installed_only") and toolchain.installed_driver_root_prefix:
+        if toolchain.xlsynth_driver_git_revision:
+            return _installed_driver_path(toolchain.xlsynth_driver_git_revision, toolchain.installed_driver_root_prefix)
+        if toolchain.xlsynth_driver_version:
+            return _installed_driver_path(toolchain.xlsynth_driver_version, toolchain.installed_driver_root_prefix)
     return ""
 
 def _host_driver_required(toolchain):
     return toolchain.artifact_source in ("local_paths", "installed_only")
 
+def _host_driver_provenance_path(toolchain):
+    driver_path = _host_driver_path(toolchain)
+    if not driver_path or not toolchain.xlsynth_driver_git_revision:
+        return ""
+    return driver_path.rsplit("/", 1)[0] + "/" + _DRIVER_GIT_PROVENANCE_FILENAME
+
 def _host_driver_label(toolchain, driver_name):
     if not _host_driver_path(toolchain):
         return ""
     return "@{}//:host_xlsynth-driver".format(driver_name)
+
+def _host_driver_provenance_label(toolchain, driver_name):
+    if not _host_driver_provenance_path(toolchain):
+        return ""
+    return "@{}//:{}".format(driver_name, _DRIVER_GIT_PROVENANCE_FILENAME)
 
 def _materialize_bundle_args(repo_ctx, surface):
     args = [
@@ -379,8 +453,16 @@ def _materialize_bundle_args(repo_ctx, surface):
     ]
     if repo_ctx.attr.xls_version:
         args.extend(["--xls-version", repo_ctx.attr.xls_version])
+    if repo_ctx.attr.xls_git_revision:
+        args.extend(["--xls-git-revision", repo_ctx.attr.xls_git_revision])
     if repo_ctx.attr.xlsynth_driver_version:
         args.extend(["--xlsynth-driver-version", repo_ctx.attr.xlsynth_driver_version])
+    if repo_ctx.attr.xlsynth_driver_git_revision:
+        args.extend(["--xlsynth-driver-git-revision", repo_ctx.attr.xlsynth_driver_git_revision])
+    if repo_ctx.attr.emit_resolved_identity:
+        args.append("--emit-resolved-identity")
+    if repo_ctx.attr.allow_xls_pin_mismatch:
+        args.append("--allow-xls-pin-mismatch")
     if repo_ctx.attr.installed_tools_root_prefix:
         args.extend(["--installed-tools-root-prefix", repo_ctx.attr.installed_tools_root_prefix])
     if repo_ctx.attr.installed_driver_root_prefix:
@@ -438,6 +520,8 @@ def _runtime_repo_impl(repo_ctx):
             xls_aot_runtime_source_repo = metadata["xls_aot_runtime_source_repo"],
             runtime_files = runtime_files,
             runtime_aliases = runtime_aliases,
+            resolved_identity = repo_ctx.path("resolved_identity.json").exists,
+            toolchain_repo_name = repo_ctx.attr.toolchain_repo_name,
         ),
     )
 
@@ -460,17 +544,23 @@ def _toolchain_repo_impl(repo_ctx):
             action_home = action_home,
             action_ld_library_path = action_ld_library_path,
             action_rustup_home = action_rustup_home,
+            allow_xls_pin_mismatch = repo_ctx.attr.allow_xls_pin_mismatch,
             artifact_source = repo_ctx.attr.artifact_source,
+            emit_resolved_identity = repo_ctx.attr.emit_resolved_identity,
             host_driver_label = repo_ctx.attr.host_driver_label,
+            host_driver_provenance_label = repo_ctx.attr.host_driver_provenance_label,
             installed_driver_root_prefix = repo_ctx.attr.installed_driver_root_prefix,
             local_driver_path = repo_ctx.attr.local_driver_path,
             rustup_path = "" if rustup == None else str(rustup),
+            xlsynth_driver_git_revision = repo_ctx.attr.xlsynth_driver_git_revision,
             xlsynth_driver_version = repo_ctx.attr.xlsynth_driver_version,
         ),
     )
 
 _runtime_repo_attrs = {
+    "allow_xls_pin_mismatch": attr.bool(),
     "artifact_source": attr.string(mandatory = True),
+    "emit_resolved_identity": attr.bool(),
     "installed_driver_root_prefix": attr.string(),
     "installed_tools_root_prefix": attr.string(),
     "local_driver_path": attr.string(),
@@ -480,13 +570,19 @@ _runtime_repo_attrs = {
     "local_xls_aot_runtime_link_config_path": attr.string(),
     "local_xls_aot_runtime_source_path": attr.string(),
     "local_tools_path": attr.string(),
+    "toolchain_repo_name": attr.string(mandatory = True),
     "xls_version": attr.string(),
+    "xls_git_revision": attr.string(),
+    "xlsynth_driver_git_revision": attr.string(),
     "xlsynth_driver_version": attr.string(),
 }
 
 _toolchain_repo_attrs = {
+    "allow_xls_pin_mismatch": attr.bool(),
     "artifact_source": attr.string(mandatory = True),
+    "emit_resolved_identity": attr.bool(),
     "host_driver_label": attr.string(),
+    "host_driver_provenance_label": attr.string(),
     "installed_driver_root_prefix": attr.string(),
     "installed_tools_root_prefix": attr.string(),
     "local_driver_path": attr.string(),
@@ -499,11 +595,14 @@ _toolchain_repo_attrs = {
     "repo_alias": attr.string(mandatory = True),
     "runtime_repo_name": attr.string(mandatory = True),
     "xls_version": attr.string(),
+    "xls_git_revision": attr.string(),
+    "xlsynth_driver_git_revision": attr.string(),
     "xlsynth_driver_version": attr.string(),
 }
 
 _driver_repo_attrs = {
     "driver_path": attr.string(),
+    "driver_provenance_path": attr.string(),
     "required": attr.bool(),
 }
 
@@ -531,7 +630,9 @@ _xls_driver_repo = repository_rule(
 )
 
 _toolchain_tag = tag_class(attrs = {
+    "allow_xls_pin_mismatch": attr.bool(),
     "artifact_source": attr.string(mandatory = True),
+    "emit_resolved_identity": attr.bool(),
     "installed_driver_root_prefix": attr.string(),
     "installed_tools_root_prefix": attr.string(),
     "local_driver_path": attr.string(),
@@ -543,6 +644,8 @@ _toolchain_tag = tag_class(attrs = {
     "local_tools_path": attr.string(),
     "name": attr.string(mandatory = True),
     "xls_version": attr.string(),
+    "xls_git_revision": attr.string(),
+    "xlsynth_driver_git_revision": attr.string(),
     "xlsynth_driver_version": attr.string(),
 })
 
@@ -554,7 +657,9 @@ def _xls_extension_impl(module_ctx):
             driver_name = _driver_repo_name(toolchain.name)
             _xls_runtime_repo(
                 name = runtime_name,
+                allow_xls_pin_mismatch = toolchain.allow_xls_pin_mismatch,
                 artifact_source = toolchain.artifact_source,
+                emit_resolved_identity = toolchain.emit_resolved_identity,
                 installed_driver_root_prefix = toolchain.installed_driver_root_prefix,
                 installed_tools_root_prefix = toolchain.installed_tools_root_prefix,
                 local_driver_path = toolchain.local_driver_path,
@@ -564,18 +669,25 @@ def _xls_extension_impl(module_ctx):
                 local_xls_aot_runtime_link_config_path = toolchain.local_xls_aot_runtime_link_config_path,
                 local_xls_aot_runtime_source_path = toolchain.local_xls_aot_runtime_source_path,
                 local_tools_path = toolchain.local_tools_path,
+                toolchain_repo_name = toolchain_name,
                 xls_version = toolchain.xls_version,
+                xls_git_revision = toolchain.xls_git_revision,
+                xlsynth_driver_git_revision = toolchain.xlsynth_driver_git_revision,
                 xlsynth_driver_version = toolchain.xlsynth_driver_version,
             )
             _xls_driver_repo(
                 name = driver_name,
                 driver_path = _host_driver_path(toolchain),
+                driver_provenance_path = _host_driver_provenance_path(toolchain),
                 required = _host_driver_required(toolchain),
             )
             _xls_toolchain_repo(
                 name = toolchain_name,
+                allow_xls_pin_mismatch = toolchain.allow_xls_pin_mismatch,
                 artifact_source = toolchain.artifact_source,
+                emit_resolved_identity = toolchain.emit_resolved_identity,
                 host_driver_label = _host_driver_label(toolchain, driver_name),
+                host_driver_provenance_label = _host_driver_provenance_label(toolchain, driver_name),
                 installed_driver_root_prefix = toolchain.installed_driver_root_prefix,
                 installed_tools_root_prefix = toolchain.installed_tools_root_prefix,
                 local_driver_path = toolchain.local_driver_path,
@@ -588,6 +700,8 @@ def _xls_extension_impl(module_ctx):
                 repo_alias = toolchain_name,
                 runtime_repo_name = runtime_name,
                 xls_version = toolchain.xls_version,
+                xls_git_revision = toolchain.xls_git_revision,
+                xlsynth_driver_git_revision = toolchain.xlsynth_driver_git_revision,
                 xlsynth_driver_version = toolchain.xlsynth_driver_version,
             )
 

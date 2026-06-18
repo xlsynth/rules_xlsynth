@@ -522,16 +522,50 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
                 output_user_root,
                 workspace_root,
                 env,
-                ["query", "@lazy_xls_toolchain//:all"],
+                ["query", "--output=build", "@lazy_xls_toolchain//:bundle"],
             )
 
         combined_output = "{}\n{}".format(result.stdout, result.stderr)
         self.assertEqual(result.returncode, 0, combined_output)
         self.assertIn("@lazy_xls_toolchain//:xlsynth-driver", combined_output)
+        self.assertIn("driver_supports_sv_enum_case_naming_policy = False", result.stdout)
+        self.assertIn("driver_supports_sv_struct_field_ordering = False", result.stdout)
         self.assertNotIn("Installing xlsynth-driver", combined_output)
         self.assertNotIn("Compiling xlsynth-driver", combined_output)
         self.assertNotIn("rustup", combined_output)
         self.assertNotIn("cargo", combined_output.lower())
+
+    def test_01_local_driver_package_load_advertises_current_flags(self):
+        bazel_path = shutil.which("bazel")
+        if bazel_path == None:
+            self.skipTest("bazel is not on PATH")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            local_driver = root / "local_driver" / "xlsynth-driver"
+            local_driver.parent.mkdir()
+            write_text_file(
+                local_driver,
+                "#!/bin/sh\nprintf 'local driver should not run during query\\n' >&2\nexit 42\n",
+                0o755,
+            )
+            workspace_root = self.create_nested_workspace(root, local_driver)
+            env = dict(os.environ)
+            env["PATH"] = minimal_tool_path_env(bazel_path)
+            output_user_root = root / "bazel_output_user_root"
+            result = run_nested_bazel(
+                bazel_path,
+                output_user_root,
+                workspace_root,
+                env,
+                ["query", "--output=build", "@lazy_xls_toolchain//:bundle"],
+            )
+
+        combined_output = "{}\n{}".format(result.stdout, result.stderr)
+        self.assertEqual(result.returncode, 0, combined_output)
+        self.assertIn("driver_supports_sv_enum_case_naming_policy = True", result.stdout)
+        self.assertIn("driver_supports_sv_struct_field_ordering = True", result.stdout)
+        self.assertNotIn("local driver should not run during query", combined_output)
 
 
 if __name__ == "__main__":

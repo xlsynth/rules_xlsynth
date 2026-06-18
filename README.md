@@ -64,16 +64,56 @@ are resolved at different times:
 - The runtime repo for `local_paths` requires `local_tools_path`,
   `local_dslx_stdlib_path`, and `local_libxls_path`. `local_driver_path` is
   required only when a driver-backed bundle/action is built.
-- The runtime repo for `auto` and `installed_only` requires `xls_version` and
-  `installed_tools_root_prefix`. `xlsynth_driver_version` and
-  `installed_driver_root_prefix` are required only when a driver-backed
-  bundle/action is built.
-- `download_only` requires `xls_version` for the runtime repo.
-  `xlsynth_driver_version` is required only when the driver action has to
-  install the driver.
+- The runtime repo for `auto` and `installed_only` requires an XLS release pin
+  through `xls_version` and `installed_tools_root_prefix`.
+  `xlsynth_driver_version` and `installed_driver_root_prefix` are required only
+  when a driver-backed bundle/action is built.
+- `download_only` requires exactly one XLS release or Git pin through
+  `xls_version` or `xls_git_revision`. A driver-backed bundle similarly requires
+  exactly one `xlsynth_driver_version` or `xlsynth_driver_git_revision`.
 - `local_paths` does not accept `xls_version` or `xlsynth_driver_version`;
-  the other modes do not accept any `local_*` attrs.
+  the other modes accept no local artifact overrides except
+  `local_xls_aot_runtime_source_path`.
 - `download_only` does not accept any `installed_*` attrs.
+
+For provenance-sensitive consumers, `emit_resolved_identity = True` makes the
+module extension emit `resolved_identity.json` in its generated runtime
+repository. Public `xls_runtime_surface` targets remain non-identity surfaces.
+The generated toolchain passes the same-repository manifest to the lazy driver
+action, which validates it against the exact selected `xlsynth-crate` pin and
+emits the sidecar exposed by the bundle provider. The manifest cannot be
+attached to consumer-owned runtime inputs through the public runtime rule:
+identity-bearing drivers are accepted only at the generated root targets in the
+canonical paired `*_runtime` and `*_toolchain` repositories. Hand-written
+identity-bearing driver targets fail analysis.
+That manifest records typed `xlsynth-crate` and XLS pins, the exact resolved
+source revisions, the published XLS release selected for artifacts, and the XLS
+release implied by `xlsynth-sys/build.rs`. The two release namespaces are
+independent: for example, an `xlsynth-crate` release may select a differently
+numbered XLS release. Identity-capable bundles validate the implied and explicit
+XLS releases by default; `allow_xls_pin_mismatch = True` is an explicit
+development override. Trusted identity emission requires
+`artifact_source = "download_only"` so the bundle cannot silently reuse
+consumer-owned installed or local artifacts. It also rejects
+`local_xls_aot_runtime_source_path`, because those source bytes are not covered
+by the resolved XLS identity.
+
+Identity-capable bundles may use `xlsynth_driver_git_revision = "<40-char SHA>"`
+instead of `xlsynth_driver_version`; the lazy driver action then installs with
+Cargo `--git ... --rev <SHA>`. Reusing an installed Git-pinned driver requires
+an adjacent `xlsynth-driver.provenance.json` that binds the canonical source
+repository, exact revision, and driver digest. `auto` reinstalls when that
+proof is absent or stale; `installed_only` reports an error. They may use
+`xls_git_revision = "<40-char SHA>"` instead of `xls_version` only when that
+exact XLS SHA maps to one published `xlsynth/xlsynth` release tag. `local_paths`
+bundles remain available for local development but cannot emit trusted resolved
+identity.
+
+This is a Bazel graph-integrity boundary, not a cryptographic attestation
+against a consumer that replaces `rules_xlsynth`, overrides an
+extension-generated repository, or otherwise controls the trusted module graph.
+Provenance-sensitive consumers must pin and control the `rules_xlsynth` source
+and generated module configuration, as Auto-SPO does.
 
 Registering or loading `@<name>_toolchain` is metadata-only: it defines the
 toolchain, bundle, and `xlsynth-driver` targets, but does not copy, execute,
