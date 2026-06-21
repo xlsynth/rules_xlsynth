@@ -255,19 +255,11 @@ def write_resolved_identity(repo_root, identity):
     )
 
 
-def validate_resolved_identity_inputs(
-    artifact_source,
-    local_xls_aot_runtime_source_path,
-):
+def validate_resolved_identity_inputs(artifact_source):
     if artifact_source != "download_only":
         raise ValueError(
             "trusted resolved identity requires artifact_source=download_only; "
             "{} may reuse consumer-owned artifacts".format(artifact_source)
-        )
-    elif local_xls_aot_runtime_source_path:
-        raise ValueError(
-            "trusted resolved identity cannot use local_xls_aot_runtime_source_path; "
-            "the local source is not covered by the resolved XLS identity"
         )
 
 
@@ -278,18 +270,6 @@ def libxls_name_for_platform(sys_platform):
         return "libxls.so"
     else:
         raise RuntimeError("Unsupported host platform: {}".format(sys_platform))
-
-
-def static_aot_runtime_name():
-    return "libxls_aot_runtime.a"
-
-
-def static_aot_runtime_link_config_name():
-    return "libxls_aot_runtime_link.toml"
-
-
-def static_aot_runtime_source_name():
-    return "xls-aot-runtime-source.tar.gz"
 
 
 def derive_installed_paths(
@@ -306,9 +286,6 @@ def derive_installed_paths(
         "dslx_stdlib_root": tools_root / "xls" / "dslx" / "stdlib",
         "driver": Path(installed_driver_root_prefix) / normalized_driver_version / "bin" / "xlsynth-driver",
         "libxls": tools_root / libxls_name_for_platform(sys_platform),
-        "xls_aot_runtime": tools_root / static_aot_runtime_name(),
-        "xls_aot_runtime_link_config": tools_root / static_aot_runtime_link_config_name(),
-        "xls_aot_runtime_source": tools_root / static_aot_runtime_source_name(),
     }
 
 
@@ -322,9 +299,6 @@ def derive_installed_runtime_paths(
         "tools_root": tools_root,
         "dslx_stdlib_root": tools_root / "xls" / "dslx" / "stdlib",
         "libxls": tools_root / libxls_name_for_platform(sys_platform),
-        "xls_aot_runtime": tools_root / static_aot_runtime_name(),
-        "xls_aot_runtime_link_config": tools_root / static_aot_runtime_link_config_name(),
-        "xls_aot_runtime_source": tools_root / static_aot_runtime_source_name(),
     }
 
 
@@ -350,9 +324,6 @@ def resolve_artifact_plan(
     local_dslx_stdlib_path = "",
     local_driver_path = "",
     local_libxls_path = "",
-    local_xls_aot_runtime_path = "",
-    local_xls_aot_runtime_link_config_path = "",
-    local_xls_aot_runtime_source_path = "",
     exists_fn = os.path.exists,
 ):
     if surface not in ("runtime", "toolchain"):
@@ -375,27 +346,11 @@ def resolve_artifact_plan(
         missing = [name for name, value in required.items() if not value]
         if missing:
             raise ValueError("local_paths requires {}".format(", ".join(sorted(missing))))
-        if bool(local_xls_aot_runtime_path) != bool(local_xls_aot_runtime_link_config_path):
-            raise ValueError(
-                "local_paths requires local_xls_aot_runtime_path and "
-                "local_xls_aot_runtime_link_config_path together"
-            )
         plan = {
             "mode": "local_paths",
             "tools_root": Path(local_tools_path),
             "dslx_stdlib_root": Path(local_dslx_stdlib_path),
             "libxls": Path(local_libxls_path),
-            "xls_aot_runtime": Path(local_xls_aot_runtime_path) if local_xls_aot_runtime_path else None,
-            "xls_aot_runtime_link_config": (
-                Path(local_xls_aot_runtime_link_config_path)
-                if local_xls_aot_runtime_link_config_path
-                else None
-            ),
-            "xls_aot_runtime_source": (
-                Path(local_xls_aot_runtime_source_path)
-                if local_xls_aot_runtime_source_path
-                else None
-            ),
         }
         if include_driver:
             plan["driver"] = Path(local_driver_path)
@@ -407,14 +362,7 @@ def resolve_artifact_plan(
         raise ValueError("{} requires xls_version".format(artifact_source))
     if include_driver and not driver_identity:
         raise ValueError("{} toolchain surface requires an xlsynth driver release or Git pin".format(artifact_source))
-    if (
-        local_tools_path
-        or local_dslx_stdlib_path
-        or local_driver_path
-        or local_libxls_path
-        or local_xls_aot_runtime_path
-        or local_xls_aot_runtime_link_config_path
-    ):
+    if local_tools_path or local_dslx_stdlib_path or local_driver_path or local_libxls_path:
         raise ValueError("{} does not accept local_paths attrs".format(artifact_source))
     if artifact_source == "download_only":
         if installed_tools_root_prefix or installed_driver_root_prefix:
@@ -445,64 +393,25 @@ def resolve_artifact_plan(
             "mode": "download",
             "xls_version": normalize_version(xls_version),
         }
-        if local_xls_aot_runtime_source_path:
-            plan["xls_aot_runtime_source"] = Path(local_xls_aot_runtime_source_path)
         if include_driver:
             plan["driver_version"] = normalize_version(driver_version)
             if driver_git_revision:
                 plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
         return plan
 
-    installed_paths_present = all(
-        exists_fn(str(path))
-        for name, path in installed_paths.items()
-        if name not in (
-            "xls_aot_runtime",
-            "xls_aot_runtime_link_config",
-            "xls_aot_runtime_source",
-        )
-    )
-    installed_aot_runtime_present = exists_fn(str(installed_paths["xls_aot_runtime"]))
-    installed_aot_runtime_link_config_present = exists_fn(
-        str(installed_paths["xls_aot_runtime_link_config"])
-    )
-    installed_aot_runtime_source_present = exists_fn(
-        str(installed_paths["xls_aot_runtime_source"])
-    )
-    if installed_aot_runtime_present != installed_aot_runtime_link_config_present:
-        raise ValueError(
-            "installed paths require libxls_aot_runtime.a and "
-            "libxls_aot_runtime_link.toml together"
-        )
+    installed_paths_present = all(exists_fn(str(path)) for path in installed_paths.values())
     if artifact_source == "auto" and installed_paths_present:
         plan = {
             "mode": "installed",
             "tools_root": installed_paths["tools_root"],
             "dslx_stdlib_root": installed_paths["dslx_stdlib_root"],
             "libxls": installed_paths["libxls"],
-            "xls_aot_runtime": (
-                installed_paths["xls_aot_runtime"]
-                if installed_aot_runtime_present
-                else None
-            ),
-            "xls_aot_runtime_link_config": (
-                installed_paths["xls_aot_runtime_link_config"]
-                if installed_aot_runtime_link_config_present
-                else None
-            ),
-            "xls_aot_runtime_source": (
-                installed_paths["xls_aot_runtime_source"]
-                if installed_aot_runtime_source_present
-                else None
-            ),
         }
         if include_driver:
             plan["driver"] = installed_paths["driver"]
             plan["driver_version"] = normalize_version(driver_version)
             if driver_git_revision:
                 plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
-        if local_xls_aot_runtime_source_path:
-            plan["xls_aot_runtime_source"] = Path(local_xls_aot_runtime_source_path)
         return plan
     if artifact_source == "installed_only":
         if not installed_paths_present:
@@ -517,36 +426,17 @@ def resolve_artifact_plan(
             "tools_root": installed_paths["tools_root"],
             "dslx_stdlib_root": installed_paths["dslx_stdlib_root"],
             "libxls": installed_paths["libxls"],
-            "xls_aot_runtime": (
-                installed_paths["xls_aot_runtime"]
-                if installed_aot_runtime_present
-                else None
-            ),
-            "xls_aot_runtime_link_config": (
-                installed_paths["xls_aot_runtime_link_config"]
-                if installed_aot_runtime_link_config_present
-                else None
-            ),
-            "xls_aot_runtime_source": (
-                installed_paths["xls_aot_runtime_source"]
-                if installed_aot_runtime_source_present
-                else None
-            ),
         }
         if include_driver:
             plan["driver"] = installed_paths["driver"]
             plan["driver_version"] = normalize_version(driver_version)
             if driver_git_revision:
                 plan["driver_git_revision"] = normalize_git_revision(driver_git_revision)
-        if local_xls_aot_runtime_source_path:
-            plan["xls_aot_runtime_source"] = Path(local_xls_aot_runtime_source_path)
         return plan
     plan = {
         "mode": "download",
         "xls_version": normalize_version(xls_version),
     }
-    if local_xls_aot_runtime_source_path:
-        plan["xls_aot_runtime_source"] = Path(local_xls_aot_runtime_source_path)
     if include_driver:
         plan["driver_version"] = normalize_version(driver_version)
         if driver_git_revision:
@@ -1171,46 +1061,10 @@ def resolve_downloaded_artifacts(download_root):
     libxls_candidates = sorted(download_root.glob("libxls-*.so")) + sorted(download_root.glob("libxls-*.dylib"))
     if len(libxls_candidates) != 1:
         raise RuntimeError("Expected exactly one libxls artifact in {}, found {}".format(download_root, libxls_candidates))
-    static_aot_runtime_candidates = sorted(download_root.glob("libxls_aot_runtime-*.a"))
-    if len(static_aot_runtime_candidates) > 1:
-        raise RuntimeError(
-            "Expected at most one libxls_aot_runtime artifact in {}, found {}".format(
-                download_root,
-                static_aot_runtime_candidates,
-            )
-        )
-    static_aot_runtime_link_config_candidates = sorted(
-        download_root.glob("libxls_aot_runtime_link-*.toml")
-    )
-    if len(static_aot_runtime_link_config_candidates) > 1:
-        raise RuntimeError(
-            "Expected at most one libxls_aot_runtime link config artifact in {}, found {}".format(
-                download_root,
-                static_aot_runtime_link_config_candidates,
-            )
-        )
-    if bool(static_aot_runtime_candidates) != bool(static_aot_runtime_link_config_candidates):
-        raise RuntimeError(
-            "Expected libxls_aot_runtime archive and link config together in {}".format(
-                download_root
-            )
-        )
-    static_aot_runtime_source = download_root / static_aot_runtime_source_name()
     return {
         "tools_root": download_root,
         "dslx_stdlib_root": stdlib_root,
         "libxls": libxls_candidates[0],
-        "xls_aot_runtime": static_aot_runtime_candidates[0] if static_aot_runtime_candidates else None,
-        "xls_aot_runtime_link_config": (
-            static_aot_runtime_link_config_candidates[0]
-            if static_aot_runtime_link_config_candidates
-            else None
-        ),
-        "xls_aot_runtime_source": (
-            static_aot_runtime_source
-            if static_aot_runtime_source.exists()
-            else None
-        ),
         "runtime_files": load_runtime_manifest(download_root),
     }
 
@@ -1243,63 +1097,29 @@ def download_versioned_artifacts(repo_root, xls_version):
 
 def resolve_materialization_inputs(repo_root, plan):
     if plan["mode"] == "download":
-        resolved = download_versioned_artifacts(repo_root, plan["xls_version"])
-        if plan.get("xls_aot_runtime_source") is not None:
-            resolved["xls_aot_runtime_source"] = plan["xls_aot_runtime_source"]
-        return resolved
+        return download_versioned_artifacts(repo_root, plan["xls_version"])
     resolved = dict(plan)
     validate_stdlib_root(resolved["dslx_stdlib_root"])
     resolved["runtime_files"] = load_runtime_manifest(Path(resolved["libxls"]).parent)
     return resolved
 
 
-def write_artifact_config(
-        repo_root,
-        libxls_dest,
-        xls_aot_runtime_dest,
-        xls_aot_runtime_link_config_dest,
-):
+def write_artifact_config(repo_root, libxls_dest):
     artifact_config_path = repo_root / "xlsynth_artifact_config.toml"
-    config_lines = [
-        "dso_path = \"{}\"\n".format(libxls_dest.name),
-        "dslx_stdlib_path = \".\"\n",
-    ]
-    if xls_aot_runtime_dest is not None:
-        config_lines.append("aot_runtime_path = \"{}\"\n".format(xls_aot_runtime_dest.name))
-        config_lines.append(
-            "aot_runtime_link_config_path = \"{}\"\n".format(
-                xls_aot_runtime_link_config_dest.name
-            )
-        )
-    artifact_config_path.write_text("".join(config_lines), encoding = "utf-8")
+    artifact_config_path.write_text(
+        "".join([
+            "dso_path = \"{}\"\n".format(libxls_dest.name),
+            "dslx_stdlib_path = \".\"\n",
+        ]),
+        encoding = "utf-8",
+    )
 
 
-def write_runtime_metadata(
-        repo_root,
-        libxls_dest,
-        xls_aot_runtime_dest,
-        xls_aot_runtime_link_config_dest,
-        xls_aot_runtime_source_repo,
-        runtime_aliases,
-        runtime_files,
-):
+def write_runtime_metadata(repo_root, libxls_dest, runtime_aliases, runtime_files):
     metadata_path = repo_root / "runtime_metadata.txt"
     metadata_path.write_text(
         "".join([
             "libxls_name={}\n".format(libxls_dest.name),
-            "xls_aot_runtime_name={}\n".format(
-                xls_aot_runtime_dest.name if xls_aot_runtime_dest is not None else "",
-            ),
-            "xls_aot_runtime_link_config_name={}\n".format(
-                xls_aot_runtime_link_config_dest.name
-                if xls_aot_runtime_link_config_dest is not None
-                else "",
-            ),
-            "xls_aot_runtime_source_repo={}\n".format(
-                xls_aot_runtime_source_repo.name
-                if xls_aot_runtime_source_repo is not None
-                else "",
-            ),
             "libxls_runtime_aliases={}\n".format(",".join(runtime_aliases)),
             "libxls_runtime_files={}\n".format(",".join(sorted(runtime_files))),
         ]),
@@ -1327,30 +1147,6 @@ def stage_runtime_payload(repo_root, resolved):
 
     libxls_dest = repo_root / normalized_libxls_name(resolved["libxls"])
     copy_path(resolved["libxls"], libxls_dest)
-    xls_aot_runtime_dest = None
-    xls_aot_runtime_link_config_dest = None
-    if resolved.get("xls_aot_runtime") is not None:
-        xls_aot_runtime_dest = repo_root / static_aot_runtime_name()
-        copy_path(resolved["xls_aot_runtime"], xls_aot_runtime_dest)
-        xls_aot_runtime_link_config_dest = repo_root / static_aot_runtime_link_config_name()
-        copy_path(
-            resolved["xls_aot_runtime_link_config"],
-            xls_aot_runtime_link_config_dest,
-        )
-    xls_aot_runtime_source_repo = None
-    if resolved.get("xls_aot_runtime_source") is not None:
-        xls_aot_runtime_source_repo = repo_root / "xls_aot_runtime_source"
-        ensure_clean_path(xls_aot_runtime_source_repo)
-        shutil.unpack_archive(
-            str(resolved["xls_aot_runtime_source"]),
-            str(xls_aot_runtime_source_repo),
-        )
-        if not (xls_aot_runtime_source_repo / "BUILD.bazel").is_file():
-            raise ValueError(
-                "Standalone AOT runtime source archive must unpack BUILD.bazel at {}".format(
-                    xls_aot_runtime_source_repo,
-                )
-            )
 
     staged_runtime_files = []
     for runtime_file in resolved.get("runtime_files", []):
@@ -1360,26 +1156,10 @@ def stage_runtime_payload(repo_root, resolved):
             staged_runtime_files.append(runtime_dest.name)
 
     runtime_aliases = normalize_runtime_library_identity(libxls_dest)
-    write_artifact_config(
-        repo_root,
-        libxls_dest,
-        xls_aot_runtime_dest,
-        xls_aot_runtime_link_config_dest,
-    )
-    write_runtime_metadata(
-        repo_root,
-        libxls_dest,
-        xls_aot_runtime_dest,
-        xls_aot_runtime_link_config_dest,
-        xls_aot_runtime_source_repo,
-        runtime_aliases,
-        staged_runtime_files,
-    )
+    write_artifact_config(repo_root, libxls_dest)
+    write_runtime_metadata(repo_root, libxls_dest, runtime_aliases, staged_runtime_files)
     return {
         "libxls_dest": libxls_dest,
-        "xls_aot_runtime_dest": xls_aot_runtime_dest,
-        "xls_aot_runtime_link_config_dest": xls_aot_runtime_link_config_dest,
-        "xls_aot_runtime_source_repo": xls_aot_runtime_source_repo,
         "runtime_aliases": runtime_aliases,
         "runtime_files": staged_runtime_files,
     }
@@ -1660,9 +1440,6 @@ def parse_args(argv):
     parser.add_argument("--driver-resolved-identity-input", default = "")
     parser.add_argument("--driver-resolved-identity-output", default = "")
     parser.add_argument("--rustup-path", default = "")
-    parser.add_argument("--local-xls-aot-runtime-path", default = "")
-    parser.add_argument("--local-xls-aot-runtime-link-config-path", default = "")
-    parser.add_argument("--local-xls-aot-runtime-source-path", default = "")
     return parser.parse_args(argv)
 
 
@@ -1706,10 +1483,7 @@ def main(argv):
     if args.xls_version and args.xls_git_revision:
         raise ValueError("XLS materialization accepts either a release tag or Git revision, not both")
     if args.emit_resolved_identity:
-        validate_resolved_identity_inputs(
-            args.artifact_source,
-            args.local_xls_aot_runtime_source_path,
-        )
+        validate_resolved_identity_inputs(args.artifact_source)
         resolved_identity = resolve_archive_identity(
             xls_version = args.xls_version,
             xls_git_revision = args.xls_git_revision,
@@ -1734,9 +1508,6 @@ def main(argv):
         local_dslx_stdlib_path = args.local_dslx_stdlib_path,
         local_driver_path = args.local_driver_path,
         local_libxls_path = args.local_libxls_path,
-        local_xls_aot_runtime_path = args.local_xls_aot_runtime_path,
-        local_xls_aot_runtime_link_config_path = args.local_xls_aot_runtime_link_config_path,
-        local_xls_aot_runtime_source_path = args.local_xls_aot_runtime_source_path,
     )
     if args.xlsynth_driver_git_revision:
         if args.artifact_source == "local_paths":

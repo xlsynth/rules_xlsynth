@@ -72,8 +72,7 @@ are resolved at different times:
   `xls_version` or `xls_git_revision`. A driver-backed bundle similarly requires
   exactly one `xlsynth_driver_version` or `xlsynth_driver_git_revision`.
 - `local_paths` does not accept `xls_version` or `xlsynth_driver_version`;
-  the other modes accept no local artifact overrides except
-  `local_xls_aot_runtime_source_path`.
+  the other modes accept no local artifact overrides.
 - `download_only` does not accept any `installed_*` attrs.
 
 For provenance-sensitive consumers, `emit_resolved_identity = True` makes the
@@ -94,9 +93,7 @@ numbered XLS release. Identity-capable bundles validate the implied and explicit
 XLS releases by default; `allow_xls_pin_mismatch = True` is an explicit
 development override. Trusted identity emission requires
 `artifact_source = "download_only"` so the bundle cannot silently reuse
-consumer-owned installed or local artifacts. It also rejects
-`local_xls_aot_runtime_source_path`, because those source bytes are not covered
-by the resolved XLS identity.
+consumer-owned installed or local artifacts.
 
 Identity-capable bundles may use `xlsynth_driver_git_revision = "<40-char SHA>"`
 instead of `xlsynth_driver_version`; the lazy driver action then installs with
@@ -142,18 +139,9 @@ do not use that repo directly or publish it with `use_repo(...)`.
 The runtime repo exposes:
 
 - `@<name>_runtime//:libxls` and `@<name>_runtime//:libxls_link` for native consumers
-- `@<name>_runtime//:xls_aot_runtime`,
-  `@<name>_runtime//:xls_aot_runtime_file`, and
-  `@<name>_runtime//:xls_aot_runtime_link_config_file` when the selected XLS
-  line provides the standalone AOT static runtime archive plus its producer-owned
-  link metadata
-- `@<name>_runtime//:xls_aot_runtime_source_dep` when the selected XLS line
-  provides the source-backed standalone AOT runtime asset, for Bazel final
-  links that declare native runtime ownership instead of importing the
-  flattened archive
 - `@<name>_runtime//:dslx_stdlib` for packages that need the standard library tree
 - `@<name>_runtime//:xlsynth_sys_artifact_config` for the modern single-file
-  build-script contract shared by `xlsynth-sys` and `xlsynth-aot-runtime`
+  `xlsynth-sys` build-script contract
 - `@<name>_runtime//:xlsynth_sys_legacy_stdlib` and
   `@<name>_runtime//:xlsynth_sys_legacy_dso` for frozen `xlsynth-sys` releases that
   still use the paired `DSLX_STDLIB_PATH` / `XLS_DSO_PATH` contract
@@ -169,31 +157,7 @@ The runtime repo exposes:
 `xlsynth_sys_dep`, and, for frozen releases, `xlsynth_sys_legacy_stdlib` plus
 `xlsynth_sys_legacy_dso`, rather than spelling generic bundle internals like
 `artifact_config`, `libxls_file`, `libxls`, or `dslx_stdlib` directly in
-downstream `MODULE.bazel` files. `xlsynth-aot-runtime` consumers should reuse
-the same artifact-config export so their build scripts receive the matching
-standalone runtime archive and its producer-owned link config without a second
-bundle contract. Older bundles may omit the archive pair entirely; that keeps
-non-AOT consumers on old XLS lines valid while making an AOT consumer fail
-locally if it selects a bundle that cannot provide the runtime artifacts it
-needs.
-
-For direct Cargo linking, `xlsynth-aot-runtime` uses its default native mode
-and requests the released `libxls_aot_runtime.a` archive. For Bazel linking,
-pair `@<name>_runtime//:xls_aot_runtime_source_dep` with
-`XLS_AOT_RUNTIME_LINK_MODE = "declared"` in the crate build-script
-environment:
-
-```text
-Bazel target
-  -> depends on @<name>_runtime//:xls_aot_runtime_source_dep
-  -> depends on xlsynth-aot-runtime configured with declared link mode
-
-xlsynth-aot-runtime
-  -> emits no native runtime archive link request
-```
-
-Declared link mode changes only which build graph supplies the native runtime
-symbols; it does not change standalone AOT runtime execution.
+downstream `MODULE.bazel` files.
 
 Supported DSLX rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>_toolchain//:bundle"`. Today that escape hatch is available on
