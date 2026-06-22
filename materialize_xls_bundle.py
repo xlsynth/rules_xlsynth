@@ -1142,6 +1142,13 @@ def write_toolchain_metadata(repo_root, driver_capabilities):
 
 
 def stage_runtime_payload(repo_root, resolved):
+    for legacy_path in [
+        repo_root / "libxls_aot_runtime.a",
+        repo_root / "libxls_aot_runtime_link.toml",
+        repo_root / "xls_aot_runtime_source",
+    ]:
+        ensure_clean_path(legacy_path)
+
     link_tool_binaries(resolved["tools_root"], repo_root)
     link_stdlib_sources(resolved["dslx_stdlib_root"], repo_root)
 

@@ -1025,6 +1025,50 @@ Tag        Type                         Name/Value
             self.assertEqual(metadata["libxls_runtime_files"], "libc++.so.1")
             self.assertTrue((repo_root / "libc++.so.1").is_file())
 
+    def test_stage_runtime_payload_removes_legacy_aot_runtime_paths(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            input_root = repo_root / "_inputs"
+            tools_root = input_root / "tools"
+            stdlib_root = tools_root / "xls" / "dslx" / "stdlib"
+            stdlib_root.mkdir(parents = True)
+            (stdlib_root / "std.x").write_text("// stdlib\n", encoding = "utf-8")
+            for binary in materialize_xls_bundle.TOOL_BINARIES:
+                (tools_root / binary).write_text("", encoding = "utf-8")
+
+            libxls_path = input_root / "libxls.so"
+            libxls_path.write_text("xls\n", encoding = "utf-8")
+            legacy_paths = [
+                repo_root / "libxls_aot_runtime.a",
+                repo_root / "libxls_aot_runtime_link.toml",
+                repo_root / "xls_aot_runtime_source",
+            ]
+            legacy_paths[0].write_text("stale archive\n", encoding = "utf-8")
+            legacy_paths[1].write_text("stale config\n", encoding = "utf-8")
+            legacy_paths[2].mkdir()
+            (legacy_paths[2] / "BUILD.bazel").write_text(
+                'filegroup(name = "stale")\n',
+                encoding = "utf-8",
+            )
+
+            with mock.patch.object(
+                materialize_xls_bundle,
+                "normalize_runtime_library_identity",
+                return_value = [],
+            ):
+                materialize_xls_bundle.stage_runtime_payload(
+                    repo_root,
+                    {
+                        "tools_root": tools_root,
+                        "dslx_stdlib_root": stdlib_root,
+                        "libxls": libxls_path,
+                        "runtime_files": [],
+                    },
+                )
+
+            for legacy_path in legacy_paths:
+                self.assertFalse(legacy_path.exists())
+
     def test_materialize_toolchain_surface_records_driver_capabilities(self):
         with tempfile.TemporaryDirectory() as tempdir:
             repo_root = Path(tempdir)
