@@ -15,7 +15,6 @@ def _fake_runtime_impl(ctx):
             runtime_library_path = artifact.dirname,
             tools_root = artifact,
             tools_path = artifact.dirname,
-            xls_aot_runtime = None,
         ),
         DefaultInfo(files = depset([artifact])),
     ]
