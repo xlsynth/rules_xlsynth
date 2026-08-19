@@ -106,6 +106,14 @@ dslx_library(
 )
 
 dslx_library(
+    name = "selected_toolchain_test_mixed_library",
+    srcs = ["sample.x"],
+    visibility = ["//:__pkg__"],
+    xls_bundle = "//:selected_toolchain_test_mixed_bundle",
+    deps = [":imported"],
+)
+
+dslx_library(
     name = "selected_toolchain_test_unpinned_library",
     srcs = ["sample.x"],
     visibility = ["//:__pkg__"],

@@ -68,7 +68,28 @@ def _validate_tri_state(value, label):
         fail("{} must be one of {}".format(label, _TRI_STATE_VALUES))
     return value
 
-def _declared_producer_pin(version, git_revision, label):
+def _validate_xls_release_tag(release_tag):
+    """Rejects XLS release tags outside the existing semantic-release grammar."""
+    release_parts = release_tag[1:].split("-", 1)
+    version_parts = release_parts[0].split(".")
+    valid = len(version_parts) == 3
+    for component in version_parts:
+        if not component:
+            valid = False
+        for index in range(len(component)):
+            if component[index] not in "0123456789":
+                valid = False
+    if len(release_parts) == 2:
+        suffix = release_parts[1]
+        if not suffix:
+            valid = False
+        for index in range(len(suffix)):
+            if suffix[index] not in "0123456789":
+                valid = False
+    if not valid:
+        fail("Expected XLS semantic release tag, got: {}".format(release_tag))
+
+def _declared_producer_pin(version, git_revision, label, require_xls_release = False):
     """Returns a canonical configured producer pin without authenticating artifacts."""
     if version and git_revision:
         fail("{} accepts either a release tag or a Git revision, not both".format(label))
@@ -79,6 +100,8 @@ def _declared_producer_pin(version, git_revision, label):
         for index in range(1, len(normalized)):
             if normalized[index] not in _RELEASE_TAG_CHARACTERS:
                 fail("Expected release tag, got: {}".format(version))
+        if require_xls_release:
+            _validate_xls_release_tag(normalized)
         pin = struct(kind = "release_tag", value = normalized)
     elif git_revision:
         if len(git_revision) != 40:
@@ -466,6 +489,7 @@ def _xls_bundle_impl(ctx):
                 ctx.attr.xls_version,
                 ctx.attr.xls_git_revision,
                 "XLS pin",
+                require_xls_release = True,
             ),
             xlsynth_crate_pin = _declared_producer_pin(
                 ctx.attr.xlsynth_driver_version,

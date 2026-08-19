@@ -22,21 +22,10 @@ DslxSelectedToolchainInfo = provider(
     doc = "Declared, unauthenticated producer pins selected by one DSLX library.",
     fields = {
         "metadata": "Opt-in JSON artifact containing the declared selected producer pins.",
-        "xls_pin": "Canonical declared XLS producer pin, or None when unavailable.",
-        "xlsynth_crate_pin": "Canonical declared XLSynth producer pin, or None when unavailable.",
+        "xls_pin": "Declared XLS producer struct with .kind and .value, or None when unavailable.",
+        "xlsynth_crate_pin": "Declared XLSynth producer struct with .kind and .value, or None when unavailable.",
     },
 )
-
-def _producer_pin_json(pin):
-    """Serializes a configured producer pin, preserving an unavailable pin as null."""
-    if pin == None:
-        value = None
-    else:
-        value = {
-            "kind": pin.kind,
-            "value": pin.value,
-        }
-    return value
 
 def make_dag_entry(srcs, deps, label):
     return struct(
@@ -115,8 +104,8 @@ def _dslx_library_impl(ctx):
         output = selected_toolchain_metadata,
         content = json.encode({
             "schema_version": 1,
-            "xls_pin": _producer_pin_json(toolchain.xls_pin),
-            "xlsynth_crate_pin": _producer_pin_json(toolchain.xlsynth_crate_pin),
+            "xls_pin": toolchain.xls_pin,
+            "xlsynth_crate_pin": toolchain.xlsynth_crate_pin,
         }) + "\n",
     )
 

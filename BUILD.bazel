@@ -45,38 +45,21 @@ selected_toolchain_test_suite(
 )
 
 filegroup(
-    name = "selected_toolchain_default_metadata",
-    srcs = ["//sample:selected_toolchain_test_default_library"],
-    output_group = "selected_toolchain",
-)
-
-filegroup(
-    name = "selected_toolchain_override_metadata",
-    srcs = ["//sample:selected_toolchain_test_override_library"],
-    output_group = "selected_toolchain",
-)
-
-filegroup(
-    name = "selected_toolchain_git_metadata",
-    srcs = ["//sample:selected_toolchain_test_git_library"],
-    output_group = "selected_toolchain",
-)
-
-filegroup(
-    name = "selected_toolchain_unpinned_metadata",
-    srcs = ["//sample:selected_toolchain_test_unpinned_library"],
+    name = "selected_toolchain_test_metadata",
+    srcs = [
+        "//sample:selected_toolchain_test_default_library",
+        "//sample:selected_toolchain_test_git_library",
+        "//sample:selected_toolchain_test_mixed_library",
+        "//sample:selected_toolchain_test_override_library",
+        "//sample:selected_toolchain_test_unpinned_library",
+    ],
     output_group = "selected_toolchain",
 )
 
 py_test(
     name = "selected_toolchain_exports_test",
     srcs = ["selected_toolchain_exports_test.py"],
-    data = [
-        ":selected_toolchain_default_metadata",
-        ":selected_toolchain_git_metadata",
-        ":selected_toolchain_override_metadata",
-        ":selected_toolchain_unpinned_metadata",
-    ],
+    data = [":selected_toolchain_test_metadata"],
     deps = ["@rules_python//python/runfiles"],
 )
 

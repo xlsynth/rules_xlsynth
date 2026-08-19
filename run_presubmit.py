@@ -443,9 +443,38 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
             '//:download_release_test',
             '//:external_bundle_exports_test',
             '//:trusted_identity_boundary_test',
+            '//:selected_toolchain_test',
+            '//:selected_toolchain_exports_test',
         ),
         config,
     )
+
+
+@register
+def run_generated_git_toolchain_declarations(config: PresubmitConfig):
+    """Validate extension-generated Git declarations without resolving artifacts."""
+    cmdline = [
+        'bazel',
+        '--bazelrc=/dev/null',
+        'query',
+        '--output=build',
+        '@rules_xlsynth_selected_git_test_toolchain//:bundle',
+    ]
+    print('Running command: ' + subprocess.list2cmdline(cmdline))
+    result = subprocess.run(
+        cmdline,
+        check = True,
+        cwd = str(config.repo_root),
+        stdout = subprocess.PIPE,
+        encoding = 'utf-8',
+    )
+    expected_pins = {
+        'xls_git_revision': 'ABCDEF0123456789ABCDEF0123456789ABCDEF01',
+        'xlsynth_driver_git_revision': '1234567890ABCDEF1234567890ABCDEF12345678',
+    }
+    for attribute, revision in expected_pins.items():
+        if '{} = "{}"'.format(attribute, revision) not in result.stdout:
+            raise ValueError('Generated XLS bundle is missing {} {}'.format(attribute, revision))
 
 
 @register

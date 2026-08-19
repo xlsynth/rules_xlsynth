@@ -7,6 +7,7 @@ load("//:rules.bzl", "DslxSelectedToolchainInfo")
 load("//:xls_toolchain.bzl", "xls_bundle")
 
 _UPPERCASE_GIT_REVISION = "ABCDEF0123456789ABCDEF0123456789ABCDEF01"
+_OTHER_UPPERCASE_GIT_REVISION = "1234567890ABCDEF1234567890ABCDEF12345678"
 
 def _selected_toolchain_test_impl(ctx):
     """Checks selected producer pins and preserves default-versus-opt-in outputs."""
@@ -106,19 +107,38 @@ def selected_toolchain_test_suite(name):
     _fake_bundle(
         name = git_bundle,
         xls_git_revision = _UPPERCASE_GIT_REVISION,
-        xlsynth_driver_git_revision = _UPPERCASE_GIT_REVISION,
+        xlsynth_driver_git_revision = _OTHER_UPPERCASE_GIT_REVISION,
     )
     git_test = name + "_git"
 
-    # Verifies: Exact Git producer revisions are normalized to lowercase.
-    # Catches: Ambiguous or noncanonical selected-toolchain producer identities.
+    # Verifies: Distinct Git producer revisions are normalized independently.
+    # Catches: Swapped, copied, or noncanonical XLS/XLSynth producer identities.
     _selected_toolchain_test(
         name = git_test,
         target_under_test = "//sample:" + name + "_git_library",
         expected_xls_kind = "git_revision",
         expected_xls_value = _UPPERCASE_GIT_REVISION.lower(),
         expected_driver_kind = "git_revision",
-        expected_driver_value = _UPPERCASE_GIT_REVISION.lower(),
+        expected_driver_value = _OTHER_UPPERCASE_GIT_REVISION.lower(),
+    )
+
+    mixed_bundle = name + "_mixed_bundle"
+    _fake_bundle(
+        name = mixed_bundle,
+        xls_version = "0.40.0",
+        xlsynth_driver_git_revision = _OTHER_UPPERCASE_GIT_REVISION,
+    )
+    mixed_test = name + "_mixed"
+
+    # Verifies: XLS release and XLSynth Git producer identities remain independent.
+    # Catches: Assuming both configured producers must share one identity kind.
+    _selected_toolchain_test(
+        name = mixed_test,
+        target_under_test = "//sample:" + name + "_mixed_library",
+        expected_xls_kind = "release_tag",
+        expected_xls_value = "v0.40.0",
+        expected_driver_kind = "git_revision",
+        expected_driver_value = _OTHER_UPPERCASE_GIT_REVISION.lower(),
     )
 
     unpinned_bundle = name + "_unpinned_bundle"
@@ -148,6 +168,21 @@ def selected_toolchain_test_suite(name):
         expected_error = "Expected release tag",
     )
 
+    invalid_xls_release_bundle = name + "_invalid_xls_release_bundle"
+    _fake_bundle(
+        name = invalid_xls_release_bundle,
+        tags = ["manual"],
+        xls_version = "next",
+    )
+    invalid_xls_release_test = name + "_invalid_xls_release"
+
+    # Negative test: Nonsemantic XLS release tags exercise producer error handling.
+    _invalid_pin_test(
+        name = invalid_xls_release_test,
+        target_under_test = ":" + invalid_xls_release_bundle,
+        expected_error = "Expected XLS semantic release tag",
+    )
+
     invalid_revision_bundle = name + "_invalid_revision_bundle"
     _fake_bundle(
         name = invalid_revision_bundle,
@@ -160,6 +195,21 @@ def selected_toolchain_test_suite(name):
     _invalid_pin_test(
         name = invalid_revision_test,
         target_under_test = ":" + invalid_revision_bundle,
+        expected_error = "Expected exact 40-character Git revision",
+    )
+
+    nonhex_revision_bundle = name + "_nonhex_revision_bundle"
+    _fake_bundle(
+        name = nonhex_revision_bundle,
+        tags = ["manual"],
+        xls_git_revision = "G" * 40,
+    )
+    nonhex_revision_test = name + "_nonhex_revision"
+
+    # Negative test: Exact-length nonhex Git revisions exercise error handling.
+    _invalid_pin_test(
+        name = nonhex_revision_test,
+        target_under_test = ":" + nonhex_revision_bundle,
         expected_error = "Expected exact 40-character Git revision",
     )
 
@@ -185,9 +235,12 @@ def selected_toolchain_test_suite(name):
             ":" + default_test,
             ":" + override_test,
             ":" + git_test,
+            ":" + mixed_test,
             ":" + unpinned_test,
             ":" + invalid_release_test,
+            ":" + invalid_xls_release_test,
             ":" + invalid_revision_test,
+            ":" + nonhex_revision_test,
             ":" + ambiguous_test,
         ],
     )

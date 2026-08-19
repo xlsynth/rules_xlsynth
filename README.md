@@ -182,6 +182,10 @@ library. The public `DslxSelectedToolchainInfo` provider, exported by
 opt-in `metadata` output. A library's explicit `xls_bundle` override takes
 precedence over the registered default for this metadata.
 
+In Starlark, each available producer pin is a struct accessed through
+`provider.xls_pin.kind` and `provider.xls_pin.value` or the corresponding
+`provider.xlsynth_crate_pin` fields.
+
 Request the machine-readable output without building the library's normal
 typecheck output:
 
@@ -202,9 +206,10 @@ producer pins:
 
 Git-pinned producers use `"kind": "git_revision"` with a lowercase,
 40-character revision. Versionless local bundles report unavailable pins as
-`null`. This output describes declared toolchain configuration; unlike
-`resolved_identity.json`, it does not authenticate installed or local
-executable contents.
+`null`. This output describes declared configuration and does not authenticate
+executable contents. Trusted `resolved_identity.json` authenticates only
+downloaded artifacts; neither metadata mechanism authenticates installed or
+local executables.
 
 Artifact-path build settings such as
 `--@rules_xlsynth//config:driver_path=...`,
