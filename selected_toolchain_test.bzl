@@ -3,7 +3,7 @@
 """Analysis coverage for the producer pins selected by DSLX libraries."""
 
 load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
-load("//:rules.bzl", "DslxSelectedToolchainInfo")
+load("//:rules.bzl", "DslxSelectedToolchainInfo", "dslx_library")
 load("//:xls_toolchain.bzl", "XlsArtifactBundleInfo", "xls_bundle")
 
 _UPPERCASE_GIT_REVISION = "ABCDEF0123456789ABCDEF0123456789ABCDEF01"
@@ -15,12 +15,15 @@ def _selected_toolchain_test_impl(ctx):
     target = analysistest.target_under_test(env)
     selected = target[DslxSelectedToolchainInfo]
 
-    if ctx.attr.expect_missing:
+    if ctx.attr.expect_missing or ctx.attr.expect_missing_xls:
         asserts.equals(env, None, selected.xls_pin)
-        asserts.equals(env, None, selected.xlsynth_crate_pin)
     else:
         asserts.equals(env, ctx.attr.expected_xls_kind, selected.xls_pin.kind)
         asserts.equals(env, ctx.attr.expected_xls_value, selected.xls_pin.value)
+
+    if ctx.attr.expect_missing or ctx.attr.expect_missing_driver:
+        asserts.equals(env, None, selected.xlsynth_crate_pin)
+    else:
         asserts.equals(env, ctx.attr.expected_driver_kind, selected.xlsynth_crate_pin.kind)
         asserts.equals(env, ctx.attr.expected_driver_value, selected.xlsynth_crate_pin.value)
 
@@ -34,14 +37,28 @@ def _selected_toolchain_test_impl(ctx):
     asserts.equals(env, metadata_outputs[0], selected.metadata)
     return analysistest.end(env)
 
+_SELECTED_TOOLCHAIN_TEST_ATTRS = {
+    "expect_missing": attr.bool(),
+    "expect_missing_driver": attr.bool(),
+    "expect_missing_xls": attr.bool(),
+    "expected_driver_kind": attr.string(),
+    "expected_driver_value": attr.string(),
+    "expected_xls_kind": attr.string(),
+    "expected_xls_value": attr.string(),
+}
+
 _selected_toolchain_test = analysistest.make(
     _selected_toolchain_test_impl,
-    attrs = {
-        "expect_missing": attr.bool(),
-        "expected_driver_kind": attr.string(),
-        "expected_driver_value": attr.string(),
-        "expected_xls_kind": attr.string(),
-        "expected_xls_value": attr.string(),
+    attrs = _SELECTED_TOOLCHAIN_TEST_ATTRS,
+)
+
+_custom_registered_toolchain_test = analysistest.make(
+    _selected_toolchain_test_impl,
+    attrs = _SELECTED_TOOLCHAIN_TEST_ATTRS,
+    config_settings = {
+        "//command_line_option:extra_toolchains": [
+            "//selected_toolchain_tests:selected_toolchain_test_registered_toolchain",
+        ],
     },
 )
 
@@ -63,7 +80,7 @@ def _fake_bundle(name, **kwargs):
     """Creates an analysis-only bundle without materializing a second toolchain."""
     xls_bundle(
         name = name,
-        driver = "//:LICENSE",
+        driver = ":BUILD.bazel",
         runtime = "@rules_xlsynth_selftest_xls_runtime//:runtime",
         visibility = ["//sample:__pkg__"],
         **kwargs
@@ -108,6 +125,74 @@ _legacy_bundle = rule(
         "xlsynth_pin_value": attr.string(),
     },
 )
+
+def _custom_registered_toolchain_impl(ctx):
+    """Creates external registered metadata without bundle-ingress normalization."""
+    bundle = ctx.attr.bundle[XlsArtifactBundleInfo]
+    fields = {field: getattr(bundle, field) for field in dir(bundle)}
+    fields.update({
+        "add_invariant_assertions": "",
+        "assert_format": "",
+        "disable_warnings": [],
+        "driver_path": bundle.driver.path,
+        "dslx_path": [],
+        "enable_warnings": [],
+        "gate_format": "",
+        "use_system_verilog": "",
+    })
+    fields["xls_pin"] = struct(kind = "release_tag", value = "0.40.0")
+    fields["xlsynth_crate_pin"] = struct(
+        kind = "git_revision",
+        value = _OTHER_UPPERCASE_GIT_REVISION,
+    )
+    return [platform_common.ToolchainInfo(**fields)]
+
+_custom_registered_toolchain = rule(
+    implementation = _custom_registered_toolchain_impl,
+    attrs = {
+        "bundle": attr.label(
+            mandatory = True,
+            providers = [XlsArtifactBundleInfo],
+        ),
+    },
+)
+
+def selected_toolchain_test_fixtures(name):
+    """Owns DSLX fixture declarations and their opt-in metadata inventory."""
+    suffixes = [
+        "default",
+        "override",
+        "git",
+        "mixed",
+        "unpinned",
+        "legacy",
+        "external",
+        "partial",
+        "invalid_external",
+    ]
+    metadata_sources = []
+    for suffix in suffixes:
+        library_name = name + "_" + suffix + "_library"
+        attributes = {
+            "name": library_name,
+            "srcs": ["sample.x"],
+            "tags": ["manual"],
+            "visibility": ["//:__pkg__", "//selected_toolchain_tests:__pkg__"],
+            "deps": [":imported"],
+        }
+        if suffix != "default":
+            attributes["xls_bundle"] = "//selected_toolchain_tests:" + name + "_" + suffix + "_bundle"
+        dslx_library(**attributes)
+        if suffix != "invalid_external":
+            metadata_sources.append(":" + library_name)
+
+    native.filegroup(
+        name = name + "_metadata",
+        srcs = metadata_sources,
+        output_group = "selected_toolchain",
+        tags = ["manual"],
+        visibility = ["//:__pkg__"],
+    )
 
 def selected_toolchain_test_suite(name):
     """Instantiates default, overridden, typed-pin, and failure analysis tests."""
@@ -232,6 +317,50 @@ def selected_toolchain_test_suite(name):
         expected_driver_value = _OTHER_UPPERCASE_GIT_REVISION.lower(),
     )
 
+    partial_bundle = name + "_partial_bundle"
+    _legacy_bundle(
+        name = partial_bundle,
+        bundle = ":" + unpinned_bundle,
+        visibility = ["//sample:__pkg__"],
+        xls_pin_kind = "release_tag",
+        xls_pin_value = "0.40.0",
+    )
+    partial_test = name + "_partial"
+
+    # Verifies: Independently unavailable producer information remains explicit.
+    # Catches: Collapsing a valid XLS pin when the XLSynth pin is unavailable.
+    _selected_toolchain_test(
+        name = partial_test,
+        target_under_test = "//sample:" + name + "_partial_library",
+        expected_xls_kind = "release_tag",
+        expected_xls_value = "v0.40.0",
+        expect_missing_driver = True,
+    )
+
+    registered_impl = name + "_registered_impl"
+    _custom_registered_toolchain(
+        name = registered_impl,
+        bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
+    )
+    native.toolchain(
+        name = name + "_registered_toolchain",
+        toolchain = ":" + registered_impl,
+        toolchain_type = "//:toolchain_type",
+        visibility = ["//visibility:public"],
+    )
+    registered_test = name + "_registered"
+
+    # Verifies: Custom registered ToolchainInfo metadata is normalized at use.
+    # Catches: Assuming every registered toolchain passed through xls_bundle.
+    _custom_registered_toolchain_test(
+        name = registered_test,
+        target_under_test = "//sample:" + name + "_default_library",
+        expected_xls_kind = "release_tag",
+        expected_xls_value = "v0.40.0",
+        expected_driver_kind = "git_revision",
+        expected_driver_value = _OTHER_UPPERCASE_GIT_REVISION.lower(),
+    )
+
     invalid_external_bundle = name + "_invalid_external_bundle"
     _legacy_bundle(
         name = invalid_external_bundle,
@@ -336,6 +465,8 @@ def selected_toolchain_test_suite(name):
             ":" + unpinned_test,
             ":" + legacy_test,
             ":" + external_test,
+            ":" + partial_test,
+            ":" + registered_test,
             ":" + invalid_external_test,
             ":" + invalid_release_test,
             ":" + invalid_xls_release_test,

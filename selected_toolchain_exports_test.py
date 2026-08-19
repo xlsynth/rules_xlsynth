@@ -95,6 +95,14 @@ class SelectedToolchainExportsTest(unittest.TestCase):
             {"kind": "git_revision", "value": "1234567890abcdef1234567890abcdef12345678"},
         )
 
+    # Verifies: One available producer survives when the other producer is unknown.
+    # Catches: Treating independently unavailable producer identities as all-or-nothing.
+    def test_partial_bundle_preserves_independently_missing_pin(self):
+        metadata = self.read_metadata("sample/selected_toolchain_test_partial_library.selected_toolchain.json")
+
+        self.assertEqual(metadata["xls_pin"], {"kind": "release_tag", "value": "v0.40.0"})
+        self.assertIsNone(metadata["xlsynth_crate_pin"])
+
 
 if __name__ == "__main__":
     unittest.main()

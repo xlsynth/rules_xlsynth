@@ -20,6 +20,7 @@ load(
     "ir_to_gates",
     "mangle_dslx_name",
 )
+load("//:selected_toolchain_test.bzl", "selected_toolchain_test_fixtures")
 
 dslx_library(
     name = "imported",
@@ -81,77 +82,7 @@ dslx_library(
     deps = [":imported"],
 )
 
-# Keep selected-toolchain analysis fixtures beside their private DSLX source.
-dslx_library(
-    name = "selected_toolchain_test_default_library",
-    srcs = ["sample.x"],
-    tags = ["manual"],
-    visibility = ["//:__pkg__"],
-    deps = [":imported"],
-)
-
-dslx_library(
-    name = "selected_toolchain_test_override_library",
-    srcs = ["sample.x"],
-    tags = ["manual"],
-    visibility = ["//:__pkg__"],
-    xls_bundle = "//:selected_toolchain_test_override_bundle",
-    deps = [":imported"],
-)
-
-dslx_library(
-    name = "selected_toolchain_test_git_library",
-    srcs = ["sample.x"],
-    tags = ["manual"],
-    visibility = ["//:__pkg__"],
-    xls_bundle = "//:selected_toolchain_test_git_bundle",
-    deps = [":imported"],
-)
-
-dslx_library(
-    name = "selected_toolchain_test_mixed_library",
-    srcs = ["sample.x"],
-    tags = ["manual"],
-    visibility = ["//:__pkg__"],
-    xls_bundle = "//:selected_toolchain_test_mixed_bundle",
-    deps = [":imported"],
-)
-
-dslx_library(
-    name = "selected_toolchain_test_unpinned_library",
-    srcs = ["sample.x"],
-    tags = ["manual"],
-    visibility = ["//:__pkg__"],
-    xls_bundle = "//:selected_toolchain_test_unpinned_bundle",
-    deps = [":imported"],
-)
-
-dslx_library(
-    name = "selected_toolchain_test_legacy_library",
-    srcs = ["sample.x"],
-    tags = ["manual"],
-    visibility = ["//:__pkg__"],
-    xls_bundle = "//:selected_toolchain_test_legacy_bundle",
-    deps = [":imported"],
-)
-
-dslx_library(
-    name = "selected_toolchain_test_external_library",
-    srcs = ["sample.x"],
-    tags = ["manual"],
-    visibility = ["//:__pkg__"],
-    xls_bundle = "//:selected_toolchain_test_external_bundle",
-    deps = [":imported"],
-)
-
-dslx_library(
-    name = "selected_toolchain_test_invalid_external_library",
-    srcs = ["sample.x"],
-    tags = ["manual"],
-    visibility = ["//:__pkg__"],
-    xls_bundle = "//:selected_toolchain_test_invalid_external_bundle",
-    deps = [":imported"],
-)
+selected_toolchain_test_fixtures(name = "selected_toolchain_test")
 
 dslx_library(
     name = "sample_explicit_bundle",

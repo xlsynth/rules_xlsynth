@@ -52,7 +52,7 @@ def copy_runfile(source_name, dest):
     shutil.copy2(rules_xlsynth_source_file(source_name), dest)
 
 
-def create_minimal_rules_xlsynth_repo(repo_root):
+def create_minimal_rules_xlsynth_repo(repo_root, include_dslx = False):
     repo_root.mkdir()
     write_text_file(
         repo_root / "MODULE.bazel",
@@ -76,12 +76,13 @@ toolchain_type(
     )
     copy_runfile("extensions.bzl", repo_root / "extensions.bzl")
     copy_runfile("xls_toolchain.bzl", repo_root / "xls_toolchain.bzl")
-    copy_runfile("dslx_provider.bzl", repo_root / "dslx_provider.bzl")
-    copy_runfile("env_helpers.bzl", repo_root / "env_helpers.bzl")
     copy_runfile("materialize_xls_bundle.py", repo_root / "materialize_xls_bundle.py")
-    config_root = repo_root / "config"
-    config_root.mkdir()
-    copy_runfile("config/BUILD.bazel", config_root / "BUILD.bazel")
+    if include_dslx:
+        copy_runfile("dslx_provider.bzl", repo_root / "dslx_provider.bzl")
+        copy_runfile("env_helpers.bzl", repo_root / "env_helpers.bzl")
+        config_root = repo_root / "config"
+        config_root.mkdir()
+        copy_runfile("config/BUILD.bazel", config_root / "BUILD.bazel")
 
 
 def build_minimal_shared_library(output_path):
@@ -495,7 +496,7 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
             write_versioned_driver(installed_driver, "version-one", driver_version)
 
             rules_xlsynth_root = root / "rules_xlsynth"
-            create_minimal_rules_xlsynth_repo(rules_xlsynth_root)
+            create_minimal_rules_xlsynth_repo(rules_xlsynth_root, include_dslx = True)
             local_bundle = create_installed_runtime_bundle(root / "installed_tools", "0.38.0")
             workspace_root = root / "workspace"
             create_auto_installed_workspace(

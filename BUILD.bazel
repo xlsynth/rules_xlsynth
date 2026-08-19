@@ -1,5 +1,4 @@
 load("@rules_python//python:defs.bzl", "py_test")
-load("//:selected_toolchain_test.bzl", "selected_toolchain_test_suite")
 load("//:trusted_identity_boundary_test.bzl", "trusted_identity_boundary_test_suite")
 
 py_test(
@@ -40,28 +39,15 @@ trusted_identity_boundary_test_suite(
     name = "trusted_identity_boundary_test",
 )
 
-selected_toolchain_test_suite(
+test_suite(
     name = "selected_toolchain_test",
-)
-
-filegroup(
-    name = "selected_toolchain_test_metadata",
-    srcs = [
-        "//sample:selected_toolchain_test_default_library",
-        "//sample:selected_toolchain_test_external_library",
-        "//sample:selected_toolchain_test_git_library",
-        "//sample:selected_toolchain_test_legacy_library",
-        "//sample:selected_toolchain_test_mixed_library",
-        "//sample:selected_toolchain_test_override_library",
-        "//sample:selected_toolchain_test_unpinned_library",
-    ],
-    output_group = "selected_toolchain",
+    tests = ["//selected_toolchain_tests:selected_toolchain_test"],
 )
 
 py_test(
     name = "selected_toolchain_exports_test",
     srcs = ["selected_toolchain_exports_test.py"],
-    data = [":selected_toolchain_test_metadata"],
+    data = ["//sample:selected_toolchain_test_metadata"],
     deps = ["@rules_python//python/runfiles"],
 )
 

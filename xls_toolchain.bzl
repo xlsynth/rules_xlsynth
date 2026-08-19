@@ -25,8 +25,8 @@ XlsArtifactBundleInfo = provider(
         "resolved_identity": "Machine-readable resolved producer identity manifest, when requested.",
         "tools_root": "The XLS tool root tree artifact.",
         "tools_path": "Directory path containing the XLS tool binaries.",
-        "xls_pin": "Declared canonical XLS producer pin, or None when the bundle is unpinned.",
-        "xlsynth_crate_pin": "Declared canonical XLSynth producer pin, or None when the bundle is unpinned.",
+        "xls_pin": "Optional declared XLS producer metadata, normalized when its bundle is selected.",
+        "xlsynth_crate_pin": "Optional declared XLSynth producer metadata, normalized when its bundle is selected.",
     },
 )
 
