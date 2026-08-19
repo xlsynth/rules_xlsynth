@@ -99,13 +99,15 @@ def _dslx_library_impl(ctx):
         use_default_shell_env = False,
     )
 
+    xls_pin = getattr(toolchain, "xls_pin", None)
+    xlsynth_crate_pin = getattr(toolchain, "xlsynth_crate_pin", None)
     selected_toolchain_metadata = ctx.actions.declare_file(ctx.label.name + ".selected_toolchain.json")
     ctx.actions.write(
         output = selected_toolchain_metadata,
         content = json.encode({
             "schema_version": 1,
-            "xls_pin": toolchain.xls_pin,
-            "xlsynth_crate_pin": toolchain.xlsynth_crate_pin,
+            "xls_pin": xls_pin,
+            "xlsynth_crate_pin": xlsynth_crate_pin,
         }) + "\n",
     )
 
@@ -114,8 +116,8 @@ def _dslx_library_impl(ctx):
         DefaultInfo(files = depset([typecheck_output])),
         DslxSelectedToolchainInfo(
             metadata = selected_toolchain_metadata,
-            xls_pin = toolchain.xls_pin,
-            xlsynth_crate_pin = toolchain.xlsynth_crate_pin,
+            xls_pin = xls_pin,
+            xlsynth_crate_pin = xlsynth_crate_pin,
         ),
         OutputGroupInfo(selected_toolchain = depset([selected_toolchain_metadata])),
     ]

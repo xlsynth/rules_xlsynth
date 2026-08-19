@@ -49,6 +49,7 @@ filegroup(
     srcs = [
         "//sample:selected_toolchain_test_default_library",
         "//sample:selected_toolchain_test_git_library",
+        "//sample:selected_toolchain_test_legacy_library",
         "//sample:selected_toolchain_test_mixed_library",
         "//sample:selected_toolchain_test_override_library",
         "//sample:selected_toolchain_test_unpinned_library",

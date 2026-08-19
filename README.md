@@ -179,8 +179,20 @@ dslx_to_pipeline(
 Each `dslx_library` also exposes the producer pins selected by that specific
 library. The public `DslxSelectedToolchainInfo` provider, exported by
 `@rules_xlsynth//:rules.bzl`, contains `xls_pin`, `xlsynth_crate_pin`, and the
-opt-in `metadata` output. A library's explicit `xls_bundle` override takes
-precedence over the registered default for this metadata.
+opt-in `metadata` output. A pipeline override does not change the toolchain
+selected by its dependency. To select the legacy producer pins for a library,
+apply the override to that library itself:
+
+```starlark
+dslx_library(
+    name = "my_legacy_dslx_library",
+    srcs = ["my_dslx_library.x"],
+    xls_bundle = "@legacy_xls_toolchain//:bundle",
+)
+```
+
+The overridden library reports XLS `v0.37.0` and XLSynth `v0.32.0`; a library
+without its own override continues to report the registered default.
 
 In Starlark, each available producer pin is a struct accessed through
 `provider.xls_pin.kind` and `provider.xls_pin.value` or the corresponding
@@ -191,6 +203,7 @@ typecheck output:
 
 ```shell
 bazel build --output_groups=selected_toolchain //path:my_dslx_library
+bazel build --output_groups=selected_toolchain //path:my_legacy_dslx_library
 ```
 
 The generated `<target>.selected_toolchain.json` contains separately versioned

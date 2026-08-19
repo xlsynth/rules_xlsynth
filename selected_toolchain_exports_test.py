@@ -76,6 +76,14 @@ class SelectedToolchainExportsTest(unittest.TestCase):
         self.assertIsNone(metadata["xls_pin"])
         self.assertIsNone(metadata["xlsynth_crate_pin"])
 
+    # Verifies: Preexisting external bundle shapes remain usable without new fields.
+    # Catches: Requiring producer pins on public providers created before this feature.
+    def test_legacy_bundle_without_producer_fields_reports_missing_pins(self):
+        metadata = self.read_metadata("sample/selected_toolchain_test_legacy_library.selected_toolchain.json")
+
+        self.assertIsNone(metadata["xls_pin"])
+        self.assertIsNone(metadata["xlsynth_crate_pin"])
+
 
 if __name__ == "__main__":
     unittest.main()

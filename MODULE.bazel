@@ -24,18 +24,8 @@ xls.toolchain(
     xls_version = "0.40.0",
     xlsynth_driver_version = "0.36.0",
 )
-
-# Use compatible published Git revisions so this fixture's generated runtime
-# remains fetchable even when a consumer prefetches every external repository.
-xls.toolchain(
-    name = "rules_xlsynth_selected_git_test",
-    artifact_source = "download_only",
-    xls_git_revision = "4089AC95A5119C290C4C1798313BE6B4FEC28B63",
-    xlsynth_driver_git_revision = "ABF357906F1B0B9877EEC6097B0F9C458F8D09A8",
-)
 use_repo(
     xls,
-    "rules_xlsynth_selected_git_test_toolchain",
     "rules_xlsynth_selftest_xls_runtime",
     "rules_xlsynth_selftest_xls_toolchain",
     "workspace_override_xls_runtime",

@@ -153,8 +153,8 @@ def _bundle_struct_from_provider(bundle):
         resolved_identity = bundle.resolved_identity,
         tools_root = bundle.tools_root,
         tools_path = bundle.tools_path,
-        xls_pin = bundle.xls_pin,
-        xlsynth_crate_pin = bundle.xlsynth_crate_pin,
+        xls_pin = getattr(bundle, "xls_pin", None),
+        xlsynth_crate_pin = getattr(bundle, "xlsynth_crate_pin", None),
     )
 
 def _runtime_struct_from_provider(runtime):

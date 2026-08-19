@@ -4,7 +4,7 @@
 
 load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
 load("//:rules.bzl", "DslxSelectedToolchainInfo")
-load("//:xls_toolchain.bzl", "xls_bundle")
+load("//:xls_toolchain.bzl", "XlsArtifactBundleInfo", "xls_bundle")
 
 _UPPERCASE_GIT_REVISION = "ABCDEF0123456789ABCDEF0123456789ABCDEF01"
 _OTHER_UPPERCASE_GIT_REVISION = "1234567890ABCDEF1234567890ABCDEF12345678"
@@ -68,6 +68,34 @@ def _fake_bundle(name, **kwargs):
         visibility = ["//sample:__pkg__"],
         **kwargs
     )
+
+def _legacy_bundle_impl(ctx):
+    """Preserves the public bundle shape used before producer pins existed."""
+    bundle = ctx.attr.bundle[XlsArtifactBundleInfo]
+    return [
+        XlsArtifactBundleInfo(
+            artifact_inputs = bundle.artifact_inputs,
+            driver = bundle.driver,
+            driver_supports_sv_enum_case_naming_policy = bundle.driver_supports_sv_enum_case_naming_policy,
+            driver_supports_sv_struct_field_ordering = bundle.driver_supports_sv_struct_field_ordering,
+            dslx_stdlib = bundle.dslx_stdlib,
+            dslx_stdlib_path = bundle.dslx_stdlib_path,
+            libxls = bundle.libxls,
+            runtime_files = bundle.runtime_files,
+            runtime_library_path = bundle.runtime_library_path,
+            resolved_identity = bundle.resolved_identity,
+            tools_root = bundle.tools_root,
+            tools_path = bundle.tools_path,
+        ),
+        DefaultInfo(files = ctx.attr.bundle[DefaultInfo].files),
+    ]
+
+_legacy_bundle = rule(
+    implementation = _legacy_bundle_impl,
+    attrs = {
+        "bundle": attr.label(mandatory = True, providers = [XlsArtifactBundleInfo]),
+    },
+)
 
 def selected_toolchain_test_suite(name):
     """Instantiates default, overridden, typed-pin, and failure analysis tests."""
@@ -150,6 +178,22 @@ def selected_toolchain_test_suite(name):
     _selected_toolchain_test(
         name = unpinned_test,
         target_under_test = "//sample:" + name + "_unpinned_library",
+        expect_missing = True,
+    )
+
+    legacy_bundle = name + "_legacy_bundle"
+    _legacy_bundle(
+        name = legacy_bundle,
+        bundle = ":" + unpinned_bundle,
+        visibility = ["//sample:__pkg__"],
+    )
+    legacy_test = name + "_legacy"
+
+    # Verifies: Older externally constructed bundles remain valid overrides.
+    # Catches: Treating newly introduced optional producer fields as mandatory.
+    _selected_toolchain_test(
+        name = legacy_test,
+        target_under_test = "//sample:" + name + "_legacy_library",
         expect_missing = True,
     )
 
@@ -237,6 +281,7 @@ def selected_toolchain_test_suite(name):
             ":" + git_test,
             ":" + mixed_test,
             ":" + unpinned_test,
+            ":" + legacy_test,
             ":" + invalid_release_test,
             ":" + invalid_xls_release_test,
             ":" + invalid_revision_test,
