@@ -87,8 +87,8 @@ def selected_toolchain_test_suite(name):
     override_bundle = name + "_override_bundle"
     _fake_bundle(
         name = override_bundle,
-        xls_version = "0.37.0",
-        xlsynth_driver_version = "0.32.0",
+        xls_version = "v0.37.0",
+        xlsynth_driver_version = "v0.32.0",
     )
     override_test = name + "_override"
 
