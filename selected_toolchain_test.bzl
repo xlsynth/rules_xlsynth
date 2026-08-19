@@ -62,6 +62,16 @@ _custom_registered_toolchain_test = analysistest.make(
     },
 )
 
+_legacy_registered_toolchain_test = analysistest.make(
+    _selected_toolchain_test_impl,
+    attrs = _SELECTED_TOOLCHAIN_TEST_ATTRS,
+    config_settings = {
+        "//command_line_option:extra_toolchains": [
+            "//selected_toolchain_tests:selected_toolchain_test_legacy_registered_toolchain",
+        ],
+    },
+)
+
 def _invalid_pin_test_impl(ctx):
     """Checks that malformed or ambiguous producer pins fail during analysis."""
     env = analysistest.begin(ctx)
@@ -82,7 +92,6 @@ def _fake_bundle(name, **kwargs):
         name = name,
         driver = ":BUILD.bazel",
         runtime = "@rules_xlsynth_selftest_xls_runtime//:runtime",
-        visibility = ["//sample:__pkg__"],
         **kwargs
     )
 
@@ -140,11 +149,15 @@ def _custom_registered_toolchain_impl(ctx):
         "gate_format": "",
         "use_system_verilog": "",
     })
-    fields["xls_pin"] = struct(kind = "release_tag", value = "0.40.0")
-    fields["xlsynth_crate_pin"] = struct(
-        kind = "git_revision",
-        value = _OTHER_UPPERCASE_GIT_REVISION,
-    )
+    if ctx.attr.include_producers:
+        fields["xls_pin"] = struct(kind = "release_tag", value = "0.40.0")
+        fields["xlsynth_crate_pin"] = struct(
+            kind = "git_revision",
+            value = _OTHER_UPPERCASE_GIT_REVISION,
+        )
+    else:
+        fields.pop("xls_pin")
+        fields.pop("xlsynth_crate_pin")
     return [platform_common.ToolchainInfo(**fields)]
 
 _custom_registered_toolchain = rule(
@@ -154,6 +167,7 @@ _custom_registered_toolchain = rule(
             mandatory = True,
             providers = [XlsArtifactBundleInfo],
         ),
+        "include_producers": attr.bool(default = True),
     },
 )
 
@@ -168,6 +182,7 @@ def selected_toolchain_test_fixtures(name):
         "legacy",
         "external",
         "partial",
+        "partial_driver",
         "invalid_external",
     ]
     metadata_sources = []
@@ -175,13 +190,11 @@ def selected_toolchain_test_fixtures(name):
         library_name = name + "_" + suffix + "_library"
         attributes = {
             "name": library_name,
-            "srcs": ["sample.x"],
+            "srcs": ["//sample:imported.x"],
             "tags": ["manual"],
-            "visibility": ["//:__pkg__", "//selected_toolchain_tests:__pkg__"],
-            "deps": [":imported"],
         }
         if suffix != "default":
-            attributes["xls_bundle"] = "//selected_toolchain_tests:" + name + "_" + suffix + "_bundle"
+            attributes["xls_bundle"] = ":" + name + "_" + suffix + "_bundle"
         dslx_library(**attributes)
         if suffix != "invalid_external":
             metadata_sources.append(":" + library_name)
@@ -202,7 +215,7 @@ def selected_toolchain_test_suite(name):
     # Catches: Incorrect default selection or changed normal library outputs.
     _selected_toolchain_test(
         name = default_test,
-        target_under_test = "//sample:" + name + "_default_library",
+        target_under_test = ":" + name + "_default_library",
         expected_xls_kind = "release_tag",
         expected_xls_value = "v0.40.0",
         expected_driver_kind = "release_tag",
@@ -221,7 +234,7 @@ def selected_toolchain_test_suite(name):
     # Catches: Substituting the registered default for the target's selected bundle.
     _selected_toolchain_test(
         name = override_test,
-        target_under_test = "//sample:" + name + "_override_library",
+        target_under_test = ":" + name + "_override_library",
         expected_xls_kind = "release_tag",
         expected_xls_value = "v0.37.0",
         expected_driver_kind = "release_tag",
@@ -240,7 +253,7 @@ def selected_toolchain_test_suite(name):
     # Catches: Swapped, copied, or noncanonical XLS/XLSynth producer identities.
     _selected_toolchain_test(
         name = git_test,
-        target_under_test = "//sample:" + name + "_git_library",
+        target_under_test = ":" + name + "_git_library",
         expected_xls_kind = "git_revision",
         expected_xls_value = _UPPERCASE_GIT_REVISION.lower(),
         expected_driver_kind = "git_revision",
@@ -259,7 +272,7 @@ def selected_toolchain_test_suite(name):
     # Catches: Assuming both configured producers must share one identity kind.
     _selected_toolchain_test(
         name = mixed_test,
-        target_under_test = "//sample:" + name + "_mixed_library",
+        target_under_test = ":" + name + "_mixed_library",
         expected_xls_kind = "release_tag",
         expected_xls_value = "v0.40.0",
         expected_driver_kind = "git_revision",
@@ -274,7 +287,7 @@ def selected_toolchain_test_suite(name):
     # Catches: Breaking existing locally configured toolchains during analysis.
     _selected_toolchain_test(
         name = unpinned_test,
-        target_under_test = "//sample:" + name + "_unpinned_library",
+        target_under_test = ":" + name + "_unpinned_library",
         expect_missing = True,
     )
 
@@ -282,7 +295,6 @@ def selected_toolchain_test_suite(name):
     _legacy_bundle(
         name = legacy_bundle,
         bundle = ":" + unpinned_bundle,
-        visibility = ["//sample:__pkg__"],
     )
     legacy_test = name + "_legacy"
 
@@ -290,7 +302,7 @@ def selected_toolchain_test_suite(name):
     # Catches: Treating newly introduced optional producer fields as mandatory.
     _selected_toolchain_test(
         name = legacy_test,
-        target_under_test = "//sample:" + name + "_legacy_library",
+        target_under_test = ":" + name + "_legacy_library",
         expect_missing = True,
     )
 
@@ -298,7 +310,6 @@ def selected_toolchain_test_suite(name):
     _legacy_bundle(
         name = external_bundle,
         bundle = ":" + unpinned_bundle,
-        visibility = ["//sample:__pkg__"],
         xls_pin_kind = "release_tag",
         xls_pin_value = "0.40.0",
         xlsynth_pin_kind = "git_revision",
@@ -310,7 +321,7 @@ def selected_toolchain_test_suite(name):
     # Catches: Unprefixed releases or uppercase Git revisions leaking into metadata.
     _selected_toolchain_test(
         name = external_test,
-        target_under_test = "//sample:" + name + "_external_library",
+        target_under_test = ":" + name + "_external_library",
         expected_xls_kind = "release_tag",
         expected_xls_value = "v0.40.0",
         expected_driver_kind = "git_revision",
@@ -321,7 +332,6 @@ def selected_toolchain_test_suite(name):
     _legacy_bundle(
         name = partial_bundle,
         bundle = ":" + unpinned_bundle,
-        visibility = ["//sample:__pkg__"],
         xls_pin_kind = "release_tag",
         xls_pin_value = "0.40.0",
     )
@@ -331,10 +341,29 @@ def selected_toolchain_test_suite(name):
     # Catches: Collapsing a valid XLS pin when the XLSynth pin is unavailable.
     _selected_toolchain_test(
         name = partial_test,
-        target_under_test = "//sample:" + name + "_partial_library",
+        target_under_test = ":" + name + "_partial_library",
         expected_xls_kind = "release_tag",
         expected_xls_value = "v0.40.0",
         expect_missing_driver = True,
+    )
+
+    partial_driver_bundle = name + "_partial_driver_bundle"
+    _legacy_bundle(
+        name = partial_driver_bundle,
+        bundle = ":" + unpinned_bundle,
+        xlsynth_pin_kind = "release_tag",
+        xlsynth_pin_value = "0.36.0",
+    )
+    partial_driver_test = name + "_partial_driver"
+
+    # Verifies: A known XLSynth producer survives unavailable XLS metadata.
+    # Catches: Treating producer availability as dependent on the XLS pin.
+    _selected_toolchain_test(
+        name = partial_driver_test,
+        target_under_test = ":" + name + "_partial_driver_library",
+        expect_missing_xls = True,
+        expected_driver_kind = "release_tag",
+        expected_driver_value = "v0.36.0",
     )
 
     registered_impl = name + "_registered_impl"
@@ -354,11 +383,33 @@ def selected_toolchain_test_suite(name):
     # Catches: Assuming every registered toolchain passed through xls_bundle.
     _custom_registered_toolchain_test(
         name = registered_test,
-        target_under_test = "//sample:" + name + "_default_library",
+        target_under_test = ":" + name + "_default_library",
         expected_xls_kind = "release_tag",
         expected_xls_value = "v0.40.0",
         expected_driver_kind = "git_revision",
         expected_driver_value = _OTHER_UPPERCASE_GIT_REVISION.lower(),
+    )
+
+    legacy_registered_impl = name + "_legacy_registered_impl"
+    _custom_registered_toolchain(
+        name = legacy_registered_impl,
+        bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
+        include_producers = False,
+    )
+    native.toolchain(
+        name = name + "_legacy_registered_toolchain",
+        toolchain = ":" + legacy_registered_impl,
+        toolchain_type = "//:toolchain_type",
+        visibility = ["//visibility:public"],
+    )
+    legacy_registered_test = name + "_legacy_registered"
+
+    # Verifies: Legacy directly registered toolchains need no producer fields.
+    # Catches: Assuming every ToolchainInfo carries newly introduced metadata.
+    _legacy_registered_toolchain_test(
+        name = legacy_registered_test,
+        target_under_test = ":" + name + "_default_library",
+        expect_missing = True,
     )
 
     invalid_external_bundle = name + "_invalid_external_bundle"
@@ -366,7 +417,6 @@ def selected_toolchain_test_suite(name):
         name = invalid_external_bundle,
         bundle = ":" + unpinned_bundle,
         tags = ["manual"],
-        visibility = ["//sample:__pkg__"],
         xls_pin_kind = "git_revision",
         xls_pin_value = "ABC",
     )
@@ -375,7 +425,7 @@ def selected_toolchain_test_suite(name):
     # Negative test: Invalid external Git pins fail at the bundle ingress boundary.
     _invalid_pin_test(
         name = invalid_external_test,
-        target_under_test = "//sample:" + name + "_invalid_external_library",
+        target_under_test = ":" + name + "_invalid_external_library",
         expected_error = "Expected exact 40-character Git revision",
     )
 
@@ -466,7 +516,9 @@ def selected_toolchain_test_suite(name):
             ":" + legacy_test,
             ":" + external_test,
             ":" + partial_test,
+            ":" + partial_driver_test,
             ":" + registered_test,
+            ":" + legacy_registered_test,
             ":" + invalid_external_test,
             ":" + invalid_release_test,
             ":" + invalid_xls_release_test,

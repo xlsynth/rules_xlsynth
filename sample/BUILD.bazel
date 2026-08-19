@@ -20,7 +20,11 @@ load(
     "ir_to_gates",
     "mangle_dslx_name",
 )
-load("//:selected_toolchain_test.bzl", "selected_toolchain_test_fixtures")
+
+exports_files(
+    ["imported.x"],
+    visibility = ["//selected_toolchain_tests:__pkg__"],
+)
 
 dslx_library(
     name = "imported",
@@ -81,8 +85,6 @@ dslx_library(
     srcs = ["sample.x"],
     deps = [":imported"],
 )
-
-selected_toolchain_test_fixtures(name = "selected_toolchain_test")
 
 dslx_library(
     name = "sample_explicit_bundle",

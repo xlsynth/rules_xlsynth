@@ -47,7 +47,7 @@ test_suite(
 py_test(
     name = "selected_toolchain_exports_test",
     srcs = ["selected_toolchain_exports_test.py"],
-    data = ["//sample:selected_toolchain_test_metadata"],
+    data = ["//selected_toolchain_tests:selected_toolchain_test_metadata"],
     deps = ["@rules_python//python/runfiles"],
 )
 

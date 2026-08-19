@@ -226,7 +226,8 @@ def create_auto_installed_workspace(
         local_bundle,
         installed_driver_root_prefix,
         xls_version = "0.38.0",
-        driver_version = "0.33.0"):
+        driver_version = "0.33.0",
+        include_dslx = False):
     workspace_root.mkdir()
     write_text_file(
         workspace_root / "MODULE.bazel",
@@ -262,18 +263,19 @@ register_toolchains("@lazy_xls_toolchain//:all")
             xls_version = xls_version,
         ).lstrip(),
     )
-    write_text_file(
-        workspace_root / "BUILD.bazel",
-        """
+    if include_dslx:
+        build_content = """
 load("@rules_xlsynth//:dslx_provider.bzl", "dslx_library")
 
 dslx_library(
     name = "installed_auto_library",
     srcs = ["installed_auto.x"],
 )
-""".lstrip(),
-    )
-    write_text_file(workspace_root / "installed_auto.x", "pub fn id(x: u1) -> u1 { x }\n")
+""".lstrip()
+        write_text_file(workspace_root / "installed_auto.x", "pub fn id(x: u1) -> u1 { x }\n")
+    else:
+        build_content = ""
+    write_text_file(workspace_root / "BUILD.bazel", build_content)
 
 
 def run_nested_bazel(bazel_path, output_user_root, workspace_root, env, args):
@@ -451,6 +453,18 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
             env = dict(os.environ)
             env["PATH"] = minimal_tool_path_env(bazel_path)
             output_user_root = root / "bazel_output_user_root"
+            root_package = run_nested_bazel(
+                bazel_path,
+                output_user_root,
+                workspace_root,
+                env,
+                ["query", "//:all"],
+            )
+            self.assertEqual(
+                root_package.returncode,
+                0,
+                "{}\n{}".format(root_package.stdout, root_package.stderr),
+            )
 
             first_result = run_nested_bazel(
                 bazel_path,
@@ -505,6 +519,7 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
                 local_bundle,
                 installed_driver_root_prefix,
                 driver_version = driver_version,
+                include_dslx = True,
             )
             git_producer_revisions = {
                 "xls_git_revision": "4089AC95A5119C290C4C1798313BE6B4FEC28B63",
