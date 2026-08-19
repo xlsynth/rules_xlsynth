@@ -25,12 +25,13 @@ xls.toolchain(
     xlsynth_driver_version = "0.36.0",
 )
 
-# Exercise generated Git producer declarations without materializing a runtime.
+# Use compatible published Git revisions so this fixture's generated runtime
+# remains fetchable even when a consumer prefetches every external repository.
 xls.toolchain(
     name = "rules_xlsynth_selected_git_test",
     artifact_source = "download_only",
-    xls_git_revision = "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
-    xlsynth_driver_git_revision = "1234567890ABCDEF1234567890ABCDEF12345678",
+    xls_git_revision = "4089AC95A5119C290C4C1798313BE6B4FEC28B63",
+    xlsynth_driver_git_revision = "ABF357906F1B0B9877EEC6097B0F9C458F8D09A8",
 )
 use_repo(
     xls,

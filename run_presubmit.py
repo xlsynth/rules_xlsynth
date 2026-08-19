@@ -469,8 +469,8 @@ def run_generated_git_toolchain_declarations(config: PresubmitConfig):
         encoding = 'utf-8',
     )
     expected_pins = {
-        'xls_git_revision': 'ABCDEF0123456789ABCDEF0123456789ABCDEF01',
-        'xlsynth_driver_git_revision': '1234567890ABCDEF1234567890ABCDEF12345678',
+        'xls_git_revision': '4089AC95A5119C290C4C1798313BE6B4FEC28B63',
+        'xlsynth_driver_git_revision': 'ABF357906F1B0B9877EEC6097B0F9C458F8D09A8',
     }
     for attribute, revision in expected_pins.items():
         if '{} = "{}"'.format(attribute, revision) not in result.stdout:
