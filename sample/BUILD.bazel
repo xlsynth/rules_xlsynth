@@ -136,6 +136,24 @@ dslx_library(
 )
 
 dslx_library(
+    name = "selected_toolchain_test_external_library",
+    srcs = ["sample.x"],
+    tags = ["manual"],
+    visibility = ["//:__pkg__"],
+    xls_bundle = "//:selected_toolchain_test_external_bundle",
+    deps = [":imported"],
+)
+
+dslx_library(
+    name = "selected_toolchain_test_invalid_external_library",
+    srcs = ["sample.x"],
+    tags = ["manual"],
+    visibility = ["//:__pkg__"],
+    xls_bundle = "//:selected_toolchain_test_invalid_external_bundle",
+    deps = [":imported"],
+)
+
+dslx_library(
     name = "sample_explicit_bundle",
     srcs = ["sample.x"],
     xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",

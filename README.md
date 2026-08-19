@@ -218,9 +218,10 @@ producer pins:
 ```
 
 Git-pinned producers use `"kind": "git_revision"` with a lowercase,
-40-character revision. Versionless local bundles report unavailable pins as
-`null`. This output describes declared configuration and does not authenticate
-executable contents. Trusted `resolved_identity.json` authenticates only
+40-character revision. Each producer is independently `null` when its identity
+is unavailable, including versionless local bundles and older externally
+defined toolchains. This output describes declared configuration and does not
+authenticate executable contents. Trusted `resolved_identity.json` authenticates only
 downloaded artifacts; neither metadata mechanism authenticates installed or
 local executables.
 

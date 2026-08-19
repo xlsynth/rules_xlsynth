@@ -70,23 +70,31 @@ def _fake_bundle(name, **kwargs):
     )
 
 def _legacy_bundle_impl(ctx):
-    """Preserves the public bundle shape used before producer pins existed."""
+    """Constructs external public bundles with optional raw producer metadata."""
     bundle = ctx.attr.bundle[XlsArtifactBundleInfo]
+    fields = {
+        "artifact_inputs": bundle.artifact_inputs,
+        "driver": bundle.driver,
+        "driver_supports_sv_enum_case_naming_policy": bundle.driver_supports_sv_enum_case_naming_policy,
+        "driver_supports_sv_struct_field_ordering": bundle.driver_supports_sv_struct_field_ordering,
+        "dslx_stdlib": bundle.dslx_stdlib,
+        "dslx_stdlib_path": bundle.dslx_stdlib_path,
+        "libxls": bundle.libxls,
+        "runtime_files": bundle.runtime_files,
+        "runtime_library_path": bundle.runtime_library_path,
+        "resolved_identity": bundle.resolved_identity,
+        "tools_root": bundle.tools_root,
+        "tools_path": bundle.tools_path,
+    }
+    if ctx.attr.xls_pin_kind:
+        fields["xls_pin"] = struct(kind = ctx.attr.xls_pin_kind, value = ctx.attr.xls_pin_value)
+    if ctx.attr.xlsynth_pin_kind:
+        fields["xlsynth_crate_pin"] = struct(
+            kind = ctx.attr.xlsynth_pin_kind,
+            value = ctx.attr.xlsynth_pin_value,
+        )
     return [
-        XlsArtifactBundleInfo(
-            artifact_inputs = bundle.artifact_inputs,
-            driver = bundle.driver,
-            driver_supports_sv_enum_case_naming_policy = bundle.driver_supports_sv_enum_case_naming_policy,
-            driver_supports_sv_struct_field_ordering = bundle.driver_supports_sv_struct_field_ordering,
-            dslx_stdlib = bundle.dslx_stdlib,
-            dslx_stdlib_path = bundle.dslx_stdlib_path,
-            libxls = bundle.libxls,
-            runtime_files = bundle.runtime_files,
-            runtime_library_path = bundle.runtime_library_path,
-            resolved_identity = bundle.resolved_identity,
-            tools_root = bundle.tools_root,
-            tools_path = bundle.tools_path,
-        ),
+        XlsArtifactBundleInfo(**fields),
         DefaultInfo(files = ctx.attr.bundle[DefaultInfo].files),
     ]
 
@@ -94,6 +102,10 @@ _legacy_bundle = rule(
     implementation = _legacy_bundle_impl,
     attrs = {
         "bundle": attr.label(mandatory = True, providers = [XlsArtifactBundleInfo]),
+        "xls_pin_kind": attr.string(),
+        "xls_pin_value": attr.string(),
+        "xlsynth_pin_kind": attr.string(),
+        "xlsynth_pin_value": attr.string(),
     },
 )
 
@@ -197,6 +209,47 @@ def selected_toolchain_test_suite(name):
         expect_missing = True,
     )
 
+    external_bundle = name + "_external_bundle"
+    _legacy_bundle(
+        name = external_bundle,
+        bundle = ":" + unpinned_bundle,
+        visibility = ["//sample:__pkg__"],
+        xls_pin_kind = "release_tag",
+        xls_pin_value = "0.40.0",
+        xlsynth_pin_kind = "git_revision",
+        xlsynth_pin_value = _OTHER_UPPERCASE_GIT_REVISION,
+    )
+    external_test = name + "_external"
+
+    # Verifies: External provider pins use the existing canonical producer parser.
+    # Catches: Unprefixed releases or uppercase Git revisions leaking into metadata.
+    _selected_toolchain_test(
+        name = external_test,
+        target_under_test = "//sample:" + name + "_external_library",
+        expected_xls_kind = "release_tag",
+        expected_xls_value = "v0.40.0",
+        expected_driver_kind = "git_revision",
+        expected_driver_value = _OTHER_UPPERCASE_GIT_REVISION.lower(),
+    )
+
+    invalid_external_bundle = name + "_invalid_external_bundle"
+    _legacy_bundle(
+        name = invalid_external_bundle,
+        bundle = ":" + unpinned_bundle,
+        tags = ["manual"],
+        visibility = ["//sample:__pkg__"],
+        xls_pin_kind = "git_revision",
+        xls_pin_value = "ABC",
+    )
+    invalid_external_test = name + "_invalid_external"
+
+    # Negative test: Invalid external Git pins fail at the bundle ingress boundary.
+    _invalid_pin_test(
+        name = invalid_external_test,
+        target_under_test = "//sample:" + name + "_invalid_external_library",
+        expected_error = "Expected exact 40-character Git revision",
+    )
+
     invalid_release_bundle = name + "_invalid_release_bundle"
     _fake_bundle(
         name = invalid_release_bundle,
@@ -282,6 +335,8 @@ def selected_toolchain_test_suite(name):
             ":" + mixed_test,
             ":" + unpinned_test,
             ":" + legacy_test,
+            ":" + external_test,
+            ":" + invalid_external_test,
             ":" + invalid_release_test,
             ":" + invalid_xls_release_test,
             ":" + invalid_revision_test,

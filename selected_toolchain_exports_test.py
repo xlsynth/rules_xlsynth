@@ -84,6 +84,17 @@ class SelectedToolchainExportsTest(unittest.TestCase):
         self.assertIsNone(metadata["xls_pin"])
         self.assertIsNone(metadata["xlsynth_crate_pin"])
 
+    # Verifies: Externally supplied producer structs are normalized before export.
+    # Catches: Raw release or Git inputs bypassing the canonical producer parser.
+    def test_external_bundle_producer_fields_are_canonicalized(self):
+        metadata = self.read_metadata("sample/selected_toolchain_test_external_library.selected_toolchain.json")
+
+        self.assertEqual(metadata["xls_pin"], {"kind": "release_tag", "value": "v0.40.0"})
+        self.assertEqual(
+            metadata["xlsynth_crate_pin"],
+            {"kind": "git_revision", "value": "1234567890abcdef1234567890abcdef12345678"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

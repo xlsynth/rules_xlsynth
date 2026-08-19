@@ -48,6 +48,7 @@ filegroup(
     name = "selected_toolchain_test_metadata",
     srcs = [
         "//sample:selected_toolchain_test_default_library",
+        "//sample:selected_toolchain_test_external_library",
         "//sample:selected_toolchain_test_git_library",
         "//sample:selected_toolchain_test_legacy_library",
         "//sample:selected_toolchain_test_mixed_library",

@@ -114,6 +114,32 @@ def _declared_producer_pin(version, git_revision, label, require_xls_release = F
         pin = None
     return pin
 
+def normalize_selected_producer_pin(pin, label, require_xls_release = False):
+    """Canonicalizes optional producer metadata from external Bazel providers."""
+    if pin == None:
+        normalized = None
+    elif not hasattr(pin, "kind") or not hasattr(pin, "value"):
+        fail("{} must provide kind and value fields".format(label))
+    elif type(pin.value) != "string" or not pin.value:
+        fail("{} must provide a nonempty string value".format(label))
+    elif pin.kind == "release_tag":
+        normalized = _declared_producer_pin(
+            pin.value,
+            "",
+            label,
+            require_xls_release = require_xls_release,
+        )
+    elif pin.kind == "git_revision":
+        normalized = _declared_producer_pin(
+            "",
+            pin.value,
+            label,
+            require_xls_release = require_xls_release,
+        )
+    else:
+        fail("{} must use release_tag or git_revision, got: {}".format(label, pin.kind))
+    return normalized
+
 def _single_artifact(target, label):
     files = target[DefaultInfo].files.to_list()
     if len(files) != 1:
@@ -153,8 +179,15 @@ def _bundle_struct_from_provider(bundle):
         resolved_identity = bundle.resolved_identity,
         tools_root = bundle.tools_root,
         tools_path = bundle.tools_path,
-        xls_pin = getattr(bundle, "xls_pin", None),
-        xlsynth_crate_pin = getattr(bundle, "xlsynth_crate_pin", None),
+        xls_pin = normalize_selected_producer_pin(
+            getattr(bundle, "xls_pin", None),
+            "XLS pin",
+            require_xls_release = True,
+        ),
+        xlsynth_crate_pin = normalize_selected_producer_pin(
+            getattr(bundle, "xlsynth_crate_pin", None),
+            "XLSynth crate pin",
+        ),
     )
 
 def _runtime_struct_from_provider(runtime):

@@ -9,6 +9,7 @@ load(
     "declare_xls_toolchain_toml",
     "get_selected_tools_toolchain",
     "get_tool_artifact_inputs",
+    "normalize_selected_producer_pin",
 )
 
 DslxInfo = provider(
@@ -99,8 +100,15 @@ def _dslx_library_impl(ctx):
         use_default_shell_env = False,
     )
 
-    xls_pin = getattr(toolchain, "xls_pin", None)
-    xlsynth_crate_pin = getattr(toolchain, "xlsynth_crate_pin", None)
+    xls_pin = normalize_selected_producer_pin(
+        getattr(toolchain, "xls_pin", None),
+        "XLS pin",
+        require_xls_release = True,
+    )
+    xlsynth_crate_pin = normalize_selected_producer_pin(
+        getattr(toolchain, "xlsynth_crate_pin", None),
+        "XLSynth crate pin",
+    )
     selected_toolchain_metadata = ctx.actions.declare_file(ctx.label.name + ".selected_toolchain.json")
     ctx.actions.write(
         output = selected_toolchain_metadata,
