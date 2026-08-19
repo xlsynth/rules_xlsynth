@@ -264,6 +264,8 @@ def _toolchain_build_file(
         installed_driver_root_prefix,
         local_driver_path,
         rustup_path,
+        xls_git_revision,
+        xls_version,
         xlsynth_driver_git_revision,
         xlsynth_driver_version):
     action_env_attrs = "".join([
@@ -285,6 +287,12 @@ def _toolchain_build_file(
         _string_attr_line("xlsynth_driver_git_revision", xlsynth_driver_git_revision),
         _string_attr_line("xlsynth_driver_version", xlsynth_driver_version),
     ])
+    bundle_producer_attrs = "".join([
+        _string_attr_line("xls_git_revision", xls_git_revision),
+        _string_attr_line("xls_version", xls_version),
+        _string_attr_line("xlsynth_driver_git_revision", xlsynth_driver_git_revision),
+        _string_attr_line("xlsynth_driver_version", xlsynth_driver_version),
+    ])
     return """# SPDX-License-Identifier: Apache-2.0
 
 load("@rules_xlsynth//:xls_toolchain.bzl", "xls_bundle", "xls_toolchain", "xlsynth_driver_binary")
@@ -303,7 +311,7 @@ xls_bundle(
     driver_supports_sv_enum_case_naming_policy = {driver_supports_sv_enum_case_naming_policy},
     driver_supports_sv_struct_field_ordering = {driver_supports_sv_struct_field_ordering},
     runtime = "@{runtime_repo_name}//:runtime",
-    visibility = ["//visibility:public"],
+{bundle_producer_attrs}    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -328,6 +336,7 @@ toolchain(
         action_env_attrs = action_env_attrs,
         action_path = _quoted(action_path),
         allow_xls_pin_mismatch = "True" if allow_xls_pin_mismatch else "False",
+        bundle_producer_attrs = bundle_producer_attrs,
         driver_attrs = driver_attrs,
         driver_supports_sv_enum_case_naming_policy = "True" if _toolchain_driver_supports_sv_enum_case_naming_policy(artifact_source, local_driver_path, xlsynth_driver_git_revision, xlsynth_driver_version) else "False",
         driver_supports_sv_struct_field_ordering = "True" if _toolchain_driver_supports_sv_struct_field_ordering(artifact_source, local_driver_path, xlsynth_driver_git_revision, xlsynth_driver_version) else "False",
@@ -494,6 +503,8 @@ def _toolchain_repo_impl(repo_ctx):
             installed_driver_root_prefix = repo_ctx.attr.installed_driver_root_prefix,
             local_driver_path = repo_ctx.attr.local_driver_path,
             rustup_path = "" if rustup == None else str(rustup),
+            xls_git_revision = repo_ctx.attr.xls_git_revision,
+            xls_version = repo_ctx.attr.xls_version,
             xlsynth_driver_git_revision = repo_ctx.attr.xlsynth_driver_git_revision,
             xlsynth_driver_version = repo_ctx.attr.xlsynth_driver_version,
         ),

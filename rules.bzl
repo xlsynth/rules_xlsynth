@@ -9,6 +9,7 @@ load(
 load(
     ":dslx_provider.bzl",
     _DslxInfo = "DslxInfo",
+    _DslxSelectedToolchainInfo = "DslxSelectedToolchainInfo",
     _dslx_library = "dslx_library",
 )
 load(
@@ -44,6 +45,7 @@ load(
 load(":ir_to_gates.bzl", _ir_to_gates = "ir_to_gates")
 
 DslxInfo = _DslxInfo
+DslxSelectedToolchainInfo = _DslxSelectedToolchainInfo
 dslx_library = _dslx_library
 dslx_test = _dslx_test
 dslx_fmt_test = _dslx_fmt_test

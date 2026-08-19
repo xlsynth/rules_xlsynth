@@ -81,11 +81,43 @@ dslx_library(
     deps = [":imported"],
 )
 
+# Keep selected-toolchain analysis fixtures beside their private DSLX source.
+dslx_library(
+    name = "selected_toolchain_test_default_library",
+    srcs = ["sample.x"],
+    visibility = ["//:__pkg__"],
+    deps = [":imported"],
+)
+
+dslx_library(
+    name = "selected_toolchain_test_override_library",
+    srcs = ["sample.x"],
+    visibility = ["//:__pkg__"],
+    xls_bundle = "//:selected_toolchain_test_override_bundle",
+    deps = [":imported"],
+)
+
+dslx_library(
+    name = "selected_toolchain_test_git_library",
+    srcs = ["sample.x"],
+    visibility = ["//:__pkg__"],
+    xls_bundle = "//:selected_toolchain_test_git_bundle",
+    deps = [":imported"],
+)
+
+dslx_library(
+    name = "selected_toolchain_test_unpinned_library",
+    srcs = ["sample.x"],
+    visibility = ["//:__pkg__"],
+    xls_bundle = "//:selected_toolchain_test_unpinned_bundle",
+    deps = [":imported"],
+)
+
 dslx_library(
     name = "sample_explicit_bundle",
     srcs = ["sample.x"],
-    deps = [":imported"],
     xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
+    deps = [":imported"],
 )
 
 build_test(
@@ -178,8 +210,8 @@ dslx_test(
 
 dslx_test(
     name = "sample_explicit_bundle_test",
-    deps = [":sample_explicit_bundle"],
     xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
+    deps = [":sample_explicit_bundle"],
 )
 
 dslx_test(

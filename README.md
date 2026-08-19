@@ -176,6 +176,36 @@ dslx_to_pipeline(
 )
 ```
 
+Each `dslx_library` also exposes the producer pins selected by that specific
+library. The public `DslxSelectedToolchainInfo` provider, exported by
+`@rules_xlsynth//:rules.bzl`, contains `xls_pin`, `xlsynth_crate_pin`, and the
+opt-in `metadata` output. A library's explicit `xls_bundle` override takes
+precedence over the registered default for this metadata.
+
+Request the machine-readable output without building the library's normal
+typecheck output:
+
+```shell
+bazel build --output_groups=selected_toolchain //path:my_dslx_library
+```
+
+The generated `<target>.selected_toolchain.json` contains separately versioned
+producer pins:
+
+```json
+{
+  "schema_version": 1,
+  "xls_pin": {"kind": "release_tag", "value": "v0.40.0"},
+  "xlsynth_crate_pin": {"kind": "release_tag", "value": "v0.36.0"}
+}
+```
+
+Git-pinned producers use `"kind": "git_revision"` with a lowercase,
+40-character revision. Versionless local bundles report unavailable pins as
+`null`. This output describes declared toolchain configuration; unlike
+`resolved_identity.json`, it does not authenticate installed or local
+executable contents.
+
 Artifact-path build settings such as
 `--@rules_xlsynth//config:driver_path=...`,
 `--@rules_xlsynth//config:tools_path=...`,

@@ -6,6 +6,9 @@ load("@rules_cc//cc:defs.bzl", "CcInfo", "cc_common")
 
 _XLS_TOOLCHAIN_TYPE = "//:toolchain_type"
 _TRI_STATE_VALUES = ["", "true", "false"]
+_ALPHANUMERIC_CHARACTERS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+_GIT_REVISION_CHARACTERS = "0123456789abcdefABCDEF"
+_RELEASE_TAG_CHARACTERS = _ALPHANUMERIC_CHARACTERS + ".+-"
 
 XlsArtifactBundleInfo = provider(
     doc = "Versioned or local XLS bundle artifacts materialized by the module extension.",
@@ -22,6 +25,8 @@ XlsArtifactBundleInfo = provider(
         "resolved_identity": "Machine-readable resolved producer identity manifest, when requested.",
         "tools_root": "The XLS tool root tree artifact.",
         "tools_path": "Directory path containing the XLS tool binaries.",
+        "xls_pin": "Declared canonical XLS producer pin, or None when the bundle is unpinned.",
+        "xlsynth_crate_pin": "Declared canonical XLSynth producer pin, or None when the bundle is unpinned.",
     },
 )
 
@@ -63,6 +68,29 @@ def _validate_tri_state(value, label):
         fail("{} must be one of {}".format(label, _TRI_STATE_VALUES))
     return value
 
+def _declared_producer_pin(version, git_revision, label):
+    """Returns a canonical configured producer pin without authenticating artifacts."""
+    if version and git_revision:
+        fail("{} accepts either a release tag or a Git revision, not both".format(label))
+    elif version:
+        normalized = version if version.startswith("v") else "v" + version
+        if len(normalized) < 2 or normalized[1] not in _ALPHANUMERIC_CHARACTERS:
+            fail("Expected release tag, got: {}".format(version))
+        for index in range(1, len(normalized)):
+            if normalized[index] not in _RELEASE_TAG_CHARACTERS:
+                fail("Expected release tag, got: {}".format(version))
+        pin = struct(kind = "release_tag", value = normalized)
+    elif git_revision:
+        if len(git_revision) != 40:
+            fail("Expected exact 40-character Git revision, got: {}".format(git_revision))
+        for index in range(len(git_revision)):
+            if git_revision[index] not in _GIT_REVISION_CHARACTERS:
+                fail("Expected exact 40-character Git revision, got: {}".format(git_revision))
+        pin = struct(kind = "git_revision", value = git_revision.lower())
+    else:
+        pin = None
+    return pin
+
 def _single_artifact(target, label):
     files = target[DefaultInfo].files.to_list()
     if len(files) != 1:
@@ -102,6 +130,8 @@ def _bundle_struct_from_provider(bundle):
         resolved_identity = bundle.resolved_identity,
         tools_root = bundle.tools_root,
         tools_path = bundle.tools_path,
+        xls_pin = bundle.xls_pin,
+        xlsynth_crate_pin = bundle.xlsynth_crate_pin,
     )
 
 def _runtime_struct_from_provider(runtime):
@@ -137,6 +167,8 @@ def _toolchain_with_semantics(artifact_selection, ctx):
         runtime_files = artifact_selection.runtime_files,
         runtime_library_path = artifact_selection.runtime_library_path,
         resolved_identity = artifact_selection.resolved_identity,
+        xls_pin = artifact_selection.xls_pin,
+        xlsynth_crate_pin = artifact_selection.xlsynth_crate_pin,
         driver_supports_sv_enum_case_naming_policy = artifact_selection.driver_supports_sv_enum_case_naming_policy,
         driver_supports_sv_struct_field_ordering = artifact_selection.driver_supports_sv_struct_field_ordering,
         dslx_path = _split_nonempty(ctx.attr._dslx_path_flag[BuildSettingInfo].value, ":"),
@@ -430,6 +462,16 @@ def _xls_bundle_impl(ctx):
             resolved_identity = resolved_identity,
             tools_root = runtime.tools_root,
             tools_path = runtime.tools_path,
+            xls_pin = _declared_producer_pin(
+                ctx.attr.xls_version,
+                ctx.attr.xls_git_revision,
+                "XLS pin",
+            ),
+            xlsynth_crate_pin = _declared_producer_pin(
+                ctx.attr.xlsynth_driver_version,
+                ctx.attr.xlsynth_driver_git_revision,
+                "XLSynth crate pin",
+            ),
         ),
         DefaultInfo(files = depset(direct = artifact_inputs)),
     ]
@@ -441,6 +483,10 @@ xls_bundle = rule(
         "driver_supports_sv_enum_case_naming_policy": attr.bool(default = False),
         "driver_supports_sv_struct_field_ordering": attr.bool(default = False),
         "runtime": attr.label(mandatory = True, providers = [XlsRuntimeSurfaceInfo]),
+        "xls_git_revision": attr.string(),
+        "xls_version": attr.string(),
+        "xlsynth_driver_git_revision": attr.string(),
+        "xlsynth_driver_version": attr.string(),
     },
 )
 
@@ -469,6 +515,8 @@ def _merge_toolchain_with_bundle(toolchain, bundle):
         resolved_identity = artifact_selection.resolved_identity,
         tools_root = artifact_selection.tools_root,
         tools_path = artifact_selection.tools_path,
+        xls_pin = artifact_selection.xls_pin,
+        xlsynth_crate_pin = artifact_selection.xlsynth_crate_pin,
         dslx_path = toolchain.dslx_path,
         enable_warnings = toolchain.enable_warnings,
         disable_warnings = toolchain.disable_warnings,
