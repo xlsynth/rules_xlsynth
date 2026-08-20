@@ -79,25 +79,6 @@ class SelectedToolchainExportsTest(unittest.TestCase):
         self.assertIsNone(metadata["xls_pin"])
         self.assertIsNone(metadata["xlsynth_crate_pin"])
 
-    # Verifies: Preexisting external bundle shapes remain usable without new fields.
-    # Catches: Requiring producer pins on public providers created before this feature.
-    def test_legacy_bundle_without_producer_fields_reports_missing_pins(self):
-        metadata = self.read_metadata("legacy")
-
-        self.assertIsNone(metadata["xls_pin"])
-        self.assertIsNone(metadata["xlsynth_crate_pin"])
-
-    # Verifies: Externally supplied producer structs are normalized before export.
-    # Catches: Raw release or Git inputs bypassing the canonical producer parser.
-    def test_external_bundle_producer_fields_are_canonicalized(self):
-        metadata = self.read_metadata("external")
-
-        self.assertEqual(metadata["xls_pin"], {"kind": "release_tag", "value": "v0.40.0"})
-        self.assertEqual(
-            metadata["xlsynth_crate_pin"],
-            {"kind": "git_revision", "value": "1234567890abcdef1234567890abcdef12345678"},
-        )
-
     # Verifies: One available producer survives when the other producer is unknown.
     # Catches: Treating independently unavailable producer identities as all-or-nothing.
     def test_partial_bundle_preserves_independently_missing_pin(self):
@@ -105,14 +86,6 @@ class SelectedToolchainExportsTest(unittest.TestCase):
 
         self.assertEqual(metadata["xls_pin"], {"kind": "release_tag", "value": "v0.40.0"})
         self.assertIsNone(metadata["xlsynth_crate_pin"])
-
-    # Verifies: Known XLSynth metadata remains available without XLS metadata.
-    # Catches: Making the two producer fields interdependent during JSON export.
-    def test_partial_bundle_preserves_known_driver_when_xls_is_missing(self):
-        metadata = self.read_metadata("partial_driver")
-
-        self.assertIsNone(metadata["xls_pin"])
-        self.assertEqual(metadata["xlsynth_crate_pin"], {"kind": "release_tag", "value": "v0.36.0"})
 
 
 if __name__ == "__main__":

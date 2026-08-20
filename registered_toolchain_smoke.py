@@ -453,25 +453,13 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
             env = dict(os.environ)
             env["PATH"] = minimal_tool_path_env(bazel_path)
             output_user_root = root / "bazel_output_user_root"
-            root_package = run_nested_bazel(
-                bazel_path,
-                output_user_root,
-                workspace_root,
-                env,
-                ["query", "//:all"],
-            )
-            self.assertEqual(
-                root_package.returncode,
-                0,
-                "{}\n{}".format(root_package.stdout, root_package.stderr),
-            )
 
             first_result = run_nested_bazel(
                 bazel_path,
                 output_user_root,
                 workspace_root,
                 env,
-                ["build", "@lazy_xls_toolchain//:xlsynth-driver"],
+                ["build", "//:all", "@lazy_xls_toolchain//:xlsynth-driver"],
             )
             self.assertEqual(first_result.returncode, 0, "{}\n{}".format(first_result.stdout, first_result.stderr))
             driver_output = query_single_output_file(

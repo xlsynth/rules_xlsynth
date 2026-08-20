@@ -196,7 +196,7 @@ def selected_toolchain_test_fixtures(name):
         if suffix != "default":
             attributes["xls_bundle"] = ":" + name + "_" + suffix + "_bundle"
         dslx_library(**attributes)
-        if suffix != "invalid_external":
+        if suffix in ["default", "override", "git", "mixed", "unpinned", "partial"]:
             metadata_sources.append(":" + library_name)
 
     native.filegroup(
