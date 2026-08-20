@@ -39,6 +39,18 @@ trusted_identity_boundary_test_suite(
     name = "trusted_identity_boundary_test",
 )
 
+test_suite(
+    name = "selected_toolchain_test",
+    tests = ["//selected_toolchain_tests:selected_toolchain_test"],
+)
+
+py_test(
+    name = "selected_toolchain_exports_test",
+    srcs = ["selected_toolchain_exports_test.py"],
+    data = ["//selected_toolchain_tests:selected_toolchain_test_metadata"],
+    deps = ["@rules_python//python/runfiles"],
+)
+
 genrule(
     name = "stdlib_location_probe",
     srcs = ["@rules_xlsynth_selftest_xls_runtime//:dslx_stdlib"],

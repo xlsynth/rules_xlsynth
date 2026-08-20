@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load(
+    "//:selected_toolchain_test.bzl",
+    "selected_toolchain_test_fixtures",
+    "selected_toolchain_test_suite",
+)
+
+selected_toolchain_test_fixtures(
+    name = "selected_toolchain_test",
+)
+
+selected_toolchain_test_suite(
+    name = "selected_toolchain_test",
+)

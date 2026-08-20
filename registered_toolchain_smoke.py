@@ -10,6 +10,7 @@
 # happens only for driver-backed targets and that local or installed driver
 # files are declared Bazel action inputs.
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -51,7 +52,7 @@ def copy_runfile(source_name, dest):
     shutil.copy2(rules_xlsynth_source_file(source_name), dest)
 
 
-def create_minimal_rules_xlsynth_repo(repo_root):
+def create_minimal_rules_xlsynth_repo(repo_root, include_dslx = False):
     repo_root.mkdir()
     write_text_file(
         repo_root / "MODULE.bazel",
@@ -76,6 +77,12 @@ toolchain_type(
     copy_runfile("extensions.bzl", repo_root / "extensions.bzl")
     copy_runfile("xls_toolchain.bzl", repo_root / "xls_toolchain.bzl")
     copy_runfile("materialize_xls_bundle.py", repo_root / "materialize_xls_bundle.py")
+    if include_dslx:
+        copy_runfile("dslx_provider.bzl", repo_root / "dslx_provider.bzl")
+        copy_runfile("env_helpers.bzl", repo_root / "env_helpers.bzl")
+        config_root = repo_root / "config"
+        config_root.mkdir()
+        copy_runfile("config/BUILD.bazel", config_root / "BUILD.bazel")
 
 
 def build_minimal_shared_library(output_path):
@@ -219,7 +226,8 @@ def create_auto_installed_workspace(
         local_bundle,
         installed_driver_root_prefix,
         xls_version = "0.38.0",
-        driver_version = "0.33.0"):
+        driver_version = "0.33.0",
+        include_dslx = False):
     workspace_root.mkdir()
     write_text_file(
         workspace_root / "MODULE.bazel",
@@ -255,7 +263,19 @@ register_toolchains("@lazy_xls_toolchain//:all")
             xls_version = xls_version,
         ).lstrip(),
     )
-    write_text_file(workspace_root / "BUILD.bazel", "")
+    if include_dslx:
+        build_content = """
+load("@rules_xlsynth//:dslx_provider.bzl", "dslx_library")
+
+dslx_library(
+    name = "installed_auto_library",
+    srcs = ["installed_auto.x"],
+)
+""".lstrip()
+        write_text_file(workspace_root / "installed_auto.x", "pub fn id(x: u1) -> u1 { x }\n")
+    else:
+        build_content = ""
+    write_text_file(workspace_root / "BUILD.bazel", build_content)
 
 
 def run_nested_bazel(bazel_path, output_user_root, workspace_root, env, args):
@@ -439,7 +459,7 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
                 output_user_root,
                 workspace_root,
                 env,
-                ["build", "@lazy_xls_toolchain//:xlsynth-driver"],
+                ["build", "//:all", "@lazy_xls_toolchain//:xlsynth-driver"],
             )
             self.assertEqual(first_result.returncode, 0, "{}\n{}".format(first_result.stdout, first_result.stderr))
             driver_output = query_single_output_file(
@@ -478,7 +498,7 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
             write_versioned_driver(installed_driver, "version-one", driver_version)
 
             rules_xlsynth_root = root / "rules_xlsynth"
-            create_minimal_rules_xlsynth_repo(rules_xlsynth_root)
+            create_minimal_rules_xlsynth_repo(rules_xlsynth_root, include_dslx = True)
             local_bundle = create_installed_runtime_bundle(root / "installed_tools", "0.38.0")
             workspace_root = root / "workspace"
             create_auto_installed_workspace(
@@ -487,7 +507,24 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
                 local_bundle,
                 installed_driver_root_prefix,
                 driver_version = driver_version,
+                include_dslx = True,
             )
+            git_producer_revisions = {
+                "xls_git_revision": "4089AC95A5119C290C4C1798313BE6B4FEC28B63",
+                "xlsynth_driver_git_revision": "ABF357906F1B0B9877EEC6097B0F9C458F8D09A8",
+            }
+            with (workspace_root / "MODULE.bazel").open("a", encoding = "utf-8") as module_file:
+                module_file.write(
+                    """
+xls.toolchain(
+    name = "git_probe_xls",
+    artifact_source = "download_only",
+    xls_git_revision = "{xls_git_revision}",
+    xlsynth_driver_git_revision = "{xlsynth_driver_git_revision}",
+)
+use_repo(xls, "git_probe_xls_toolchain")
+""".format(**git_producer_revisions)
+                )
             env = dict(os.environ)
             env["PATH"] = minimal_tool_path_env(bazel_path)
             output_user_root = root / "bazel_output_user_root"
@@ -498,12 +535,46 @@ class RegisteredRuntimeOnlyTest(unittest.TestCase):
                 env,
                 ["query", "@lazy_xls_toolchain//:all"],
             )
-
+            combined_output = "{}\n{}".format(result.stdout, result.stderr)
+            self.assertEqual(result.returncode, 0, combined_output)
+            self.assertIn("@lazy_xls_toolchain//:xlsynth-driver", combined_output)
             staged_host_drivers = paths_with_basename(output_user_root, "host_xlsynth-driver")
+            git_result = run_nested_bazel(
+                bazel_path,
+                output_user_root,
+                workspace_root,
+                env,
+                ["query", "--output=build", "@git_probe_xls_toolchain//:bundle"],
+            )
+            self.assertEqual(git_result.returncode, 0, "{}\n{}".format(git_result.stdout, git_result.stderr))
+            for attribute, revision in git_producer_revisions.items():
+                self.assertIn('{} = "{}"'.format(attribute, revision), git_result.stdout)
+            metadata_result = run_nested_bazel(
+                bazel_path,
+                output_user_root,
+                workspace_root,
+                env,
+                ["build", "--output_groups=selected_toolchain", "//:installed_auto_library"],
+            )
+            self.assertEqual(
+                metadata_result.returncode,
+                0,
+                "{}\n{}".format(metadata_result.stdout, metadata_result.stderr),
+            )
+            metadata_path = workspace_root / "bazel-bin" / "installed_auto_library.selected_toolchain.json"
+            metadata = json.loads(metadata_path.read_text(encoding = "utf-8"))
+            typecheck_path = workspace_root / "bazel-bin" / "installed_auto_library.typecheck"
+            typecheck_was_executed = typecheck_path.exists()
 
-        combined_output = "{}\n{}".format(result.stdout, result.stderr)
-        self.assertEqual(result.returncode, 0, combined_output)
-        self.assertIn("@lazy_xls_toolchain//:xlsynth-driver", combined_output)
+        self.assertEqual(
+            metadata,
+            {
+                "schema_version": 1,
+                "xls_pin": {"kind": "release_tag", "value": "v0.38.0"},
+                "xlsynth_crate_pin": {"kind": "release_tag", "value": "v0.33.0"},
+            },
+        )
+        self.assertFalse(typecheck_was_executed)
         self.assertEqual(staged_host_drivers, [])
 
     def test_01_toolchain_package_load_does_not_materialize_driver(self):

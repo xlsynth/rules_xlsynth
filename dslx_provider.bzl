@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
+"""Exposes DSLX source dependencies and each library's declared toolchain pins."""
+
 load(":env_helpers.bzl", "python_runner_source")
 load(
     ":xls_toolchain.bzl",
@@ -7,6 +9,7 @@ load(
     "declare_xls_toolchain_toml",
     "get_selected_tools_toolchain",
     "get_tool_artifact_inputs",
+    "normalize_selected_producer_pin",
 )
 
 DslxInfo = provider(
@@ -16,6 +19,14 @@ DslxInfo = provider(
     },
 )
 
+DslxSelectedToolchainInfo = provider(
+    doc = "Declared, unauthenticated producer pins selected by one DSLX library.",
+    fields = {
+        "metadata": "Opt-in JSON artifact containing the declared selected producer pins.",
+        "xls_pin": "Declared XLS producer struct with .kind and .value, or None when unavailable.",
+        "xlsynth_crate_pin": "Declared XLSynth producer struct with .kind and .value, or None when unavailable.",
+    },
+)
 
 def make_dag_entry(srcs, deps, label):
     return struct(
@@ -23,7 +34,6 @@ def make_dag_entry(srcs, deps, label):
         deps = tuple(deps),
         label = label,
     )
-
 
 def make_dslx_info(
         new_entries = (),
@@ -35,7 +45,6 @@ def make_dslx_info(
             transitive = [x.dag for x in old_infos],
         ),
     )
-
 
 def _dslx_library_impl(ctx):
     """Produces a DAG for the given target.
@@ -91,11 +100,35 @@ def _dslx_library_impl(ctx):
         use_default_shell_env = False,
     )
 
+    xls_pin = normalize_selected_producer_pin(
+        getattr(toolchain, "xls_pin", None),
+        "XLS pin",
+        require_xls_release = True,
+    )
+    xlsynth_crate_pin = normalize_selected_producer_pin(
+        getattr(toolchain, "xlsynth_crate_pin", None),
+        "XLSynth crate pin",
+    )
+    selected_toolchain_metadata = ctx.actions.declare_file(ctx.label.name + ".selected_toolchain.json")
+    ctx.actions.write(
+        output = selected_toolchain_metadata,
+        content = json.encode({
+            "schema_version": 1,
+            "xls_pin": xls_pin,
+            "xlsynth_crate_pin": xlsynth_crate_pin,
+        }) + "\n",
+    )
+
     return [
         dslx_info,
         DefaultInfo(files = depset([typecheck_output])),
+        DslxSelectedToolchainInfo(
+            metadata = selected_toolchain_metadata,
+            xls_pin = xls_pin,
+            xlsynth_crate_pin = xlsynth_crate_pin,
+        ),
+        OutputGroupInfo(selected_toolchain = depset([selected_toolchain_metadata])),
     ]
-
 
 dslx_library = rule(
     doc = "Define a DSLX module.",

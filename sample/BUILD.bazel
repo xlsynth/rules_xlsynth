@@ -21,6 +21,11 @@ load(
     "mangle_dslx_name",
 )
 
+exports_files(
+    ["imported.x"],
+    visibility = ["//selected_toolchain_tests:__pkg__"],
+)
+
 dslx_library(
     name = "imported",
     srcs = ["imported.x"],
@@ -84,8 +89,8 @@ dslx_library(
 dslx_library(
     name = "sample_explicit_bundle",
     srcs = ["sample.x"],
-    deps = [":imported"],
     xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
+    deps = [":imported"],
 )
 
 build_test(
@@ -178,8 +183,8 @@ dslx_test(
 
 dslx_test(
     name = "sample_explicit_bundle_test",
-    deps = [":sample_explicit_bundle"],
     xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
+    deps = [":sample_explicit_bundle"],
 )
 
 dslx_test(

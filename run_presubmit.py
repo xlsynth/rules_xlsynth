@@ -443,6 +443,8 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
             '//:download_release_test',
             '//:external_bundle_exports_test',
             '//:trusted_identity_boundary_test',
+            '//:selected_toolchain_test',
+            '//:selected_toolchain_exports_test',
         ),
         config,
     )
