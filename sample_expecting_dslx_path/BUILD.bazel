@@ -6,7 +6,7 @@
 # This particular sample shows how things work when
 # `@rules_xlsynth//config:dslx_path` adds an import root with bare module names.
 
-load("//:rules.bzl", "dslx_library", "dslx_test", "dslx_to_pipeline")
+load("//:rules.bzl", "dslx_library", "dslx_prove_quickcheck_test", "dslx_test", "dslx_to_pipeline")
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 
 dslx_library(
@@ -26,6 +26,12 @@ dslx_library(
 dslx_test(
     name = "main_test",
     deps = [":main"],
+)
+
+dslx_prove_quickcheck_test(
+    name = "main_prove_quickcheck_test",
+    lib = ":main",
+    top = "quickcheck_imports",
 )
 
 dslx_to_pipeline(

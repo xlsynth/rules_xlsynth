@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "dslx_library", "dslx_prove_quickcheck_test")
+
+dslx_library(
+    name = "passing",
+    srcs = ["passing.x"],
+)
+
+# Omitting top proves every property, including properties with assertions.
+dslx_prove_quickcheck_test(
+    name = "all_properties_test",
+    lib = ":passing",
+)
+
+dslx_library(
+    name = "selection",
+    srcs = ["selection.x"],
+)
+
+# Neither the exact name nor the alternation may select failing neighbors.
+dslx_prove_quickcheck_test(
+    name = "exact_selection_test",
+    lib = ":selection",
+    top = "selected_alpha",
+)
+
+dslx_prove_quickcheck_test(
+    name = "regex_selection_test",
+    lib = ":selection",
+    top = "selected_alpha|selected_beta",
+)
+
+# Negative controls are invoked explicitly by run_presubmit.py.
+dslx_prove_quickcheck_test(
+    name = "failing_property_test",
+    lib = ":selection",
+    tags = ["manual"],
+    top = "selected_alpha_suffix",
+)
+
+dslx_prove_quickcheck_test(
+    name = "mixed_results_test",
+    lib = ":selection",
+    tags = ["manual"],
+)
+
+dslx_prove_quickcheck_test(
+    name = "no_matching_property_test",
+    lib = ":selection",
+    tags = ["manual"],
+    top = "selected_absent",
+)
+
+dslx_library(
+    name = "failing_assertion",
+    srcs = ["failing_assertion.x"],
+)
+
+dslx_prove_quickcheck_test(
+    name = "failing_assertion_test",
+    lib = ":failing_assertion",
+    tags = ["manual"],
+    top = "assertion_that_can_fail",
+)
+
+dslx_library(
+    name = "no_properties",
+    srcs = ["no_properties.x"],
+)
+
+dslx_prove_quickcheck_test(
+    name = "no_properties_test",
+    lib = ":no_properties",
+    tags = ["manual"],
+)
+
+# Both targets are manual because the warning is an intentional failure unless
+# unused_definition is disabled by the presubmit's second invocation.
+dslx_library(
+    name = "warning_property",
+    srcs = ["warning_property.x"],
+    tags = ["manual"],
+)
+
+dslx_prove_quickcheck_test(
+    name = "warning_policy_test",
+    lib = ":warning_property",
+    tags = ["manual"],
+    top = "property_with_warning",
+)

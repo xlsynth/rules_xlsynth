@@ -9,6 +9,7 @@ import re
 import tempfile
 import shutil
 import sys
+import xml.etree.ElementTree as ElementTree
 
 import materialize_xls_bundle
 
@@ -146,18 +147,95 @@ def run_python_script(config: PresubmitConfig, script_name: str, args: Tuple[str
     print('Running command: ' + subprocess.list2cmdline(cmdline))
     subprocess.run(cmdline, check = True, cwd = str(config.repo_root), env = env)
 
+
+def _quickcheck_report_path(config: PresubmitConfig, target: str) -> Path:
+    package, name = target[2:].split(':')
+    return config.repo_root / 'bazel-testlogs' / package / name / 'test.xml'
+
+
+def _clear_quickcheck_report(config: PresubmitConfig, target: str):
+    # A build failure must not let an earlier test's XML satisfy these checks.
+    report_path = _quickcheck_report_path(config, target)
+    if report_path.exists():
+        report_path.unlink()
+
+
+def _check_quickcheck_report(
+        config: PresubmitConfig,
+        target: str,
+        expected: Dict[str, bool],
+        *,
+        assertion_failure: Optional[str] = None):
+    """Check exact property selection and real proof/counterexample evidence."""
+    root = ElementTree.parse(str(_quickcheck_report_path(config, target))).getroot()
+    cases = list(root.iter('testcase'))
+    names = [case.get('name', '') for case in cases]
+    if sorted(names) != sorted(expected):
+        raise ValueError('{}: expected properties {}, got {}'.format(target, sorted(expected), names))
+    for case in cases:
+        name = case.get('name', '')
+        if case.find('error') is not None or case.find('skipped') is not None:
+            raise ValueError('{}: {} did not produce a proof result'.format(target, name))
+        failures = case.findall('failure')
+        if expected[name]:
+            if failures:
+                raise ValueError('{}: {} unexpectedly failed'.format(target, name))
+        else:
+            if len(failures) != 1:
+                raise ValueError('{}: {} must have exactly one failure'.format(target, name))
+            counterexample = ''.join(failures[0].itertext())
+            # Driver errors also populate the counterexample field; require a
+            # concrete model, not merely an unsuccessful solver invocation.
+            if 'inputs:' not in counterexample or 'output:' not in counterexample:
+                raise ValueError('{}: {} has no concrete counterexample: {}'.format(target, name, counterexample))
+            if name == assertion_failure and 'assertion_violation: Some(' not in counterexample:
+                raise ValueError('{}: {} has no assertion violation: {}'.format(target, name, counterexample))
+
+
+def _expect_quickcheck_failure(
+        config: PresubmitConfig,
+        target: str,
+        expected: Dict[str, bool],
+        *,
+        assertion_failure: Optional[str] = None):
+    _clear_quickcheck_report(config, target)
+    try:
+        bazel_test_opt((target,), config, capture_output = True)
+    except subprocess.CalledProcessError as e:
+        if e.returncode != 3:
+            raise ValueError('Expected a Bazel test failure, got stdout: {} stderr: {}'.format(e.stdout, e.stderr))
+        _check_quickcheck_report(config, target, expected, assertion_failure = assertion_failure)
+    else:
+        raise ValueError('Expected quickcheck proof to fail: ' + target)
+
+
 @register
 def run_sample(config: PresubmitConfig):
+    proof_targets = (
+        '//sample:sample_prove_quickcheck_test',
+        '//sample:sample_prove_quickcheck_explicit_bundle_test',
+    )
+    for target in proof_targets:
+        _clear_quickcheck_report(config, target)
     bazel_test_opt(('//sample/...',), config)
+    for target in proof_targets:
+        _check_quickcheck_report(config, target, {'quickcheck_main': True})
 
 
 @register
 def run_sample_expecting_dslx_path(config: PresubmitConfig):
+    proof_target = '//sample_expecting_dslx_path:main_prove_quickcheck_test'
+    _clear_quickcheck_report(config, proof_target)
     bazel_test_opt(
-        ('//sample_expecting_dslx_path:main_test', '//sample_expecting_dslx_path:add_mol_pipeline_sv_test'),
+        (
+            '//sample_expecting_dslx_path:main_test',
+            '//sample_expecting_dslx_path:add_mol_pipeline_sv_test',
+            proof_target,
+        ),
         config,
         dslx_path = ('sample_expecting_dslx_path', 'sample_expecting_dslx_path/subdir'),
     )
+    _check_quickcheck_report(config, proof_target, {'quickcheck_imports': True})
 
 
 @register
@@ -172,18 +250,99 @@ def run_sample_failing_quickcheck(config: PresubmitConfig):
     else:
         raise ValueError('Expected quickcheck to fail')
 
-    try:
-        bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_proof_test',), config, capture_output = True)
-    except subprocess.CalledProcessError as e:
-        m = re.search(
-            r'ProofError: Failed to prove the property! counterexample: bits\[1\]:\d+, bits\[2\]:\d+',
-            e.stdout,
-        )
-        if m:
-            print('Found proof error as expected: ' + m.group(0))
-            pass
+    _expect_quickcheck_failure(
+        config,
+        '//sample_failing_quickcheck:failing_quickcheck_proof_test',
+        {'always_fail': False},
+    )
+
+
+@register
+def run_sample_quickcheck_proofs(config: PresubmitConfig):
+    """Exercise property selection, assertion semantics, and Bazel XML results."""
+    positive_targets = {
+        '//sample_quickcheck_proofs:all_properties_test': {
+            'addition_commutes': True,
+            'xor_cancels': True,
+            'assertion_holds': True,
+        },
+        '//sample_quickcheck_proofs:exact_selection_test': {'selected_alpha': True},
+        '//sample_quickcheck_proofs:regex_selection_test': {
+            'selected_alpha': True,
+            'selected_beta': True,
+        },
+    }
+    for target in sorted(positive_targets):
+        _clear_quickcheck_report(config, target)
+    bazel_test_opt(tuple(sorted(positive_targets)), config)
+    for target in sorted(positive_targets):
+        _check_quickcheck_report(config, target, positive_targets[target])
+
+    _expect_quickcheck_failure(
+        config,
+        '//sample_quickcheck_proofs:failing_property_test',
+        {'selected_alpha_suffix': False},
+    )
+    _expect_quickcheck_failure(
+        config,
+        '//sample_quickcheck_proofs:mixed_results_test',
+        {
+            'selected_alpha': True,
+            'selected_beta': True,
+            'selected_alpha_suffix': False,
+            'prefix_selected_beta': False,
+        },
+    )
+    _expect_quickcheck_failure(
+        config,
+        '//sample_quickcheck_proofs:failing_assertion_test',
+        {'assertion_that_can_fail': False},
+        assertion_failure = 'assertion_that_can_fail',
+    )
+
+    for target in (
+            '//sample_quickcheck_proofs:no_matching_property_test',
+            '//sample_quickcheck_proofs:no_properties_test'):
+        _clear_quickcheck_report(config, target)
+        try:
+            bazel_test_opt((target,), config, capture_output = True)
+        except subprocess.CalledProcessError as e:
+            output = (e.stdout or '') + (e.stderr or '')
+            if e.returncode != 3 or 'No matching quickcheck functions found' not in output:
+                raise ValueError('Unexpected error selecting quickchecks: ' + output)
+            root = ElementTree.parse(str(_quickcheck_report_path(config, target))).getroot()
+            if not list(root.iter('error')):
+                raise ValueError('Expected a missing-property error in XML: ' + target)
         else:
-            raise ValueError('Unexpected error proving quickcheck: stdout: ' + e.stdout + ' stderr: ' + e.stderr)
+            raise ValueError('Expected empty quickcheck selection to fail: ' + target)
+
+
+@register
+def run_sample_quickcheck_warning_policy(config: PresubmitConfig):
+    """Keep configured DSLX warning policy consistent with native proof tests."""
+    target = '//sample_quickcheck_proofs:warning_policy_test'
+    _clear_quickcheck_report(config, target)
+    try:
+        bazel_test_opt((target,), config, capture_output = True)
+    except subprocess.CalledProcessError as e:
+        output = (e.stdout or '') + (e.stderr or '')
+        warning = 'is not used in function `identity_with_warning`'
+        if e.returncode != 3 or warning not in output:
+            raise ValueError('Expected an unused-definition warning to reject the proof: ' + output)
+        root = ElementTree.parse(str(_quickcheck_report_path(config, target))).getroot()
+        if not list(root.iter('error')):
+            raise ValueError('Expected a typechecking error in proof XML: ' + target)
+    else:
+        raise ValueError('Expected the default warning policy to reject the proof: ' + target)
+
+    _clear_quickcheck_report(config, target)
+    bazel_test_opt(
+        (target,),
+        config,
+        more_action_env = {'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition'},
+    )
+    _check_quickcheck_report(config, target, {'property_with_warning': True})
+
 
 @register
 def run_sample_disabling_warning(config: PresubmitConfig):

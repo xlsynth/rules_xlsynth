@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
+load("@bazel_skylib//lib:shell.bzl", "shell")
 load(":dslx_provider.bzl", "DslxInfo")
 load(":helpers.bzl", "write_executable_shell_script", "get_srcs_from_lib")
 load(":env_helpers.bzl", "python_runner_source")
@@ -7,8 +8,8 @@ load(
     ":xls_toolchain.bzl",
     "XlsArtifactBundleInfo",
     "declare_xls_toolchain_toml",
-    "get_selected_tools_toolchain",
-    "get_tool_artifact_inputs",
+    "get_driver_artifact_inputs",
+    "get_selected_driver_toolchain",
 )
 
 
@@ -23,24 +24,27 @@ def _dslx_prove_quickcheck_test_impl(ctx):
 
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
-    toolchain = get_selected_tools_toolchain(ctx)
+    toolchain = get_selected_driver_toolchain(ctx)
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "prove_quickcheck", toolchain = toolchain)
     cmd_parts = [
         "/usr/bin/env",
         "python3",
         runner.short_path,
-        "tool",
+        "quickcheck",
+        "--driver_path",
+        toolchain.driver_path,
         "--toolchain",
         toolchain_file.short_path,
+        "--dslx_input_file",
+        lib_src.short_path,
     ]
     if toolchain.runtime_library_path:
         cmd_parts.extend(["--runtime_library_path", toolchain.runtime_library_path])
-    cmd_parts.extend(["prove_quickcheck_main", lib_src.short_path])
-    cmd = " ".join(["\"{}\"".format(part) for part in cmd_parts])
     if ctx.attr.top:
-        cmd += " --test_filter=" + ctx.attr.top
+        cmd_parts.extend(["--top", ctx.attr.top])
+    cmd = " ".join([shell.quote(part) for part in cmd_parts])
 
-    runfiles = ctx.runfiles(srcs + [runner, toolchain_file] + get_tool_artifact_inputs(toolchain, "prove_quickcheck_main"))
+    runfiles = ctx.runfiles(srcs + [runner, toolchain_file] + get_driver_artifact_inputs(toolchain, ["typecheck_main"]))
     executable_file = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
@@ -54,7 +58,7 @@ def _dslx_prove_quickcheck_test_impl(ctx):
 
 
 dslx_prove_quickcheck_test = rule(
-    doc = "Prove a DSLX quickcheck holds for its entire input domain.",
+    doc = "Prove DSLX quickchecks over their entire input domain using xlsynth-driver and Bitwuzla.",
     implementation = _dslx_prove_quickcheck_test_impl,
     attrs = {
         "lib": attr.label(
@@ -63,7 +67,7 @@ dslx_prove_quickcheck_test = rule(
             mandatory = True,
         ),
         "top": attr.string(
-            doc = "The quickcheck function to be tested. If none is provided, all quickcheck functions in the library will be tested.",
+            doc = "Full-match regular expression selecting quickcheck function names. If omitted, prove all quickchecks in the library. An empty selection fails.",
         ),
         "xls_bundle": attr.label(
             doc = "Optional XLS bundle override.",

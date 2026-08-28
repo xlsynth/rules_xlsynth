@@ -9,9 +9,9 @@ from typing import List
 
 _DOCSTRING = """Returns the embedded xlsynth_runner.py source.
 
-The returned program reads a declared toolchain TOML input and invokes either
-the driver (via the 'driver' subcommand) or a tool (via the 'tool'
-subcommand), forwarding passthrough flags accordingly.
+The returned program reads a declared toolchain TOML input and invokes the
+driver ('driver'), a native tool ('tool'), or Bitwuzla QuickCheck proofs with
+per-property Bazel reporting ('quickcheck').
 """
 
 
@@ -21,7 +21,7 @@ def _generate_bzl(py_source: str) -> str:
     ]
     docstring = textwrap.indent(textwrap.dedent(f'"""{_DOCSTRING}\n"""'),
                                 "    ").rstrip()
-    escaped_python = py_source.replace('"""', '\"\"\"')
+    escaped_python = py_source.replace("\\", "\\\\").replace('"""', '\\"""')
     python_lines = escaped_python.splitlines()
     if python_lines:
         return_lines = [f'    return """{python_lines[0]}']

@@ -332,6 +332,22 @@ ir_to_delay_info(
 
 ### `dslx_prove_quickcheck_test` - prove quickcheck holds for entire input domain
 
+Runs `xlsynth-driver prove-quickcheck --solver bitwuzla` using the selected
+toolchain or explicit `xls_bundle`. The driver must include Bitwuzla support;
+download-backed bundles build it with `with-bitwuzla-system`. Cargo builds need
+the system Bitwuzla development libraries, and dynamically linked drivers need
+the matching libraries at runtime. Existing Bitwuzla-enabled installed drivers
+are reused. There is no fallback to the native XLS/Z3 prover.
+
+`top` is a full-match regular expression over QuickCheck function names. Omit
+it to prove every QuickCheck in the library; selecting no properties fails.
+Assertions must never fail (`--assertion-semantics never`), and each property
+gets a Bazel/JUnit test result with counterexample details on failure. The rule
+first runs the selected XLS typechecker to enforce configured warning settings.
+The rule adds no separate XLS IR optimization step; optimization follows the
+selected driver's behavior (older releases use unoptimized IR). Proof runtimes
+may differ from native XLS proving.
+
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "dslx_prove_quickcheck_test")
 

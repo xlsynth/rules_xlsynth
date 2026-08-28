@@ -46,6 +46,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install system Bitwuzla shared libraries
+        run: |
+          python scripts/install_ci_bitwuzla_test.py
+          sudo "$(command -v python)" scripts/install_ci_bitwuzla.py
+          echo "LIBRARY_PATH=/usr/lib:${LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
       - name: Parse xlsynth-versions.toml
         id: versions
         run: |
@@ -91,7 +97,7 @@ jobs:
 
       - name: Install xlsynth-driver using Cargo
         run: |
-          cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }}
+          cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }} --features with-bitwuzla-system
 
       - name: Prove split toolchain materialization
         run: |
@@ -195,6 +201,12 @@ jobs:
           fi
           python3.6 --version
 
+      - name: Install system Bitwuzla shared libraries
+        run: |
+          python3.6 scripts/install_ci_bitwuzla_test.py
+          python3.6 scripts/install_ci_bitwuzla.py
+          echo "LIBRARY_PATH=/usr/lib:${LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
       - name: Download and rename libxls
         run: |
           XLSYNTH_VERSION=${{ env.DSO_VERSION }}
@@ -239,7 +251,7 @@ jobs:
 
       - name: Install xlsynth-driver using Cargo
         run: |
-          cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }}
+          cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }} --features with-bitwuzla-system
 
       - name: Prove split toolchain materialization
         run: |

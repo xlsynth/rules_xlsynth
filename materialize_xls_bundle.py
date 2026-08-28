@@ -43,6 +43,8 @@ _CRATE_IMPLIED_XLS_RELEASE_RE = re.compile(
     r'RELEASE_LIB_VERSION_TAG\s*:\s*&str\s*=\s*"([^"]+)"'
 )
 _DRIVER_GIT_PROVENANCE_FILENAME = "xlsynth-driver.provenance.json"
+# Proof tests use system Bitwuzla; Cargo's default features omit the solver.
+_DRIVER_CARGO_FEATURES = ("with-bitwuzla-system",)
 _PRIVATE_RUNTIME_FILENAMES = {"resolved_identity.json"}
 
 
@@ -613,7 +615,8 @@ def detect_host_platform():
 
 
 def driver_install_root(repo_root, driver_identity, host_platform):
-    return repo_root / "_cargo_driver" / host_platform / driver_identity
+    # Keep installations with different solver/linking features in separate caches.
+    return repo_root / "_cargo_driver" / host_platform / driver_identity / ",".join(_DRIVER_CARGO_FEATURES)
 
 
 def rustup_home_root(repo_root, host_platform):
@@ -814,6 +817,8 @@ def build_driver_install_command(rustup_path, install_root, driver_version):
         "cargo",
         "install",
         "--locked",
+        "--features",
+        ",".join(_DRIVER_CARGO_FEATURES),
         "--root",
         str(install_root),
         "--version",
@@ -830,6 +835,8 @@ def build_driver_git_install_command(rustup_path, install_root, driver_git_revis
         "cargo",
         "install",
         "--locked",
+        "--features",
+        ",".join(_DRIVER_CARGO_FEATURES),
         "--root",
         str(install_root),
         "--git",
