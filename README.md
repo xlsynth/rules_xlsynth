@@ -17,8 +17,8 @@ xls = use_extension("@rules_xlsynth//:extensions.bzl", "xls")
 
 xls.toolchain(
     name = "workspace_xls",
-    xls_version = "0.40.0",
-    xlsynth_driver_version = "0.36.0",
+    xls_version = "0.54.7",
+    xlsynth_driver_version = "0.66.0",
     artifact_source = "auto",
     installed_tools_root_prefix = "/opt/xlsynth",
     installed_driver_root_prefix = "/opt/xlsynth-driver",
@@ -212,8 +212,8 @@ producer pins:
 ```json
 {
   "schema_version": 1,
-  "xls_pin": {"kind": "release_tag", "value": "v0.40.0"},
-  "xlsynth_crate_pin": {"kind": "release_tag", "value": "v0.36.0"}
+  "xls_pin": {"kind": "release_tag", "value": "v0.54.7"},
+  "xlsynth_crate_pin": {"kind": "release_tag", "value": "v0.66.0"}
 }
 ```
 

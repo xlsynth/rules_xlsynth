@@ -7,13 +7,10 @@ bazel_dep(name = "rules_python", version = "1.0.0")
 xls = use_extension("//:extensions.bzl", "xls", dev_dependency = True)
 xls.toolchain(
     name = "rules_xlsynth_selftest_xls",
-    # Exercise the explicit development override: crate v0.36.0 implies XLS
-    # v0.39.0, while the existing self-test intentionally selects XLS v0.40.0.
-    allow_xls_pin_mismatch = True,
     artifact_source = "download_only",
     emit_resolved_identity = True,
-    xls_version = "0.40.0",
-    xlsynth_driver_version = "0.36.0",
+    xls_version = "0.54.7",
+    xlsynth_driver_version = "0.66.0",
 )
 
 # Mirror the explicit override repo name used by the standalone smoke example
@@ -21,8 +18,8 @@ xls.toolchain(
 xls.toolchain(
     name = "workspace_override_xls",
     artifact_source = "download_only",
-    xls_version = "0.40.0",
-    xlsynth_driver_version = "0.36.0",
+    xls_version = "0.54.7",
+    xlsynth_driver_version = "0.66.0",
 )
 use_repo(
     xls,
