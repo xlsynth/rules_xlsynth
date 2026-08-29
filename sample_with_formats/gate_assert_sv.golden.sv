@@ -8,49 +8,45 @@ module __gate_assert_minimal__main(
   output wire out
 );
   // ===== Pipe stage 0:
-  wire p0_load_en_comb;
-  assign p0_load_en_comb = input_valid | rst;
 
   // Registers for pipe stage 0:
-  reg p0_valid;
-  reg p0_pred;
-  reg p0_x;
+  reg input_valid__input_flop;
+  reg pred__input_flop;
+  reg x__input_flop;
   always_ff @ (posedge clk) begin
     if (rst) begin
-      p0_valid <= 1'h0;
-      p0_pred <= 1'h0;
-      p0_x <= 1'h0;
+      input_valid__input_flop <= 1'h0;
+      pred__input_flop <= 1'h0;
+      x__input_flop <= 1'h0;
     end else begin
-      p0_valid <= input_valid;
-      p0_pred <= p0_load_en_comb ? pred : p0_pred;
-      p0_x <= p0_load_en_comb ? x : p0_x;
+      input_valid__input_flop <= input_valid;
+      pred__input_flop <= input_valid ? pred : pred__input_flop;
+      x__input_flop <= input_valid ? x : x__input_flop;
     end
   end
 
   // ===== Pipe stage 1:
-  wire p1_or_75_comb;
+  wire p1_or_84_comb;
   wire p1_gated_comb;
-  wire p1_load_en_comb;
-  assign p1_or_75_comb = ~p0_valid | p0_x | rst;
-  br_gate_buf gated_p1_gated_comb(.in(p0_x), .out(p1_gated_comb));
-  assign p1_load_en_comb = p0_valid | rst;
+  assign p1_or_84_comb = ~input_valid__input_flop | x__input_flop | rst;
+  br_gate_buf gated_p1_gated_comb(.in(x__input_flop), .out(p1_gated_comb));
 
   // Registers for pipe stage 1:
-  reg p1_valid;
-  reg p1_gated;
+  reg output_valid__output_flop;
+  reg out__output_flop;
   always_ff @ (posedge clk) begin
     if (rst) begin
-      p1_valid <= 1'h0;
-      p1_gated <= 1'h0;
+      output_valid__output_flop <= 1'h0;
+      out__output_flop <= 1'h0;
     end else begin
-      p1_valid <= p0_valid;
-      p1_gated <= p1_load_en_comb ? p1_gated_comb : p1_gated;
+      output_valid__output_flop <= input_valid__input_flop;
+      out__output_flop <= input_valid__input_flop ? p1_gated_comb : out__output_flop;
     end
   end
-  assign output_valid = p1_valid;
-  assign out = p1_gated;
+  assign output_valid = output_valid__output_flop;
+  assign out = out__output_flop;
   `ifdef ASSERT_ON
-  `BR_ASSERT(__gate_assert_minimal__main_0_non_synth___gate_assert_minimal__main_should_be_one, p1_or_75_comb)
+  `BR_ASSERT(__gate_assert_minimal__main_0_non_synth___gate_assert_minimal__main_should_be_one, p1_or_84_comb)
   `endif  // ASSERT_ON
 endmodule
 

@@ -194,6 +194,9 @@ dslx_test(
 )
 
 # -- one-stage pipeline w/valid signals
+# The constant, parameter-free top has no input flop in the pinned XLS codegen:
+# input_valid is omitted, output_valid becomes true after reset, and the constant
+# data output is registered. The variants below cover data-path reset on/off.
 
 dslx_to_pipeline(
     name = "sample_main_sv",

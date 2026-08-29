@@ -359,6 +359,15 @@ dslx_prove_quickcheck_test(
 )
 ```
 
+### `ir_prove_equiv_test` - prove two IR functions equivalent
+
+Runs the selected driver's `ir-equiv` command for the `lhs`, `rhs`, and `top`
+attributes. Under `bazel test`, it saves the driver's JSON report as the
+undeclared test output `ir_equiv.json`, including `success` and `error_str`.
+The report is available for both successful proofs and counterexamples; a
+failure result alone is not evidence of non-equivalence because solver errors
+and inconclusive results also fail.
+
 ### `ir_to_gates` - convert IR to gate-level analysis
 
 Given an IR target (typically from `dslx_to_ir`) as input via `ir_src`, this rule runs the `ir2gates` tool to produce a text file containing gate-level analysis (e.g., gate counts, depth).

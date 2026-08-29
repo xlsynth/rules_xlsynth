@@ -38,7 +38,14 @@ def _ir_prove_equiv_test_impl(ctx):
         lhs_file.short_path,
         rhs_file.short_path,
     ])
-    cmd = " ".join(["\"{}\"".format(part) for part in cmd_parts])
+    # Preserve machine-readable proof evidence in Bazel test outputs. Outside
+    # bazel test (e.g. bazel run), no test-output directory is available.
+    cmd = """report_args=()
+if [[ -n "${TEST_UNDECLARED_OUTPUTS_DIR:-}" ]]; then
+    report_args=(--output_json="${TEST_UNDECLARED_OUTPUTS_DIR}/ir_equiv.json")
+fi
+""" + " ".join(["\"{}\"".format(part) for part in cmd_parts]) + ' "${report_args[@]}"'
+
     run_script = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",

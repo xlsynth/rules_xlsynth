@@ -2,6 +2,8 @@
 
 from typing import Optional, Tuple, List, Callable, Dict, NamedTuple, Set
 import subprocess
+import json
+import zipfile
 import optparse
 import os
 from pathlib import Path
@@ -350,42 +352,71 @@ def run_sample_disabling_warning(config: PresubmitConfig):
         print('Running with warnings as default...')
         bazel_test_opt(('//sample_disabling_warning/...',), config, capture_output = True)
     except subprocess.CalledProcessError as e:
-        want_warnings = [
-            'is an empty range',
-            'is not used in function `main`',
-            'is not used',
-        ]
-        for want_warning in want_warnings:
-            if want_warning in e.stderr:
-                print('Found warning as expected: ' + want_warning)
-                pass
-            else:
-                raise ValueError('Expected warning: ' + want_warning + ' not found in: ' + e.stderr)
+        output = (e.stdout or '') + (e.stderr or '')
+        warning = 'is not used in function `main`'
+        if e.returncode not in (1, 3) or warning not in output:
+            raise ValueError('Expected an unused-definition warning: ' + output)
+    else:
+        raise ValueError('Expected the default warning policy to reject the sample')
 
-    # Now we disable the warning and it should be ok.
     print('== Now running with warnings disabled...')
     bazel_test_opt(
         ('//sample_disabling_warning/...',),
         config,
-        more_action_env = {
-            'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition,empty_range_literal',
-        },
+        more_action_env = {'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition'},
     )
+
+
+def _ir_equiv_output_dir(config: PresubmitConfig, target: str) -> Path:
+    package, name = target[2:].split(':')
+    return config.repo_root / 'bazel-testlogs' / package / name / 'test.outputs'
+
+
+def _check_ir_equiv_report(config: PresubmitConfig, target: str, expected_success: bool):
+    """Require real proof evidence, independently of human diagnostic wording."""
+    output_dir = _ir_equiv_output_dir(config, target)
+    report_path = output_dir / 'ir_equiv.json'
+    if report_path.exists():
+        with report_path.open(encoding = 'utf-8') as stream:
+            report = json.load(stream)
+    else:
+        # Bazel can archive undeclared outputs when --zip_undeclared_test_outputs
+        # is enabled; accept the same report in either layout.
+        with zipfile.ZipFile(str(output_dir / 'outputs.zip')) as archive:
+            report = json.loads(archive.read('ir_equiv.json').decode('utf-8'))
+    if report.get('success') is not expected_success:
+        raise ValueError('{}: unexpected equivalence result: {}'.format(target, report))
+    if expected_success:
+        if report.get('error_str') is not None:
+            raise ValueError('{}: successful proof has an error: {}'.format(target, report))
+    else:
+        # The pinned driver encodes its typed model in error_str. Requiring both
+        # inputs and outputs distinguishes a counterexample from a solver error
+        # or inconclusive result, which also have success=false.
+        model = report.get('error_str')
+        if not isinstance(model, str) or not all(field in model for field in (
+                'lhs_inputs: [', 'rhs_inputs: [',
+                'lhs_output: FnOutput {', 'rhs_output: FnOutput {')):
+            raise ValueError('{}: expected a concrete counterexample: {}'.format(target, report))
 
 
 @register
 def run_sample_nonequiv_ir(config: PresubmitConfig):
-    print('== Running yes-equivalent IR test...')
-    bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_test',), config, capture_output = True)
-    print('== Running no-not-equivalent IR test...')
+    passing = '//sample_nonequiv_ir:add_one_ir_prove_equiv_test'
+    failing = '//sample_nonequiv_ir:add_one_ir_prove_equiv_expect_failure_test'
+    # --nocache_test_results makes Bazel recreate undeclared outputs. Do not
+    # unlink them ourselves: Bazel makes the output directory read-only.
+    bazel_test_opt((passing,), config, capture_output = True)
+    _check_ir_equiv_report(config, passing, True)
+
     try:
-        bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_expect_failure_test',), config, capture_output = True)
+        bazel_test_opt((failing,), config, capture_output = True)
     except subprocess.CalledProcessError as e:
-        if 'Verified NOT equivalent' in e.stdout:
-            print('IRs are not equivalent as expected; bazel stdout: ' + repr(e.stdout) + ' bazel stderr: ' + repr(e.stderr))
-            pass
-        else:
-            raise ValueError('Unexpected error running nonequiv IR; bazel stdout: ' + repr(e.stdout) + ' bazel stderr: ' + repr(e.stderr))
+        # A build failure can leave an earlier report behind. Only inspect the
+        # output after Bazel confirms it actually ran (and failed) this test.
+        if e.returncode != 3:
+            raise ValueError('Expected a Bazel test failure, got stdout: {} stderr: {}'.format(e.stdout, e.stderr))
+        _check_ir_equiv_report(config, failing, False)
     else:
         raise ValueError('Expected nonequiv IR to fail')
 
@@ -598,6 +629,7 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
         (
             '//:make_env_helpers_test',
             '//:env_helpers_test',
+            '//:run_presubmit_test',
             '//:artifact_resolution_test',
             '//:download_release_test',
             '//:external_bundle_exports_test',
