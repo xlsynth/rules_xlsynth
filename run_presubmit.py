@@ -2,6 +2,8 @@
 
 from typing import Optional, Tuple, List, Callable, Dict, NamedTuple, Set
 import subprocess
+import json
+import zipfile
 import optparse
 import os
 from pathlib import Path
@@ -146,18 +148,99 @@ def run_python_script(config: PresubmitConfig, script_name: str, args: Tuple[str
     print('Running command: ' + subprocess.list2cmdline(cmdline))
     subprocess.run(cmdline, check = True, cwd = str(config.repo_root), env = env)
 
+
+def _test_output_dir(config: PresubmitConfig, target: str) -> Path:
+    package, name = target[2:].split(':')
+    return config.repo_root / 'bazel-testlogs' / package / name / 'test.outputs'
+
+
+def _read_test_json_report(config: PresubmitConfig, target: str, filename: str) -> Dict:
+    """Read a driver report from plain or archived Bazel test outputs."""
+    output_dir = _test_output_dir(config, target)
+    report_path = output_dir / filename
+    if report_path.exists():
+        with report_path.open(encoding = 'utf-8') as stream:
+            report = json.load(stream)
+    else:
+        # Bazel can archive undeclared outputs when --zip_undeclared_test_outputs
+        # is enabled; accept the same report in either layout.
+        with zipfile.ZipFile(str(output_dir / 'outputs.zip')) as archive:
+            report = json.loads(archive.read(filename).decode('utf-8'))
+    if not isinstance(report, dict):
+        raise ValueError('{}: expected a JSON object in {}'.format(target, filename))
+    return report
+
+
+def _check_quickcheck_report(
+        config: PresubmitConfig,
+        target: str,
+        expected: Dict[str, bool],
+        *,
+        assertion_failure: Optional[str] = None):
+    """Check exact property selection and real proof/counterexample evidence."""
+    report = _read_test_json_report(config, target, 'quickcheck.json')
+    tests = report.get('tests')
+    if not isinstance(tests, list) or not tests or not all(isinstance(test, dict) for test in tests):
+        raise ValueError('{}: missing QuickCheck results'.format(target))
+    names = [test.get('name') for test in tests]
+    if not all(isinstance(name, str) for name in names) or sorted(names) != sorted(expected):
+        raise ValueError('{}: expected properties {}, got {}'.format(target, sorted(expected), names))
+    if report.get('success') is not all(expected.values()):
+        raise ValueError('{}: unexpected overall QuickCheck result'.format(target))
+    for test in tests:
+        name = test['name']
+        if test.get('success') is not expected[name]:
+            raise ValueError('{}: {} has an unexpected result'.format(target, name))
+        if not expected[name]:
+            counterexample = test.get('counterexample')
+            # Driver errors also populate the counterexample field; require a
+            # concrete model, not merely an unsuccessful solver invocation.
+            if not isinstance(counterexample, str) or 'inputs:' not in counterexample or 'output:' not in counterexample:
+                raise ValueError('{}: {} has no concrete counterexample: {}'.format(target, name, counterexample))
+            if name == assertion_failure and 'assertion_violation: Some(' not in counterexample:
+                raise ValueError('{}: {} has no assertion violation: {}'.format(target, name, counterexample))
+
+
+def _expect_quickcheck_failure(
+        config: PresubmitConfig,
+        target: str,
+        expected: Dict[str, bool],
+        *,
+        assertion_failure: Optional[str] = None):
+    try:
+        bazel_test_opt((target,), config, capture_output = True)
+    except subprocess.CalledProcessError as e:
+        if e.returncode != 3:
+            raise ValueError('Expected a Bazel test failure, got stdout: {} stderr: {}'.format(e.stdout, e.stderr))
+        _check_quickcheck_report(config, target, expected, assertion_failure = assertion_failure)
+    else:
+        raise ValueError('Expected quickcheck proof to fail: ' + target)
+
+
 @register
 def run_sample(config: PresubmitConfig):
+    proof_targets = (
+        '//sample:sample_prove_quickcheck_test',
+        '//sample:sample_prove_quickcheck_explicit_bundle_test',
+    )
     bazel_test_opt(('//sample/...',), config)
+    for target in proof_targets:
+        _check_quickcheck_report(config, target, {'quickcheck_main': True})
 
 
 @register
 def run_sample_expecting_dslx_path(config: PresubmitConfig):
+    proof_target = '//sample_expecting_dslx_path:main_prove_quickcheck_test'
     bazel_test_opt(
-        ('//sample_expecting_dslx_path:main_test', '//sample_expecting_dslx_path:add_mol_pipeline_sv_test'),
+        (
+            '//sample_expecting_dslx_path:main_test',
+            '//sample_expecting_dslx_path:add_mol_pipeline_sv_test',
+            proof_target,
+        ),
         config,
         dslx_path = ('sample_expecting_dslx_path', 'sample_expecting_dslx_path/subdir'),
     )
+    _check_quickcheck_report(config, proof_target, {'quickcheck_imports': True})
 
 
 @register
@@ -172,18 +255,88 @@ def run_sample_failing_quickcheck(config: PresubmitConfig):
     else:
         raise ValueError('Expected quickcheck to fail')
 
-    try:
-        bazel_test_opt(('//sample_failing_quickcheck:failing_quickcheck_proof_test',), config, capture_output = True)
-    except subprocess.CalledProcessError as e:
-        m = re.search(
-            r'ProofError: Failed to prove the property! counterexample: bits\[1\]:\d+, bits\[2\]:\d+',
-            e.stdout,
-        )
-        if m:
-            print('Found proof error as expected: ' + m.group(0))
-            pass
+    _expect_quickcheck_failure(
+        config,
+        '//sample_failing_quickcheck:failing_quickcheck_proof_test',
+        {'always_fail': False},
+    )
+
+
+@register
+def run_sample_quickcheck_proofs(config: PresubmitConfig):
+    """Exercise property selection, assertion semantics, and driver JSON results."""
+    positive_targets = {
+        '//sample_quickcheck_proofs:all_properties_test': {
+            'addition_commutes': True,
+            'xor_cancels': True,
+            'assertion_holds': True,
+        },
+        '//sample_quickcheck_proofs:exact_selection_test': {'selected_alpha': True},
+        '//sample_quickcheck_proofs:regex_selection_test': {
+            'selected_alpha': True,
+            'selected_beta': True,
+        },
+    }
+    bazel_test_opt(tuple(sorted(positive_targets)), config)
+    for target in sorted(positive_targets):
+        _check_quickcheck_report(config, target, positive_targets[target])
+
+    _expect_quickcheck_failure(
+        config,
+        '//sample_quickcheck_proofs:failing_property_test',
+        {'selected_alpha_suffix': False},
+    )
+    _expect_quickcheck_failure(
+        config,
+        '//sample_quickcheck_proofs:mixed_results_test',
+        {
+            'selected_alpha': True,
+            'selected_beta': True,
+            'selected_alpha_suffix': False,
+            'prefix_selected_beta': False,
+        },
+    )
+    _expect_quickcheck_failure(
+        config,
+        '//sample_quickcheck_proofs:failing_assertion_test',
+        {'assertion_that_can_fail': False},
+        assertion_failure = 'assertion_that_can_fail',
+    )
+
+    for target in (
+            '//sample_quickcheck_proofs:no_matching_property_test',
+            '//sample_quickcheck_proofs:no_properties_test'):
+        try:
+            bazel_test_opt((target,), config, capture_output = True)
+        except subprocess.CalledProcessError as e:
+            output = (e.stdout or '') + (e.stderr or '')
+            if e.returncode != 3 or 'No matching quickcheck functions found' not in output:
+                raise ValueError('Unexpected error selecting quickchecks: ' + output)
         else:
-            raise ValueError('Unexpected error proving quickcheck: stdout: ' + e.stdout + ' stderr: ' + e.stderr)
+            raise ValueError('Expected empty quickcheck selection to fail: ' + target)
+
+
+@register
+def run_sample_quickcheck_warning_policy(config: PresubmitConfig):
+    """Keep configured DSLX warning policy consistent with native proof tests."""
+    target = '//sample_quickcheck_proofs:warning_policy_test'
+    try:
+        bazel_test_opt((target,), config, capture_output = True)
+    except subprocess.CalledProcessError as e:
+        output = (e.stdout or '') + (e.stderr or '')
+        warning = 'is not used in function `identity_with_warning`'
+        if e.returncode != 3 or warning not in output:
+            raise ValueError('Expected an unused-definition warning to reject the proof: ' + output)
+    else:
+        raise ValueError('Expected the default warning policy to reject the proof: ' + target)
+
+    bazel_test_opt(
+        (target,),
+        config,
+        more_action_env = {'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition'},
+    )
+    _check_quickcheck_report(config, target, {'property_with_warning': True})
+
 
 @register
 def run_sample_disabling_warning(config: PresubmitConfig):
@@ -191,42 +344,57 @@ def run_sample_disabling_warning(config: PresubmitConfig):
         print('Running with warnings as default...')
         bazel_test_opt(('//sample_disabling_warning/...',), config, capture_output = True)
     except subprocess.CalledProcessError as e:
-        want_warnings = [
-            'is an empty range',
-            'is not used in function `main`',
-            'is not used',
-        ]
-        for want_warning in want_warnings:
-            if want_warning in e.stderr:
-                print('Found warning as expected: ' + want_warning)
-                pass
-            else:
-                raise ValueError('Expected warning: ' + want_warning + ' not found in: ' + e.stderr)
+        output = (e.stdout or '') + (e.stderr or '')
+        warning = 'is not used in function `main`'
+        if e.returncode not in (1, 3) or warning not in output:
+            raise ValueError('Expected an unused-definition warning: ' + output)
+    else:
+        raise ValueError('Expected the default warning policy to reject the sample')
 
-    # Now we disable the warning and it should be ok.
     print('== Now running with warnings disabled...')
     bazel_test_opt(
         ('//sample_disabling_warning/...',),
         config,
-        more_action_env = {
-            'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition,empty_range_literal',
-        },
+        more_action_env = {'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition'},
     )
+
+
+def _check_ir_equiv_report(config: PresubmitConfig, target: str, expected_success: bool):
+    """Require real proof evidence, independently of human diagnostic wording."""
+    report = _read_test_json_report(config, target, 'ir_equiv.json')
+    if report.get('success') is not expected_success:
+        raise ValueError('{}: unexpected equivalence result: {}'.format(target, report))
+    if expected_success:
+        if report.get('error_str') is not None:
+            raise ValueError('{}: successful proof has an error: {}'.format(target, report))
+    else:
+        # The pinned driver encodes its typed model in error_str. Requiring both
+        # inputs and outputs distinguishes a counterexample from a solver error
+        # or inconclusive result, which also have success=false.
+        model = report.get('error_str')
+        if not isinstance(model, str) or not all(field in model for field in (
+                'lhs_inputs: [', 'rhs_inputs: [',
+                'lhs_output: FnOutput {', 'rhs_output: FnOutput {')):
+            raise ValueError('{}: expected a concrete counterexample: {}'.format(target, report))
 
 
 @register
 def run_sample_nonequiv_ir(config: PresubmitConfig):
-    print('== Running yes-equivalent IR test...')
-    bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_test',), config, capture_output = True)
-    print('== Running no-not-equivalent IR test...')
+    passing = '//sample_nonequiv_ir:add_one_ir_prove_equiv_test'
+    failing = '//sample_nonequiv_ir:add_one_ir_prove_equiv_expect_failure_test'
+    # --nocache_test_results makes Bazel recreate undeclared outputs. Do not
+    # unlink them ourselves: Bazel makes the output directory read-only.
+    bazel_test_opt((passing,), config, capture_output = True)
+    _check_ir_equiv_report(config, passing, True)
+
     try:
-        bazel_test_opt(('//sample_nonequiv_ir:add_one_ir_prove_equiv_expect_failure_test',), config, capture_output = True)
+        bazel_test_opt((failing,), config, capture_output = True)
     except subprocess.CalledProcessError as e:
-        if 'Verified NOT equivalent' in e.stdout:
-            print('IRs are not equivalent as expected; bazel stdout: ' + repr(e.stdout) + ' bazel stderr: ' + repr(e.stderr))
-            pass
-        else:
-            raise ValueError('Unexpected error running nonequiv IR; bazel stdout: ' + repr(e.stdout) + ' bazel stderr: ' + repr(e.stderr))
+        # A build failure can leave an earlier report behind. Only inspect the
+        # output after Bazel confirms it actually ran (and failed) this test.
+        if e.returncode != 3:
+            raise ValueError('Expected a Bazel test failure, got stdout: {} stderr: {}'.format(e.stdout, e.stderr))
+        _check_ir_equiv_report(config, failing, False)
     else:
         raise ValueError('Expected nonequiv IR to fail')
 
@@ -439,6 +607,7 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
         (
             '//:make_env_helpers_test',
             '//:env_helpers_test',
+            '//:run_presubmit_test',
             '//:artifact_resolution_test',
             '//:download_release_test',
             '//:external_bundle_exports_test',

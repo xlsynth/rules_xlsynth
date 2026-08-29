@@ -217,9 +217,9 @@ def selected_toolchain_test_suite(name):
         name = default_test,
         target_under_test = ":" + name + "_default_library",
         expected_xls_kind = "release_tag",
-        expected_xls_value = "v0.40.0",
+        expected_xls_value = "v0.54.7",
         expected_driver_kind = "release_tag",
-        expected_driver_value = "v0.36.0",
+        expected_driver_value = "v0.66.0",
     )
 
     override_bundle = name + "_override_bundle"

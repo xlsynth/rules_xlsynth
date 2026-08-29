@@ -241,6 +241,52 @@ def _driver(args: argparse.Namespace) -> int:
     )
 
 
+def _quickcheck(args: argparse.Namespace) -> int:
+    """Run Bitwuzla QuickCheck proofs with the configured DSLX warning policy."""
+    dslx_config = _toolchain_dslx_config(_parse_toolchain_toml(args.toolchain))
+    passthrough = [
+        "--dslx_input_file", args.dslx_input_file,
+        "--solver", "bitwuzla",
+        "--assertion-semantics", "never",
+    ]
+    stdlib = _resolve_runtime_path(dslx_config.get("dslx_stdlib_path", ""))
+    if stdlib:
+        passthrough.extend(["--dslx_stdlib_path", stdlib])
+    import_paths = dslx_config.get("dslx_path", [])
+    if import_paths:
+        passthrough.extend(["--dslx_path", ";".join(import_paths)])
+    if args.top:
+        # The driver uses substring matching; the Bazel rule promises a full match.
+        passthrough.extend(["--test_filter", "^(?:" + args.top + ")$"])
+
+    # Keep the driver's JSON as a Bazel test artifact; Bazel supplies its own
+    # target-level XML. Outside bazel test, no report is requested by default.
+    output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", "")
+    if output_dir:
+        passthrough.extend(["--output_json", os.path.join(output_dir, "quickcheck.json")])
+
+    # The driver's proof API does not apply configured warning settings.
+    # Check them using the same selected toolchain before invoking it.
+    typecheck_args = argparse.Namespace(
+        runtime_library_path = args.runtime_library_path,
+        stdout_path = "",
+        toolchain = args.toolchain,
+        tool = "typecheck_main",
+        passthrough = [args.dslx_input_file, "--output_path=" + os.devnull],
+    )
+    returncode = _tool(typecheck_args)
+    if returncode:
+        return returncode
+    return _driver(argparse.Namespace(
+        driver_path = args.driver_path,
+        runtime_library_path = args.runtime_library_path,
+        stdout_path = "",
+        toolchain = args.toolchain,
+        subcommand = "prove-quickcheck",
+        passthrough = passthrough + list(args.passthrough),
+    ))
+
+
 def _tool(args: argparse.Namespace) -> int:
     toolchain_data = _parse_toolchain_toml(args.toolchain)
     tool_path_root = _toolchain_tool_path(toolchain_data)
@@ -273,6 +319,14 @@ def main(argv: List[str]) -> int:
     p_driver.add_argument("--toolchain", required=True)
     p_driver.add_argument("subcommand")
     p_driver.set_defaults(func=_driver)
+
+    p_quickcheck = sub.add_parser("quickcheck", allow_abbrev=False)
+    p_quickcheck.add_argument("--driver_path", required=True)
+    p_quickcheck.add_argument("--runtime_library_path", default="")
+    p_quickcheck.add_argument("--toolchain", required=True)
+    p_quickcheck.add_argument("--dslx_input_file", required=True)
+    p_quickcheck.add_argument("--top", default="")
+    p_quickcheck.set_defaults(func=_quickcheck)
 
     p_tool = sub.add_parser("tool")
     p_tool.add_argument("--runtime_library_path", default="")

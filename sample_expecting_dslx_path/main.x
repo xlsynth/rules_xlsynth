@@ -10,3 +10,8 @@ fn test_mol() {
     assert_eq(imported::MOL, u32:42);
     assert_eq(imported::MOL == another::PI, false);
 }
+
+#[quickcheck]
+fn quickcheck_imports(x: u32) -> bool {
+    add_mol(x) == x + imported::MOL && imported::MOL != another::PI
+}

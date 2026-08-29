@@ -31,8 +31,8 @@ class SelectedToolchainExportsTest(unittest.TestCase):
             metadata,
             {
                 "schema_version": 1,
-                "xls_pin": {"kind": "release_tag", "value": "v0.40.0"},
-                "xlsynth_crate_pin": {"kind": "release_tag", "value": "v0.36.0"},
+                "xls_pin": {"kind": "release_tag", "value": "v0.54.7"},
+                "xlsynth_crate_pin": {"kind": "release_tag", "value": "v0.66.0"},
             },
         )
 

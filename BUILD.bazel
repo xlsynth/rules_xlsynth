@@ -136,3 +136,12 @@ toolchain_type(
     name = "toolchain_type",
     visibility = ["//visibility:public"],
 )
+
+py_test(
+    name = "run_presubmit_test",
+    srcs = [
+        "materialize_xls_bundle.py",
+        "run_presubmit.py",
+        "run_presubmit_test.py",
+    ],
+)

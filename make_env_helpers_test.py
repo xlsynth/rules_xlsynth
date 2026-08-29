@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import ast
 import pathlib
 import subprocess
 import sys
@@ -8,6 +9,24 @@ import unittest
 
 
 class MakeEnvHelpersTest(unittest.TestCase):
+
+    def test_embedded_source_roundtrips_quotes_and_backslashes(self) -> None:
+        repo_root = pathlib.Path(__file__).resolve().parent
+        fixture = 'def fixture():\n    """An embedded docstring."""\n    return "line\\n\\\\path"\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            source = pathlib.Path(tmp) / "runner.py"
+            source.write_text(fixture)
+            result = subprocess.run(
+                [sys.executable, str(repo_root / "make_env_helpers.py"), "--source", str(source), "--stdout"],
+                check = True,
+                stdout = subprocess.PIPE,
+                universal_newlines = True,
+            )
+        # The generated Starlark function uses only Python-compatible string syntax.
+        function = ast.parse(result.stdout).body[0]
+        embedded = ast.literal_eval(function.body[-1].value)
+        self.assertEqual(embedded, fixture + "    ")
+        ast.parse(embedded)
 
     def test_generated_env_helpers_matches_checked_in_file(self) -> None:
         repo_root = pathlib.Path(__file__).resolve().parent

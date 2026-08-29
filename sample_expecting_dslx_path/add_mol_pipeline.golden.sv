@@ -6,22 +6,22 @@ module __main__add_mol(
   // ===== Pipe stage 0:
 
   // Registers for pipe stage 0:
-  reg [31:0] p0_x;
+  reg [31:0] x__input_flop;
   always_ff @ (posedge clk) begin
-    p0_x <= x;
+    x__input_flop <= x;
   end
 
   // ===== Pipe stage 1:
-  wire [30:0] p1_add_18_comb;
-  wire [31:0] p1_concat_20_comb;
-  assign p1_add_18_comb = p0_x[31:1] + 31'h0000_0015;
-  assign p1_concat_20_comb = {p1_add_18_comb, p0_x[0]};
+  wire [30:0] p1_add_26_comb;
+  wire [31:0] p1_concat_31_comb;
+  assign p1_add_26_comb = x__input_flop[31:1] + 31'h0000_0015;
+  assign p1_concat_31_comb = {p1_add_26_comb, x__input_flop[0]};
 
   // Registers for pipe stage 1:
-  reg [31:0] p1_concat_20;
+  reg [31:0] out__output_flop;
   always_ff @ (posedge clk) begin
-    p1_concat_20 <= p1_concat_20_comb;
+    out__output_flop <= p1_concat_31_comb;
   end
-  assign out = p1_concat_20;
+  assign out = out__output_flop;
 endmodule
 

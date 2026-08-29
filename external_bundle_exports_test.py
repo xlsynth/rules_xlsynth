@@ -131,10 +131,10 @@ class ExternalBundleExportsTest(unittest.TestCase):
             ),
         )
         identity = json.loads(identity_path.read_text(encoding = "utf-8"))
-        self.assertEqual(identity["xlsynth_crate_pin"], {"kind": "release_tag", "value": "v0.36.0"})
-        self.assertEqual(identity["xls_pin"], {"kind": "release_tag", "value": "v0.40.0"})
-        self.assertEqual(identity["crate_implied_xls_release_tag"], "v0.39.0")
-        self.assertEqual(identity["resolved_xls_release_tag"], "v0.40.0")
+        self.assertEqual(identity["xlsynth_crate_pin"], {"kind": "release_tag", "value": "v0.66.0"})
+        self.assertEqual(identity["xls_pin"], {"kind": "release_tag", "value": "v0.54.7"})
+        self.assertEqual(identity["crate_implied_xls_release_tag"], "v0.54.7")
+        self.assertEqual(identity["resolved_xls_release_tag"], "v0.54.7")
 
 
 if __name__ == "__main__":

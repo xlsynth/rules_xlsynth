@@ -341,7 +341,7 @@ printf 'fallback body\\n'
                 },
             )
 
-    def test_build_driver_install_command_uses_rustup_nightly(self):
+    def test_build_driver_install_command_uses_rustup_nightly_and_system_bitwuzla(self):
         command = materialize_xls_bundle.build_driver_install_command(
             "/usr/bin/rustup",
             "/tmp/xls-driver-root",
@@ -356,6 +356,8 @@ printf 'fallback body\\n'
                 "cargo",
                 "install",
                 "--locked",
+                "--features",
+                "with-bitwuzla-system",
                 "--root",
                 "/tmp/xls-driver-root",
                 "--version",
@@ -364,7 +366,7 @@ printf 'fallback body\\n'
             ],
         )
 
-    def test_build_driver_git_install_command_uses_exact_revision(self):
+    def test_build_driver_git_install_command_uses_exact_revision_and_system_bitwuzla(self):
         revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
         command = materialize_xls_bundle.build_driver_git_install_command(
             "/usr/bin/rustup",
@@ -380,6 +382,8 @@ printf 'fallback body\\n'
                 "cargo",
                 "install",
                 "--locked",
+                "--features",
+                "with-bitwuzla-system",
                 "--root",
                 "/tmp/xls-driver-root",
                 "--git",
@@ -647,14 +651,14 @@ printf 'fallback body\\n'
         self.assertEqual(env["CARGO_HOME"], "/tmp/xls-bundle-repo/_cargo_home/arm64")
         self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target/arm64")
 
-    def test_driver_install_root_is_version_and_platform_scoped(self):
+    def test_driver_install_root_is_version_platform_and_features_scoped(self):
         self.assertEqual(
             materialize_xls_bundle.driver_install_root(
                 Path("/tmp/xls-bundle-repo"),
                 "0.33.0",
                 "arm64",
             ),
-            Path("/tmp/xls-bundle-repo/_cargo_driver/arm64/0.33.0"),
+            Path("/tmp/xls-bundle-repo/_cargo_driver/arm64/0.33.0/with-bitwuzla-system"),
         )
 
     def test_download_versioned_artifacts_reuses_valid_cache(self):
@@ -705,7 +709,7 @@ printf 'fallback body\\n'
     def test_install_driver_reuses_valid_cached_binary(self):
         with tempfile.TemporaryDirectory() as tempdir:
             repo_root = Path(tempdir)
-            driver_path = repo_root / "_cargo_driver" / "arm64" / "0.33.0" / "bin" / "xlsynth-driver"
+            driver_path = repo_root / "_cargo_driver" / "arm64" / "0.33.0" / "with-bitwuzla-system" / "bin" / "xlsynth-driver"
             driver_path.parent.mkdir(parents = True)
             driver_path.write_text("", encoding = "utf-8")
 
@@ -738,11 +742,64 @@ printf 'fallback body\\n'
                 env = mock.ANY,
             )
 
+    def test_install_driver_does_not_reuse_legacy_featureless_cache(self):
+        revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
+        for driver_version, driver_git_revision in [("0.33.0", ""), ("", revision)]:
+            with self.subTest(driver_version = driver_version, driver_git_revision = driver_git_revision):
+                with tempfile.TemporaryDirectory() as tempdir:
+                    repo_root = Path(tempdir)
+                    identity = driver_git_revision or driver_version
+                    legacy_root = repo_root / "_cargo_driver" / "arm64" / identity
+                    legacy_driver = legacy_root / "bin" / "xlsynth-driver"
+                    legacy_driver.parent.mkdir(parents = True)
+                    legacy_driver.write_bytes(b"driver without Bitwuzla")
+                    if driver_git_revision:
+                        materialize_xls_bundle.write_driver_git_provenance(legacy_driver, driver_git_revision)
+
+                    install_root = legacy_root / "with-bitwuzla-system"
+                    driver_path = install_root / "bin" / "xlsynth-driver"
+                    if driver_git_revision:
+                        install_command = materialize_xls_bundle.build_driver_git_install_command(
+                            "/usr/bin/rustup", install_root, driver_git_revision,
+                        )
+                    else:
+                        install_command = materialize_xls_bundle.build_driver_install_command(
+                            "/usr/bin/rustup", install_root, driver_version,
+                        )
+
+                    def run_command(args, **kwargs):
+                        if args == install_command:
+                            driver_path.parent.mkdir(parents = True)
+                            driver_path.write_bytes(b"driver with Bitwuzla")
+                        else:
+                            self.assertEqual(args, [str(driver_path), "--version"])
+                        return mock.Mock(returncode = 0, stdout = "xlsynth-driver 0.33.0\n", stderr = "")
+
+                    with mock.patch.object(materialize_xls_bundle, "detect_host_platform", return_value = "arm64"):
+                        with mock.patch.object(materialize_xls_bundle, "ensure_rustup_nightly_toolchain"):
+                            with mock.patch.object(materialize_xls_bundle.subprocess, "run", side_effect = run_command) as mock_run:
+                                resolved = materialize_xls_bundle.install_driver(
+                                    repo_root = repo_root,
+                                    driver_version = driver_version,
+                                    driver_git_revision = driver_git_revision,
+                                    libxls_path = "/tmp/xls-bundle/libxls.dylib" if sys.platform == "darwin" else "/tmp/xls-bundle/libxls.so",
+                                    dslx_stdlib_path = "/tmp/xls-bundle",
+                                    rustup_path = "/usr/bin/rustup",
+                                )
+
+                    self.assertEqual(resolved, driver_path)
+                    self.assertEqual(driver_path.read_bytes(), b"driver with Bitwuzla")
+                    self.assertEqual(legacy_driver.read_bytes(), b"driver without Bitwuzla")
+                    self.assertEqual(mock_run.call_count, 2)
+                    self.assertEqual(mock_run.call_args_list[0], mock.call(install_command, check = True, env = mock.ANY))
+                    if driver_git_revision:
+                        materialize_xls_bundle.validate_driver_git_provenance(driver_path, driver_git_revision)
+
     def test_install_driver_uses_exact_git_revision(self):
         revision = "0910ee19072a39a960b8df85b4f1e25199a4b4be"
         with tempfile.TemporaryDirectory() as tempdir:
             repo_root = Path(tempdir)
-            install_root = repo_root / "_cargo_driver" / "arm64" / revision
+            install_root = repo_root / "_cargo_driver" / "arm64" / revision / "with-bitwuzla-system"
             with mock.patch.object(materialize_xls_bundle, "detect_host_platform", return_value = "arm64"):
                 with mock.patch.object(materialize_xls_bundle.shutil, "which", return_value = "/usr/bin/rustup"):
                     with mock.patch.object(materialize_xls_bundle, "ensure_rustup_nightly_toolchain"):
@@ -765,6 +822,8 @@ printf 'fallback body\\n'
                     "cargo",
                     "install",
                     "--locked",
+                    "--features",
+                    "with-bitwuzla-system",
                     "--root",
                     str(install_root),
                     "--git",
