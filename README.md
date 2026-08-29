@@ -341,9 +341,11 @@ are reused. There is no fallback to the native XLS/Z3 prover.
 
 `top` is a full-match regular expression over QuickCheck function names. Omit
 it to prove every QuickCheck in the library; selecting no properties fails.
-Assertions must never fail (`--assertion-semantics never`), and each property
-gets a Bazel/JUnit test result with counterexample details on failure. The rule
-first runs the selected XLS typechecker to enforce configured warning settings.
+Assertions must never fail (`--assertion-semantics never`). Bazel supplies its
+default target-level test result; property diagnostics remain in the test log.
+Under `bazel test`, the driver's JSON report is saved as the undeclared test
+output `quickcheck.json`. The rule first runs the selected XLS typechecker to
+enforce configured warning settings.
 The rule adds no separate XLS IR optimization step; optimization follows the
 selected driver's behavior (older releases use unoptimized IR). Proof runtimes
 may differ from native XLS proving.

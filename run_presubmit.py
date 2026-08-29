@@ -11,7 +11,6 @@ import re
 import tempfile
 import shutil
 import sys
-import xml.etree.ElementTree as ElementTree
 
 import materialize_xls_bundle
 
@@ -150,16 +149,26 @@ def run_python_script(config: PresubmitConfig, script_name: str, args: Tuple[str
     subprocess.run(cmdline, check = True, cwd = str(config.repo_root), env = env)
 
 
-def _quickcheck_report_path(config: PresubmitConfig, target: str) -> Path:
+def _test_output_dir(config: PresubmitConfig, target: str) -> Path:
     package, name = target[2:].split(':')
-    return config.repo_root / 'bazel-testlogs' / package / name / 'test.xml'
+    return config.repo_root / 'bazel-testlogs' / package / name / 'test.outputs'
 
 
-def _clear_quickcheck_report(config: PresubmitConfig, target: str):
-    # A build failure must not let an earlier test's XML satisfy these checks.
-    report_path = _quickcheck_report_path(config, target)
+def _read_test_json_report(config: PresubmitConfig, target: str, filename: str) -> Dict:
+    """Read a driver report from plain or archived Bazel test outputs."""
+    output_dir = _test_output_dir(config, target)
+    report_path = output_dir / filename
     if report_path.exists():
-        report_path.unlink()
+        with report_path.open(encoding = 'utf-8') as stream:
+            report = json.load(stream)
+    else:
+        # Bazel can archive undeclared outputs when --zip_undeclared_test_outputs
+        # is enabled; accept the same report in either layout.
+        with zipfile.ZipFile(str(output_dir / 'outputs.zip')) as archive:
+            report = json.loads(archive.read(filename).decode('utf-8'))
+    if not isinstance(report, dict):
+        raise ValueError('{}: expected a JSON object in {}'.format(target, filename))
+    return report
 
 
 def _check_quickcheck_report(
@@ -169,26 +178,24 @@ def _check_quickcheck_report(
         *,
         assertion_failure: Optional[str] = None):
     """Check exact property selection and real proof/counterexample evidence."""
-    root = ElementTree.parse(str(_quickcheck_report_path(config, target))).getroot()
-    cases = list(root.iter('testcase'))
-    names = [case.get('name', '') for case in cases]
-    if sorted(names) != sorted(expected):
+    report = _read_test_json_report(config, target, 'quickcheck.json')
+    tests = report.get('tests')
+    if not isinstance(tests, list) or not tests or not all(isinstance(test, dict) for test in tests):
+        raise ValueError('{}: missing QuickCheck results'.format(target))
+    names = [test.get('name') for test in tests]
+    if not all(isinstance(name, str) for name in names) or sorted(names) != sorted(expected):
         raise ValueError('{}: expected properties {}, got {}'.format(target, sorted(expected), names))
-    for case in cases:
-        name = case.get('name', '')
-        if case.find('error') is not None or case.find('skipped') is not None:
-            raise ValueError('{}: {} did not produce a proof result'.format(target, name))
-        failures = case.findall('failure')
-        if expected[name]:
-            if failures:
-                raise ValueError('{}: {} unexpectedly failed'.format(target, name))
-        else:
-            if len(failures) != 1:
-                raise ValueError('{}: {} must have exactly one failure'.format(target, name))
-            counterexample = ''.join(failures[0].itertext())
+    if report.get('success') is not all(expected.values()):
+        raise ValueError('{}: unexpected overall QuickCheck result'.format(target))
+    for test in tests:
+        name = test['name']
+        if test.get('success') is not expected[name]:
+            raise ValueError('{}: {} has an unexpected result'.format(target, name))
+        if not expected[name]:
+            counterexample = test.get('counterexample')
             # Driver errors also populate the counterexample field; require a
             # concrete model, not merely an unsuccessful solver invocation.
-            if 'inputs:' not in counterexample or 'output:' not in counterexample:
+            if not isinstance(counterexample, str) or 'inputs:' not in counterexample or 'output:' not in counterexample:
                 raise ValueError('{}: {} has no concrete counterexample: {}'.format(target, name, counterexample))
             if name == assertion_failure and 'assertion_violation: Some(' not in counterexample:
                 raise ValueError('{}: {} has no assertion violation: {}'.format(target, name, counterexample))
@@ -200,7 +207,6 @@ def _expect_quickcheck_failure(
         expected: Dict[str, bool],
         *,
         assertion_failure: Optional[str] = None):
-    _clear_quickcheck_report(config, target)
     try:
         bazel_test_opt((target,), config, capture_output = True)
     except subprocess.CalledProcessError as e:
@@ -217,8 +223,6 @@ def run_sample(config: PresubmitConfig):
         '//sample:sample_prove_quickcheck_test',
         '//sample:sample_prove_quickcheck_explicit_bundle_test',
     )
-    for target in proof_targets:
-        _clear_quickcheck_report(config, target)
     bazel_test_opt(('//sample/...',), config)
     for target in proof_targets:
         _check_quickcheck_report(config, target, {'quickcheck_main': True})
@@ -227,7 +231,6 @@ def run_sample(config: PresubmitConfig):
 @register
 def run_sample_expecting_dslx_path(config: PresubmitConfig):
     proof_target = '//sample_expecting_dslx_path:main_prove_quickcheck_test'
-    _clear_quickcheck_report(config, proof_target)
     bazel_test_opt(
         (
             '//sample_expecting_dslx_path:main_test',
@@ -261,7 +264,7 @@ def run_sample_failing_quickcheck(config: PresubmitConfig):
 
 @register
 def run_sample_quickcheck_proofs(config: PresubmitConfig):
-    """Exercise property selection, assertion semantics, and Bazel XML results."""
+    """Exercise property selection, assertion semantics, and driver JSON results."""
     positive_targets = {
         '//sample_quickcheck_proofs:all_properties_test': {
             'addition_commutes': True,
@@ -274,8 +277,6 @@ def run_sample_quickcheck_proofs(config: PresubmitConfig):
             'selected_beta': True,
         },
     }
-    for target in sorted(positive_targets):
-        _clear_quickcheck_report(config, target)
     bazel_test_opt(tuple(sorted(positive_targets)), config)
     for target in sorted(positive_targets):
         _check_quickcheck_report(config, target, positive_targets[target])
@@ -305,16 +306,12 @@ def run_sample_quickcheck_proofs(config: PresubmitConfig):
     for target in (
             '//sample_quickcheck_proofs:no_matching_property_test',
             '//sample_quickcheck_proofs:no_properties_test'):
-        _clear_quickcheck_report(config, target)
         try:
             bazel_test_opt((target,), config, capture_output = True)
         except subprocess.CalledProcessError as e:
             output = (e.stdout or '') + (e.stderr or '')
             if e.returncode != 3 or 'No matching quickcheck functions found' not in output:
                 raise ValueError('Unexpected error selecting quickchecks: ' + output)
-            root = ElementTree.parse(str(_quickcheck_report_path(config, target))).getroot()
-            if not list(root.iter('error')):
-                raise ValueError('Expected a missing-property error in XML: ' + target)
         else:
             raise ValueError('Expected empty quickcheck selection to fail: ' + target)
 
@@ -323,7 +320,6 @@ def run_sample_quickcheck_proofs(config: PresubmitConfig):
 def run_sample_quickcheck_warning_policy(config: PresubmitConfig):
     """Keep configured DSLX warning policy consistent with native proof tests."""
     target = '//sample_quickcheck_proofs:warning_policy_test'
-    _clear_quickcheck_report(config, target)
     try:
         bazel_test_opt((target,), config, capture_output = True)
     except subprocess.CalledProcessError as e:
@@ -331,13 +327,9 @@ def run_sample_quickcheck_warning_policy(config: PresubmitConfig):
         warning = 'is not used in function `identity_with_warning`'
         if e.returncode != 3 or warning not in output:
             raise ValueError('Expected an unused-definition warning to reject the proof: ' + output)
-        root = ElementTree.parse(str(_quickcheck_report_path(config, target))).getroot()
-        if not list(root.iter('error')):
-            raise ValueError('Expected a typechecking error in proof XML: ' + target)
     else:
         raise ValueError('Expected the default warning policy to reject the proof: ' + target)
 
-    _clear_quickcheck_report(config, target)
     bazel_test_opt(
         (target,),
         config,
@@ -367,23 +359,9 @@ def run_sample_disabling_warning(config: PresubmitConfig):
     )
 
 
-def _ir_equiv_output_dir(config: PresubmitConfig, target: str) -> Path:
-    package, name = target[2:].split(':')
-    return config.repo_root / 'bazel-testlogs' / package / name / 'test.outputs'
-
-
 def _check_ir_equiv_report(config: PresubmitConfig, target: str, expected_success: bool):
     """Require real proof evidence, independently of human diagnostic wording."""
-    output_dir = _ir_equiv_output_dir(config, target)
-    report_path = output_dir / 'ir_equiv.json'
-    if report_path.exists():
-        with report_path.open(encoding = 'utf-8') as stream:
-            report = json.load(stream)
-    else:
-        # Bazel can archive undeclared outputs when --zip_undeclared_test_outputs
-        # is enabled; accept the same report in either layout.
-        with zipfile.ZipFile(str(output_dir / 'outputs.zip')) as archive:
-            report = json.loads(archive.read('ir_equiv.json').decode('utf-8'))
+    report = _read_test_json_report(config, target, 'ir_equiv.json')
     if report.get('success') is not expected_success:
         raise ValueError('{}: unexpected equivalence result: {}'.format(target, report))
     if expected_success:

@@ -2,8 +2,8 @@ def python_runner_source():
     """Returns the embedded xlsynth_runner.py source.
 
     The returned program reads a declared toolchain TOML input and invokes the
-    driver ('driver'), a native tool ('tool'), or Bitwuzla QuickCheck proofs with
-    per-property Bazel reporting ('quickcheck').
+    driver ('driver'), a native tool ('tool'), or Bitwuzla QuickCheck proofs
+    ('quickcheck').
 
     """
     return """#!/usr/bin/env python3
@@ -11,12 +11,9 @@ def python_runner_source():
 
 import argparse
 import ast
-import json
 import os
 import subprocess
 import sys
-import tempfile
-import xml.etree.ElementTree as ET
 from enum import Enum
 from typing import Any, Dict, List, NamedTuple, Optional
 
@@ -253,7 +250,7 @@ def _driver(args: argparse.Namespace) -> int:
 
 
 def _quickcheck(args: argparse.Namespace) -> int:
-    \"""Run Bitwuzla QuickCheck proofs and preserve per-property Bazel reporting.\"""
+    \"""Run Bitwuzla QuickCheck proofs with the configured DSLX warning policy.\"""
     dslx_config = _toolchain_dslx_config(_parse_toolchain_toml(args.toolchain))
     passthrough = [
         "--dslx_input_file", args.dslx_input_file,
@@ -270,99 +267,32 @@ def _quickcheck(args: argparse.Namespace) -> int:
         # The driver uses substring matching; the Bazel rule promises a full match.
         passthrough.extend(["--test_filter", "^(?:" + args.top + ")$"])
 
-    with tempfile.TemporaryDirectory(prefix = "xlsynth_quickcheck_") as temp_dir:
-        report_path = os.path.join(temp_dir, "result.json")
-        driver_args = argparse.Namespace(
-            driver_path = args.driver_path,
-            runtime_library_path = args.runtime_library_path,
-            stdout_path = "",
-            toolchain = args.toolchain,
-            subcommand = "prove-quickcheck",
-            passthrough = passthrough + ["--output_json", report_path] + list(args.passthrough),
-        )
-        tests: List[Dict[str, Any]] = []
-        error = ""
-        try:
-            # The driver's proof API does not apply configured warning settings.
-            # Check them using the same selected toolchain before invoking it.
-            typecheck_args = argparse.Namespace(
-                runtime_library_path = args.runtime_library_path,
-                stdout_path = "",
-                toolchain = args.toolchain,
-                tool = "typecheck_main",
-                passthrough = [args.dslx_input_file, "--output_path=" + os.devnull],
-            )
-            typecheck_returncode = _tool(typecheck_args)
-            if typecheck_returncode:
-                raise ValueError("DSLX typechecking failed (exit code {})".format(typecheck_returncode))
-            returncode = _driver(driver_args)
-            tests = _read_quickcheck_results(report_path)
-            if returncode and all(test["success"] for test in tests):
-                raise ValueError("xlsynth-driver failed despite a successful proof report")
-        except (OSError, ValueError) as exc:
-            error = "QuickCheck proof runner failed: " + str(exc)
-            print(error, file = sys.stderr)
-            returncode = 1
-        xml_path = os.environ.get("XML_OUTPUT_FILE", "")
-        if xml_path:
-            _write_quickcheck_xml(xml_path, args.dslx_input_file, tests, error)
-        return returncode or (0 if all(test["success"] for test in tests) else 1)
+    # Keep the driver's JSON as a Bazel test artifact; Bazel supplies its own
+    # target-level XML. Outside bazel test, no report is requested by default.
+    output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", "")
+    if output_dir:
+        passthrough.extend(["--output_json", os.path.join(output_dir, "quickcheck.json")])
 
-
-def _read_quickcheck_results(report_path: str) -> List[Dict[str, Any]]:
-    \"""Reject missing, malformed, empty, or inconsistent proof reports.\"""
-    with open(report_path, "r", encoding = "utf-8") as report_file:
-        result = json.load(report_file)
-    if not isinstance(result, dict) or type(result.get("success")) is not bool:
-        raise ValueError("Missing Boolean proof status")
-    tests = result.get("tests")
-    if tests == []:
-        raise ValueError("No matching quickcheck functions found")
-    if not isinstance(tests, list):
-        raise ValueError("Missing QuickCheck results")
-    names = set()
-    for test in tests:
-        if not isinstance(test, dict) or not isinstance(test.get("name"), str) or not test["name"]:
-            raise ValueError("Missing QuickCheck property name")
-        if test["name"] in names:
-            raise ValueError("Duplicate QuickCheck property name: " + test["name"])
-        names.add(test["name"])
-        if type(test.get("success")) is not bool:
-            raise ValueError("Missing Boolean property status")
-        if type(test.get("time_micros")) is not int or test["time_micros"] < 0:
-            raise ValueError("Invalid QuickCheck duration")
-        if test.get("counterexample") is not None and not isinstance(test["counterexample"], str):
-            raise ValueError("Invalid QuickCheck diagnostic")
-    if result["success"] != all(test["success"] for test in tests):
-        raise ValueError("Inconsistent QuickCheck proof status")
-    return tests
-
-
-def _write_quickcheck_xml(path: str, source: str, tests: List[Dict[str, Any]], error: str) -> None:
-    \"""Translate driver results to JUnit without reporting infrastructure errors as proofs.\"""
-    suite_name = os.path.splitext(os.path.basename(source))[0]
-    root = ET.Element("testsuites")
-    suite = ET.SubElement(
-        root, "testsuite",
-        name = suite_name,
-        tests = str(len(tests) + bool(error)),
-        failures = str(sum(not test["success"] for test in tests)),
-        errors = str(int(bool(error))),
-        time = "{:.6f}".format(sum(test["time_micros"] for test in tests) / 1e6),
+    # The driver's proof API does not apply configured warning settings.
+    # Check them using the same selected toolchain before invoking it.
+    typecheck_args = argparse.Namespace(
+        runtime_library_path = args.runtime_library_path,
+        stdout_path = "",
+        toolchain = args.toolchain,
+        tool = "typecheck_main",
+        passthrough = [args.dslx_input_file, "--output_path=" + os.devnull],
     )
-    for test in tests:
-        case = ET.SubElement(
-            suite, "testcase",
-            name = test["name"], classname = suite_name, file = source,
-            time = "{:.6f}".format(test["time_micros"] / 1e6),
-        )
-        if not test["success"]:
-            failure = ET.SubElement(case, "failure", message = "QuickCheck proof did not succeed")
-            failure.text = test.get("counterexample") or "No counterexample was reported"
-    if error:
-        case = ET.SubElement(suite, "testcase", name = "proof_runner", classname = suite_name, file = source)
-        ET.SubElement(case, "error", message = error).text = error
-    ET.ElementTree(root).write(path, encoding = "utf-8", xml_declaration = True)
+    returncode = _tool(typecheck_args)
+    if returncode:
+        return returncode
+    return _driver(argparse.Namespace(
+        driver_path = args.driver_path,
+        runtime_library_path = args.runtime_library_path,
+        stdout_path = "",
+        toolchain = args.toolchain,
+        subcommand = "prove-quickcheck",
+        passthrough = passthrough + list(args.passthrough),
+    ))
 
 
 def _tool(args: argparse.Namespace) -> int:

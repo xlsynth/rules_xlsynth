@@ -10,8 +10,8 @@ from typing import List
 _DOCSTRING = """Returns the embedded xlsynth_runner.py source.
 
 The returned program reads a declared toolchain TOML input and invokes the
-driver ('driver'), a native tool ('tool'), or Bitwuzla QuickCheck proofs with
-per-property Bazel reporting ('quickcheck').
+driver ('driver'), a native tool ('tool'), or Bitwuzla QuickCheck proofs
+('quickcheck').
 """
 
 

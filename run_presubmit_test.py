@@ -19,16 +19,16 @@ class PresubmitTest(unittest.TestCase):
         self.addCleanup(self.tempdir.cleanup)
         self.config = run_presubmit.PresubmitConfig(Path(self.tempdir.name), None, '0.66.0', '0.54.7')
         self.target = '//sample:proof'
-        self.output_dir = run_presubmit._ir_equiv_output_dir(self.config, self.target)
+        self.output_dir = run_presubmit._test_output_dir(self.config, self.target)
         self.output_dir.mkdir(parents = True)
 
-    def write_report(self, report, zipped = False):
+    def write_report(self, report, zipped = False, filename = 'ir_equiv.json'):
         encoded = json.dumps(report)
         if zipped:
             with zipfile.ZipFile(str(self.output_dir / 'outputs.zip'), 'w') as archive:
-                archive.writestr('ir_equiv.json', encoded)
+                archive.writestr(filename, encoded)
         else:
-            (self.output_dir / 'ir_equiv.json').write_text(encoded, encoding = 'utf-8')
+            (self.output_dir / filename).write_text(encoded, encoding = 'utf-8')
 
     def test_equivalent_result(self):
         self.write_report({'success': True, 'error_str': None})
@@ -70,6 +70,58 @@ class PresubmitTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     run_presubmit.run_sample_nonequiv_ir(self.config)
         check.assert_called_once_with(self.config, '//sample_nonequiv_ir:add_one_ir_prove_equiv_test', True)
+
+    def test_quickcheck_plain_and_archived_reports(self):
+        report = {
+            'success': False,
+            'tests': [
+                {'name': 'passing', 'success': True},
+                {'name': 'failing', 'success': False,
+                 'counterexample': 'inputs: [x = 0], output: false, assertion_violation: Some("failed")'},
+            ],
+        }
+        for zipped in (False, True):
+            with self.subTest(zipped = zipped):
+                for path in self.output_dir.iterdir():
+                    path.unlink()
+                self.write_report(report, zipped = zipped, filename = 'quickcheck.json')
+                run_presubmit._check_quickcheck_report(
+                    self.config, self.target, {'passing': True, 'failing': False},
+                    assertion_failure = 'failing',
+                )
+
+    def test_quickcheck_rejects_missing_duplicate_or_inconsistent_results(self):
+        passing = {'name': 'passing', 'success': True}
+        for report in (
+                ['not an object'], {}, {'success': True, 'tests': []},
+                {'success': True, 'tests': [passing, passing]},
+                {'success': True, 'tests': [{'name': 'other', 'success': True}]},
+                {'success': True, 'tests': [{'name': 'passing', 'success': 'true'}]},
+                {'success': False, 'tests': [passing]}):
+            with self.subTest(report = report):
+                self.write_report(report, filename = 'quickcheck.json')
+                with self.assertRaises(ValueError):
+                    run_presubmit._check_quickcheck_report(self.config, self.target, {'passing': True})
+
+    def test_quickcheck_requires_concrete_counterexamples_and_assertions(self):
+        for counterexample in (None, 'solver error', 'inputs: []', 'inputs: [], output: false'):
+            with self.subTest(counterexample = counterexample):
+                self.write_report({
+                    'success': False,
+                    'tests': [{'name': 'failing', 'success': False, 'counterexample': counterexample}],
+                }, filename = 'quickcheck.json')
+                with self.assertRaises(ValueError):
+                    run_presubmit._check_quickcheck_report(
+                        self.config, self.target, {'failing': False}, assertion_failure = 'failing',
+                    )
+
+    def test_quickcheck_build_failure_cannot_reuse_an_earlier_report(self):
+        failure = subprocess.CalledProcessError(1, ['bazel'], stderr = 'build failed before test execution')
+        with mock.patch.object(run_presubmit, 'bazel_test_opt', side_effect = failure):
+            with mock.patch.object(run_presubmit, '_check_quickcheck_report') as check:
+                with self.assertRaises(ValueError):
+                    run_presubmit._expect_quickcheck_failure(self.config, self.target, {'failing': False})
+        check.assert_not_called()
 
     def test_warning_then_disabled_warning(self):
         failure = subprocess.CalledProcessError(1, ['bazel'], stderr = 'Definition of `x` is not used in function `main`')
