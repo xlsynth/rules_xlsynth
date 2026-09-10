@@ -130,12 +130,29 @@ class PresubmitTest(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         self.assertEqual(run.call_args[1]['more_action_env'], {'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition'})
 
+    # Negative test: Error handling rejects unexpected success and unrelated failures.
     def test_warning_check_rejects_unexpected_success_and_unrelated_failure(self):
-        for outcome in (None, subprocess.CalledProcessError(1, ['bazel'], stderr = 'missing tool')):
-            with self.subTest(outcome = outcome):
-                with mock.patch.object(run_presubmit, 'bazel_test_opt', side_effect = [outcome]):
-                    with self.assertRaises(ValueError):
-                        run_presubmit.run_sample_disabling_warning(self.config)
+        for check in (run_presubmit.run_sample_disabling_warning, run_presubmit.run_sample_dslx_test_warning_policy):
+            for outcome in (None, subprocess.CalledProcessError(1, ['bazel'], stderr = 'missing tool')):
+                with self.subTest(check = check.__name__, outcome = outcome):
+                    with mock.patch.object(run_presubmit, 'bazel_test_opt', side_effect = [outcome]):
+                        with self.assertRaises(ValueError):
+                            check(self.config)
+
+    # Negative test: Error handling rejects logs without a completed property run.
+    def test_dslx_test_warning_policy_requires_property_execution(self):
+        target = '//sample_quickcheck_proofs:warning_suppressed_interpreter_test'
+        test_log = run_presubmit._test_output_dir(self.config, target).parent / 'test.log'
+        test_log.parent.mkdir(parents = True)
+        failure = subprocess.CalledProcessError(
+            3, ['bazel'], stderr = 'Definition of `unused` is not used in function `identity_with_warning`',
+        )
+        for output in ('', '[ RUN QUICKCHECK        ] property_with_warning\n', '[                    OK ] other_property\n'):
+            with self.subTest(output = output):
+                test_log.write_text(output, encoding = 'utf-8')
+                with mock.patch.object(run_presubmit, 'bazel_test_opt', side_effect = [failure, failure, None]):
+                    with self.assertRaisesRegex(ValueError, 'Expected the interpreter to execute property_with_warning'):
+                        run_presubmit.run_sample_dslx_test_warning_policy(self.config)
 
 
 if __name__ == '__main__':

@@ -379,6 +379,38 @@ def run_sample_quickcheck_warning_policy(config: PresubmitConfig):
     _check_quickcheck_report(config, target, {'property_with_warning': True})
 
 
+# Verifies: Test-local warning suppression composes with configured warnings.
+# Catches: Lost suppressions, suppression leaks, and skipped property execution.
+@register
+def run_sample_dslx_test_warning_policy(config: PresubmitConfig):
+    """Check target-local suppression and composition with configured warnings."""
+    strict_target = '//sample_quickcheck_proofs:warning_interpreter_test'
+    suppressed_target = '//sample_quickcheck_proofs:warning_suppressed_interpreter_test'
+    other_suppressed_target = '//sample_quickcheck_proofs:warning_other_suppressed_interpreter_test'
+    for target in (strict_target, other_suppressed_target):
+        try:
+            bazel_test_opt((target,), config, capture_output = True)
+        except subprocess.CalledProcessError as e:
+            output = (e.stdout or '') + (e.stderr or '')
+            warning = 'is not used in function `identity_with_warning`'
+            if e.returncode != 3 or warning not in output:
+                raise ValueError('Expected an unused-definition warning to reject the interpreter test: ' + output)
+        else:
+            raise ValueError('Expected the warning policy to reject the interpreter test: ' + target)
+
+    # Each contribution must survive when the other setting disables a different
+    # warning. Reusing this fixture makes either replacement fail visibly.
+    for target, configured_warning in (
+            (suppressed_target, None),
+            (suppressed_target, 'useless_let_binding'),
+            (other_suppressed_target, 'unused_definition')):
+        more_action_env = {'XLSYNTH_DSLX_DISABLE_WARNINGS': configured_warning} if configured_warning else None
+        bazel_test_opt((target,), config, more_action_env = more_action_env)
+        test_log = (_test_output_dir(config, target).parent / 'test.log').read_text(encoding = 'utf-8')
+        if not re.search(r'^\[\s+OK\s+\] property_with_warning$', test_log, re.MULTILINE):
+            raise ValueError('Expected the interpreter to execute property_with_warning: ' + target)
+
+
 @register
 def run_sample_disabling_warning(config: PresubmitConfig):
     try:
