@@ -291,6 +291,21 @@ must add `root`; conversion rules that relied on the last dependency must add
 construction functions have been removed. The source depset has no meaningful
 ordering, and consumers must not infer a root from it.
 
+Use `disable_warnings` to suppress warnings for one interpreter test:
+
+```starlark
+dslx_test(
+    name = "my_dslx_library_test",
+    lib = ":my_dslx_library",
+    disable_warnings = ["unused_definition"],
+)
+```
+
+This list adds to the suppressions configured with
+`--@rules_xlsynth//config:disable_warnings=...`. It defaults to `[]` and affects
+only this test invocation; building the library separately or running other
+targets still uses their configured warning behavior.
+
 ### `dslx_fmt_test` - format DSLX files
 
 ```starlark
