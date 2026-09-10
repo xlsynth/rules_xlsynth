@@ -7,14 +7,7 @@ load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml"
 
 
 def _dslx_stitch_pipeline_impl(ctx):
-    lib_info = ctx.attr.lib[DslxInfo]
-    lib_dag_list = lib_info.dag.to_list()
-    if not lib_dag_list:
-        fail("DAG for library {} is empty".format(ctx.attr.lib.label))
-    main_srcs = lib_dag_list[-1].srcs
-    if len(main_srcs) != 1:
-        fail("Expected exactly one source file for the library {}; got: {}".format(ctx.attr.lib.label, [s.path for s in main_srcs]))
-    main_src = main_srcs[0]
+    main_src = ctx.attr.lib[DslxInfo].root
 
     srcs = get_srcs_from_lib(ctx)
 

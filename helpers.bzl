@@ -35,24 +35,32 @@ def write_executable_shell_script(ctx, filename, cmd, env_exports = None):
     return executable_file
 
 def _get_srcs_from(dslx_info_providers):
-    # Get DAG entries from DslxInfo. Returns a list where index 0 is the root module.
-    dag_entries = []
-    for item in dslx_info_providers:
-        dag_entries.extend(item[DslxInfo].dag.to_list())
+    # Source closure only: callers select the module from DslxInfo.root.
+    return depset(transitive = [item[DslxInfo].transitive_srcs for item in dslx_info_providers]).to_list()
 
-    srcs = []
-    for entry in dag_entries:
-        srcs += [src for src in list(entry.srcs)]
-
-    srcs = list(reversed(srcs))
-    return srcs
-
-def get_srcs_from_deps(ctx):
-    """Helper for the case where there's a deps attr that is a sequence of DSLX info providers."""
-    return _get_srcs_from(ctx.attr.deps)
+def get_dslx_input(ctx):
+    """Resolves src/lib/single-dependency forms to a root and complete source inputs."""
+    source = getattr(ctx.file, "src", None)
+    library = ctx.attr.lib
+    libraries = ([library] if library else []) + ctx.attr.deps
+    srcs = _get_srcs_from(libraries)
+    if source and library:
+        fail("Don't provide both src and lib.")
+    elif source:
+        if source in srcs:
+            fail("Don't provide the test through more than one attribute: src/lib/deps.")
+        root = source
+        srcs = [source] + srcs
+    elif library:
+        root = library[DslxInfo].root
+    elif len(ctx.attr.deps) == 1:
+        root = ctx.attr.deps[0][DslxInfo].root
+    else:
+        fail("must specify lib or exactly one dependency")
+    return struct(root = root, srcs = srcs)
 
 def get_srcs_from_lib(ctx):
-    """Helper for the case where there's a lib attr that is a DSLX info provider."""
+    """Returns the selected library's source closure, without root-order semantics."""
     return _get_srcs_from([ctx.attr.lib])
 
 def mangle_dslx_name(basename, top):

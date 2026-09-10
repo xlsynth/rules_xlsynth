@@ -14,11 +14,7 @@ load(
 
 
 def _dslx_prove_quickcheck_test_impl(ctx):
-    lib = ctx.attr.lib[DslxInfo]
-    lib_srcs = lib.dag.to_list()[-1].srcs
-    if len(lib_srcs) != 1:
-        fail("Expected exactly one source file for the library; got: " + str(lib_srcs))
-    lib_src = lib_srcs[0]
+    lib_src = ctx.attr.lib[DslxInfo].root
 
     srcs = get_srcs_from_lib(ctx)
 

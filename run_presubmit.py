@@ -229,6 +229,47 @@ def run_sample(config: PresubmitConfig):
 
 
 @register
+def run_root_selection_tests(config: PresubmitConfig):
+    """Require selected-root execution and typechecking in both source orders."""
+    positive_targets = tuple(
+        '//root_selection_tests:' + name
+        for name in ('root_first_test', 'root_last_test', 'src_test', 'single_dep_test')
+    )
+    bazel_test_opt(
+        ('//root_selection_tests:root_selection_test',) + positive_targets,
+        config,
+    )
+    for target in positive_targets:
+        log_path = _test_output_dir(config, target).parent / 'test.log'
+        output = log_path.read_text(encoding = 'utf-8')
+        if '[ RUN UNITTEST  ] root_imports_work' not in output:
+            raise ValueError('{} did not execute the healthy root test: {}'.format(target, output))
+
+    for order in ('first', 'last'):
+        target = '//root_selection_tests:failing_' + order + '_test'
+        try:
+            bazel_test_opt((target,), config, capture_output = True)
+        except subprocess.CalledProcessError as e:
+            output = (e.stdout or '') + (e.stderr or '')
+            if e.returncode != 3 or not all(marker in output for marker in (
+                    'FailureError', '[        FAILED ] explicit_root_failure_marker')):
+                raise ValueError('Expected the selected root test to fail: ' + output)
+        else:
+            raise ValueError('The selected root test was skipped: ' + target)
+
+        target = '//root_selection_tests:invalid_' + order
+        try:
+            bazel_build_opt((target,), config, capture_output = True)
+        except subprocess.CalledProcessError as e:
+            output = (e.stdout or '') + (e.stderr or '')
+            if e.returncode != 1 or not all(marker in output for marker in (
+                    'TypeInferenceError', 'invalid_root.x', 'u16 vs. u8')):
+                raise ValueError('Expected the selected root type error: ' + output)
+        else:
+            raise ValueError('The invalid root was not typechecked: ' + target)
+
+
+@register
 def run_sample_expecting_dslx_path(config: PresubmitConfig):
     proof_target = '//sample_expecting_dslx_path:main_prove_quickcheck_test'
     bazel_test_opt(
