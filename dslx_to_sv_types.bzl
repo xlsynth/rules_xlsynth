@@ -2,7 +2,7 @@
 
 load(":dslx_provider.bzl", "DslxInfo")
 load(":env_helpers.bzl", "python_runner_source")
-load(":helpers.bzl", "get_srcs_from_deps")
+load(":helpers.bzl", "get_dslx_input")
 load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "get_selected_driver_toolchain")
 
 _SV_ENUM_CASE_NAMING_POLICIES = [
@@ -18,7 +18,7 @@ _SV_STRUCT_FIELD_ORDERING_POLICIES = [
 _DEFAULT_SV_STRUCT_FIELD_ORDERING_POLICY = "as_declared"
 
 def _dslx_to_sv_types_impl(ctx):
-    srcs = get_srcs_from_deps(ctx)
+    dslx_input = get_dslx_input(ctx)
 
     output_sv_file = ctx.outputs.sv_file
 
@@ -38,7 +38,7 @@ def _dslx_to_sv_types_impl(ctx):
         output_sv_file.path,
         "dslx2sv-types",
         "--dslx_input_file",
-        srcs[0].path,
+        dslx_input.root.path,
     ]
 
     if toolchain.driver_supports_sv_struct_field_ordering:
@@ -56,7 +56,7 @@ def _dslx_to_sv_types_impl(ctx):
             fail("sv_enum_case_naming_policy={} requires a selected XLS bundle whose xlsynth-driver supports that flag".format(ctx.attr.sv_enum_case_naming_policy))
 
     ctx.actions.run(
-        inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(toolchain),
+        inputs = dslx_input.srcs + [toolchain_file] + get_driver_artifact_inputs(toolchain),
         executable = runner,
         outputs = [output_sv_file],
         arguments = arguments,
@@ -71,8 +71,12 @@ dslx_to_sv_types = rule(
     doc = "Convert a DSLX file to SystemVerilog type definitions",
     implementation = _dslx_to_sv_types_impl,
     attrs = {
+        "lib": attr.label(
+            doc = "Library whose root module is converted. May be omitted with exactly one dependency.",
+            providers = [DslxInfo],
+        ),
         "deps": attr.label_list(
-            doc = "The list of DSLX libraries to be tested.",
+            doc = "Additional DSLX input libraries, or a single root library when lib is omitted.",
             providers = [DslxInfo],
         ),
         "sv_enum_case_naming_policy": attr.string(

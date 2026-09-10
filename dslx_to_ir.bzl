@@ -13,16 +13,7 @@ load(
 )
 
 def _dslx_to_ir_impl(ctx):
-    # Get the DslxInfo from the direct library target
-    lib_info = ctx.attr.lib[DslxInfo]
-    # Convert the DAG depset to a list. The last element corresponds to the direct target due to postorder traversal.
-    lib_dag_list = lib_info.dag.to_list()
-    if not lib_dag_list:
-        fail("DAG for library {} is empty".format(ctx.attr.lib.label))
-    main_srcs = lib_dag_list[-1].srcs
-    if len(main_srcs) != 1:
-        fail("Expected exactly one source file for the library {}; got: {}".format(ctx.attr.lib.label, [s.path for s in main_srcs]))
-    main_src = main_srcs[0]
+    main_src = ctx.attr.lib[DslxInfo].root
 
     all_transitive_srcs = get_srcs_from_lib(ctx)
 
