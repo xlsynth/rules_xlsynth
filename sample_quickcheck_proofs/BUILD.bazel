@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-load("//:rules.bzl", "dslx_library", "dslx_prove_quickcheck_test")
+load("//:rules.bzl", "dslx_library", "dslx_prove_quickcheck_test", "dslx_test")
 
 dslx_library(
     name = "passing",
@@ -75,8 +75,7 @@ dslx_prove_quickcheck_test(
     tags = ["manual"],
 )
 
-# Both targets are manual because the warning is an intentional failure unless
-# unused_definition is disabled by the presubmit's second invocation.
+# The standalone library and proof require configured warning suppression.
 dslx_library(
     name = "warning_property",
     srcs = ["warning_property.x"],
@@ -88,4 +87,28 @@ dslx_prove_quickcheck_test(
     lib = ":warning_property",
     tags = ["manual"],
     top = "property_with_warning",
+)
+
+# Negative test: Error handling rejects the fixture's unsuppressed warning.
+dslx_test(
+    name = "warning_interpreter_test",
+    lib = ":warning_property",
+    tags = ["manual"],
+)
+
+# Verifies: The test's suppression permits its QuickCheck to run.
+# Catches: Target-local suppression omitted from interpreter flags.
+dslx_test(
+    name = "warning_suppressed_interpreter_test",
+    lib = ":warning_property",
+    disable_warnings = ["unused_definition"],
+)
+
+# Verifies: An unrelated local suppression preserves configured warning behavior.
+# Catches: Local suppression replacing configuration or disabling other warnings.
+dslx_test(
+    name = "warning_other_suppressed_interpreter_test",
+    lib = ":warning_property",
+    disable_warnings = ["useless_let_binding"],
+    tags = ["manual"],
 )

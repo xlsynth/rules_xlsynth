@@ -27,7 +27,12 @@ def _dslx_test_impl(ctx):
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
     ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
     toolchain = get_selected_tools_toolchain(ctx)
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = "dslx_test", toolchain = toolchain)
+    toolchain_file = declare_xls_toolchain_toml(
+        ctx,
+        name = "dslx_test",
+        toolchain = toolchain,
+        additional_disable_warnings = ctx.attr.disable_warnings,
+    )
     cmd_parts = [
         "/usr/bin/env",
         "python3",
@@ -70,6 +75,10 @@ dslx_test = rule(
         "deps": attr.label_list(
             doc = "The DSLX library dependencies for the test.",
             providers = [DslxInfo],
+        ),
+        "disable_warnings": attr.string_list(
+            doc = "Additional DSLX warnings to disable for this test, added to the configured toolchain suppressions.",
+            default = [],
         ),
         "xls_bundle": attr.label(
             doc = "Optional XLS bundle override.",
