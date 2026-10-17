@@ -9,3 +9,4 @@ top fn __sample__main() -> bits[32] {
   literal.4: bits[1] = literal(value=1, id=4, pos=[(0,5,47)])
   ret shrl.5: bits[32] = shrl(shll.3, literal.4, id=5, pos=[(0,5,24)])
 }
+
