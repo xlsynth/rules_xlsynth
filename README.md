@@ -426,6 +426,8 @@ netlist_lean_equiv_test(
     liberty_proto = ":cells_liberty_proto",
     lhs_top = "adder",
     rhs_top = "adder",
+    logic_cone_sources = ["input_port:a", "input_port:b"],
+    logic_cone_sinks = ["output_port:sum"],
     proof = "proof/Body.lean",
 )
 ```
@@ -441,11 +443,42 @@ expected hash, and actual hash.
 Optional extraction attributes are:
 
 - `lhs_top`, `rhs_top`: module selection; omit when unambiguous.
-- `lhs_cone_boundary_file`, `rhs_cone_boundary_file`: the driver's compact JSON
-  source/sink boundary files. Omission selects the complete module interface.
+- `logic_cone_sources`, `logic_cone_sinks`: shared lists of compact selectors
+  applied to both netlists.
+- `lhs_logic_cone_sources`, `lhs_logic_cone_sinks`, `rhs_logic_cone_sources`,
+  `rhs_logic_cone_sinks`: per-side selector lists for different boundaries.
 - `collapse_sequential`: collapse reached pipeline registers; default `False`.
 - `collapse_load_enable_feedback`: collapse recognized load-enable feedback
   with zero prior state; default `False` and requires `collapse_sequential`.
+
+Shared and per-side selector modes are mutually exclusive. Empty lists count as
+omitted. With no selectors, both sides use their complete module interfaces; in
+per-side mode, an omitted side uses its complete interface. A non-empty source
+list requires a non-empty sink list for that selection. Selector order is
+preserved when forwarding repeated `--cone_sources` and `--cone_sinks` flags to
+`gv2g8r`.
+
+Selectors use the driver's compact syntax, such as `input_port:data`,
+`cell_output_regex:state_reg_[0-9]+:Q`, and `output_port:result`. Per-side
+selectors can use aliases to produce matching interfaces from different names:
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")
+
+netlist_lean_equiv_test(
+    name = "renamed_ports_equiv_test",
+    lhs = ":reference_netlist",
+    lhs_sha256 = "<64-character SHA-256>",
+    rhs = ":optimized_netlist",
+    rhs_sha256 = "<64-character SHA-256>",
+    liberty_proto = ":cells_liberty_proto",
+    proof = "proof/Body.lean",
+    lhs_logic_cone_sources = ["data=input_port:reference_data"],
+    lhs_logic_cone_sinks = ["result=output_port:reference_result"],
+    rhs_logic_cone_sources = ["data=input_port:optimized_data"],
+    rhs_logic_cone_sinks = ["result=output_port:optimized_result"],
+)
+```
 
 The initial rule checks combinational `GateFn` equivalence. Reached residual
 state is rejected. Extracted input and output ports must have matching names
@@ -470,14 +503,16 @@ Lean directly; `bv_decide` uses Lean's bundled solver lookup.
 
 Under `bazel test`, the rule writes `netlist_lean_equiv.json` to the undeclared
 test outputs with status, versions, hashes, extraction settings, timing, and
-Lean diagnostics. Success means Lean accepted the generated root theorem under
+Lean diagnostics. Extraction settings include the resolved source and sink
+lists for each side. Success means Lean accepted the generated root theorem under
 its ordinary rules. Proof auditing is not performed, and the report records
 `audit_performed: false`.
 
 The checked-in proof targets are:
 
 - `basic`: plain netlists and [`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean).
-- `equivalent`: the same proof with a generated gzip-compressed RHS netlist.
+- `equivalent`: the same proof with a generated gzip-compressed RHS netlist and
+  different per-side selectors.
 - `pipeline`: selected cone boundaries and pipeline/load-enable collapsing.
 - `with_helpers`: `Proof/WithHelpers.lean` and two helper modules exercising
   dependency ordering and `bv_decide`.
