@@ -474,20 +474,29 @@ Lean diagnostics. Success means Lean accepted the generated root theorem under
 its ordinary rules. Proof auditing is not performed, and the report records
 `audit_performed: false`.
 
-The checked-in `basic` target uses only
-[`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean). The
-`with_helpers` target uses `Proof/WithHelpers.lean` and two helper modules to
-exercise dependency ordering and `bv_decide`. With a selected toolchain that
-provides the required driver commands and Lean, run them directly:
+The checked-in proof targets are:
+
+- `basic`: plain netlists and [`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean).
+- `equivalent`: the same proof with a generated gzip-compressed RHS netlist.
+- `pipeline`: selected cone boundaries and pipeline/load-enable collapsing.
+- `with_helpers`: `Proof/WithHelpers.lean` and two helper modules exercising
+  dependency ordering and `bv_decide`.
+
+With a selected toolchain that provides the required driver commands and Lean,
+run them directly:
 
 ```shell
-bazel test //testdata/netlist_lean_equiv:basic //testdata/netlist_lean_equiv:with_helpers
+bazel test \
+  //testdata/netlist_lean_equiv:basic \
+  //testdata/netlist_lean_equiv:equivalent \
+  //testdata/netlist_lean_equiv:pipeline \
+  //testdata/netlist_lean_equiv:with_helpers
 ```
 
-Both targets are tagged `manual` while the repository's released self-test
+These targets are tagged `manual` while the repository's released self-test
 driver predates the Lean commands. The standalone integration test supplies a
-local driver, runs the checked-in targets, and also exercises pipeline
-extraction, expected failures, and both download and installed Lean selection:
+local driver and retains expected hash/proof failures and toolchain configuration
+checks, using `basic` to exercise download and installed Lean selection:
 
 ```shell
 RULES_XLSYNTH_TEST_DRIVER=/path/to/xlsynth-driver \
