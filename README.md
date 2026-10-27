@@ -58,6 +58,28 @@ For the installed-layout modes, `rules_xlsynth` derives exact-version paths as:
 - `<installed_driver_root_prefix>/<xlsynth_driver_version>/bin/xlsynth-driver`
   for the driver binary
 
+Lean proof rules use an optional installed Lean distribution configured on the
+same toolchain:
+
+```starlark
+xls.toolchain(
+    name = "workspace_xls",
+    # Existing XLS artifact configuration...
+    lean_version = "4.34.1",
+    installed_lean_root_prefix = "/opt/lean",
+)
+```
+
+The two Lean attributes must be supplied together. They select
+`<installed_lean_root_prefix>/<lean_version>`, which must contain `bin/lean`,
+`bin/cadical`, `lib/lean`, and `src/lean`. The materialization action checks
+Lean's reported version and preserves the required distribution layout in a
+declared tree artifact. Only proof rules consume that artifact. Lean resolution
+is installed-only and is independent of `artifact_source`; no Lean download or
+PATH fallback is performed. Omitting both attributes leaves Lean unavailable
+to proof rules. The existing resolved XLS identity does not authenticate the
+installed Lean distribution.
+
 The attributes accepted by each mode are strict, but runtime and driver inputs
 are resolved at different times:
 
@@ -369,6 +391,89 @@ undeclared test output `ir_equiv.json`, including `success` and `error_str`.
 The report is available for both successful proofs and counterexamples; a
 failure result alone is not evidence of non-equivalence because solver errors
 and inconclusive results also fail.
+
+### `netlist_lean_equiv_test` - check a supplied Lean proof of netlist equivalence
+
+Mechanically converts two Liberty-backed mapped Verilog netlists into g8r
+graphs and Lean circuits, then runs a supplied proof of their equivalence.
+The selected `xls.toolchain` must configure installed Lean as described above,
+and its driver must provide `gv2g8r`, `g8r-lean-prepare`, and
+`g8r-lean-check`.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")
+
+netlist_lean_equiv_test(
+    name = "adder_equiv_test",
+    lhs = ":reference_netlist",
+    lhs_hash = "<64-character SHA-256>",
+    rhs = ":optimized_netlist",
+    rhs_hash = "<64-character SHA-256>",
+    liberty_proto = ":cells_liberty_proto",
+    lhs_top = "adder",
+    rhs_top = "adder",
+    proof = "proof/Body.lean",
+)
+```
+
+`lhs` and `rhs` each provide exactly one netlist file. Workspace files,
+generated outputs, and external-repository files are accepted. The single
+`liberty_proto` is used for both sides. The hash attributes are SHA-256 over
+the exact file contents, decompressed first for `.gz` inputs. Whitespace and
+comments count. A build action verifies each hash before conversion and writes
+the exact verified bytes consumed by `gv2g8r`. A mismatch reports the side,
+expected hash, and actual hash.
+
+Optional extraction attributes are:
+
+- `lhs_top`, `rhs_top`: module selection; omit when unambiguous.
+- `lhs_cone_boundary_file`, `rhs_cone_boundary_file`: the driver's compact JSON
+  source/sink boundary files. Omission selects the complete module interface.
+- `collapse_sequential`: collapse reached pipeline registers; default `False`.
+- `collapse_load_enable_feedback`: collapse recognized load-enable feedback
+  with zero prior state; default `False` and requires `collapse_sequential`.
+
+The initial rule checks combinational `GateFn` equivalence. Reached residual
+state is rejected. Extracted input and output ports must have matching names
+and widths in the same order.
+
+The build creates the two `.g8r` graphs and a Lean target directory containing
+`Lhs.aag`, `Rhs.aag`, shared support modules, `Target.lean`, and `Check.lean`.
+`Target.lean` embeds both AAG files through the shared loader and defines their
+equivalence proposition. Inspect that directory while developing a proof with:
+
+```shell
+bazel build //path:adder_equiv_test --output_groups=lean_target
+```
+
+The `proof` file contains a complete Lean term for `Target.Equivalent`, such as
+a `by` tactic block or a helper theorem name. The runner generates the imports
+and `UserProof.equivalent` theorem declaration. Optional `proof_srcs` supplies
+helper `.lean` files, all of which are imported mechanically. Helpers must be
+under the body's directory; their relative paths are preserved. Lean discovers
+helper dependencies and compiles them in dependency order. The runner invokes
+Lean directly; `bv_decide` uses Lean's bundled solver lookup.
+
+Under `bazel test`, the rule writes `netlist_lean_equiv.json` to the undeclared
+test outputs with status, versions, hashes, extraction settings, timing, and
+Lean diagnostics. Success means Lean accepted the generated root theorem under
+its ordinary rules. Proof auditing is not performed, and the report records
+`audit_performed: false`.
+
+The basic integration targets use only
+[`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean). A separate
+`with_helpers` target exercises automatic helper imports and dependency ordering.
+The end-to-end integration test uses explicitly provisioned installations:
+
+```shell
+RULES_XLSYNTH_TEST_DRIVER=/path/to/xlsynth-driver \
+RULES_XLSYNTH_TEST_XLS_ROOT=/path/to/xls-release \
+RULES_XLSYNTH_TEST_LEAN_ROOT=/path/to/lean-4.34.1 \
+python3 netlist_lean_equiv_integration_test.py
+```
+
+`RULES_XLSYNTH_TEST_BAZEL` and `RULES_XLSYNTH_TEST_BAZEL_STARTUP_OPTIONS` may
+select a Bazel executable and startup options for that standalone test.
 
 ### `ir_to_gates` - convert IR to gate-level analysis
 

@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+format_magic: 5496997758228255311
+cells: {
+  name: "INV"
+  pins: { name_string_id: 1 direction: INPUT }
+  pins: { name_string_id: 3 direction: OUTPUT function_string_id: 4 }
+}
+cells: {
+  name: "AND2"
+  pins: { name_string_id: 1 direction: INPUT }
+  pins: { name_string_id: 2 direction: INPUT }
+  pins: { name_string_id: 3 direction: OUTPUT function_string_id: 5 }
+}
+cells: {
+  name: "DFFEN"
+  pins: { name_string_id: 6 direction: INPUT }
+  pins: { name_string_id: 7 direction: INPUT }
+  pins: { name_string_id: 8 direction: INPUT }
+  pins: { name_string_id: 9 direction: INPUT }
+  pins: { name_string_id: 10 direction: INPUT is_clocking_pin: true }
+  pins: { name_string_id: 11 direction: OUTPUT function_string_id: 12 }
+  sequential: {
+    state_var: "S"
+    next_state: "(PRIOR & HOLD) | (DATA & LOAD)"
+    clock_expr: "CLK"
+    kind: SEQUENTIAL_KIND_FF
+  }
+}
+interned_strings: ["A", "B", "Y", "(!A)", "(A & B)", "DATA", "LOAD", "HOLD", "PRIOR", "CLK", "Q", "S"]

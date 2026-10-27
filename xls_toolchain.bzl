@@ -20,6 +20,7 @@ XlsArtifactBundleInfo = provider(
         "dslx_stdlib": "The DSLX stdlib root tree artifact.",
         "dslx_stdlib_path": "Directory path containing the DSLX stdlib sources.",
         "libxls": "The libxls shared library file.",
+        "lean": "Optional installed Lean bundle for proof rules.",
         "runtime_files": "Declared runtime files needed to load libxls.",
         "runtime_library_path": "Directory containing libxls for runtime loading.",
         "resolved_identity": "Machine-readable resolved producer identity manifest, when requested.",
@@ -27,6 +28,14 @@ XlsArtifactBundleInfo = provider(
         "tools_path": "Directory path containing the XLS tool binaries.",
         "xls_pin": "Optional declared XLS producer metadata, normalized when its bundle is selected.",
         "xlsynth_crate_pin": "Optional declared XLSynth producer metadata, normalized when its bundle is selected.",
+    },
+)
+
+LeanInstallationInfo = provider(
+    doc = "Installed Lean distribution materialized as a declared tree artifact.",
+    fields = {
+        "root": "Distribution root tree artifact.",
+        "version": "Exact configured Lean release version.",
     },
 )
 
@@ -174,6 +183,7 @@ def _bundle_struct_from_provider(bundle):
         dslx_stdlib = bundle.dslx_stdlib,
         dslx_stdlib_path = bundle.dslx_stdlib_path,
         libxls = bundle.libxls,
+        lean = getattr(bundle, "lean", None),
         runtime_files = bundle.runtime_files,
         runtime_library_path = bundle.runtime_library_path,
         resolved_identity = bundle.resolved_identity,
@@ -220,6 +230,7 @@ def _toolchain_with_semantics(artifact_selection, ctx):
         dslx_stdlib = artifact_selection.dslx_stdlib,
         dslx_stdlib_path = artifact_selection.dslx_stdlib_path,
         libxls = artifact_selection.libxls,
+        lean = artifact_selection.lean,
         runtime_files = artifact_selection.runtime_files,
         runtime_library_path = artifact_selection.runtime_library_path,
         resolved_identity = artifact_selection.resolved_identity,
@@ -491,6 +502,59 @@ xlsynth_driver_binary = rule(
     executable = True,
 )
 
+def _xls_lean_installation_impl(ctx):
+    prefix = "/".join([
+        part
+        for part in [ctx.label.workspace_root, ctx.label.package, ctx.attr.host_root.strip("/")]
+        if part
+    ]) + "/"
+    entries = []
+    for artifact in sorted(ctx.files.host_files, key = lambda file: file.path):
+        if not artifact.path.startswith(prefix):
+            fail("Lean host artifact {} is outside {}".format(artifact.path, prefix))
+        entries.append({
+            "relative": artifact.path[len(prefix):],
+            "source": artifact.path,
+        })
+    manifest = ctx.actions.declare_file(ctx.label.name + ".manifest.json")
+    ctx.actions.write(
+        output = manifest,
+        content = json.encode({
+            "entries": entries,
+            "installed_root": ctx.attr.installed_root,
+            "version": ctx.attr.version,
+        }) + "\n",
+    )
+    root = ctx.actions.declare_directory(ctx.label.name + "_distribution")
+    ctx.actions.run_shell(
+        inputs = ctx.files.host_files + [manifest, ctx.file._materializer],
+        outputs = [root],
+        arguments = [ctx.file._materializer.path, manifest.path, root.path],
+        command = 'python3 "$1" --manifest "$2" --output "$3"',
+        env = {"PATH": "/usr/bin:/bin"},
+        progress_message = "Materializing installed Lean {}".format(ctx.attr.version),
+        mnemonic = "XlsynthLeanInstallation",
+    )
+    return [
+        LeanInstallationInfo(root = root, version = ctx.attr.version),
+        DefaultInfo(files = depset([root])),
+    ]
+
+xls_lean_installation = rule(
+    doc = "Internal materialization rule for an installed Lean distribution.",
+    implementation = _xls_lean_installation_impl,
+    attrs = {
+        "host_files": attr.label(allow_files = True, mandatory = True),
+        "host_root": attr.string(mandatory = True),
+        "installed_root": attr.string(mandatory = True),
+        "version": attr.string(mandatory = True),
+        "_materializer": attr.label(
+            default = Label("//:materialize_lean_installation.py"),
+            allow_single_file = True,
+        ),
+    },
+)
+
 def _xls_bundle_impl(ctx):
     runtime = _runtime_struct_from_provider(ctx.attr.runtime[XlsRuntimeSurfaceInfo])
     driver = _single_artifact(ctx.attr.driver, "driver")
@@ -513,6 +577,7 @@ def _xls_bundle_impl(ctx):
             dslx_stdlib = runtime.dslx_stdlib,
             dslx_stdlib_path = runtime.dslx_stdlib_path,
             libxls = runtime.libxls,
+            lean = ctx.attr.lean[LeanInstallationInfo] if ctx.attr.lean else None,
             runtime_files = runtime.runtime_files,
             runtime_library_path = runtime.runtime_library_path,
             resolved_identity = resolved_identity,
@@ -539,6 +604,7 @@ xls_bundle = rule(
         "driver": attr.label(allow_files = True, mandatory = True),
         "driver_supports_sv_enum_case_naming_policy": attr.bool(default = False),
         "driver_supports_sv_struct_field_ordering": attr.bool(default = False),
+        "lean": attr.label(providers = [LeanInstallationInfo]),
         "runtime": attr.label(mandatory = True, providers = [XlsRuntimeSurfaceInfo]),
         "xls_git_revision": attr.string(),
         "xls_version": attr.string(),
@@ -567,6 +633,7 @@ def _merge_toolchain_with_bundle(toolchain, bundle):
         dslx_stdlib = artifact_selection.dslx_stdlib,
         dslx_stdlib_path = artifact_selection.dslx_stdlib_path,
         libxls = artifact_selection.libxls,
+        lean = artifact_selection.lean,
         runtime_files = artifact_selection.runtime_files,
         runtime_library_path = artifact_selection.runtime_library_path,
         resolved_identity = artifact_selection.resolved_identity,
@@ -596,6 +663,13 @@ def require_driver_toolchain(ctx):
     if not toolchain.driver_path:
         fail("rules_xlsynth requires a configured xlsynth-driver")
     _require_common_toolchain(toolchain)
+    return toolchain
+
+def require_lean_toolchain(ctx):
+    """Returns the selected XLS toolchain with its installed Lean bundle."""
+    toolchain = require_driver_toolchain(ctx)
+    if getattr(toolchain, "lean", None) == None:
+        fail("netlist_lean_equiv_test requires lean_version and installed_lean_root_prefix on the selected xls.toolchain")
     return toolchain
 
 def require_tools_toolchain(ctx):

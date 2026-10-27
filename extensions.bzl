@@ -33,6 +33,21 @@ def _toolchain_repo_name(name):
 def _driver_repo_name(name):
     return name + "_driver"
 
+def _lean_repo_name(name):
+    return name + "_lean"
+
+def _validate_lean_version(version):
+    parts = version.split(".")
+    valid = len(parts) == 3
+    for part in parts:
+        if not part:
+            valid = False
+        for index in range(len(part)):
+            if part[index] not in "0123456789":
+                valid = False
+    if not valid:
+        fail("lean_version must be a release version such as 4.34.1")
+
 def _installed_driver_path(driver_version, installed_driver_root_prefix):
     return "{}/{}/bin/xlsynth-driver".format(
         installed_driver_root_prefix.rstrip("/"),
@@ -262,6 +277,7 @@ def _toolchain_build_file(
         host_driver_label,
         host_driver_provenance_label,
         installed_driver_root_prefix,
+        lean_label,
         local_driver_path,
         rustup_path,
         xls_git_revision,
@@ -288,6 +304,7 @@ def _toolchain_build_file(
         _string_attr_line("xlsynth_driver_version", xlsynth_driver_version),
     ])
     bundle_producer_attrs = "".join([
+        _string_attr_line("lean", lean_label),
         _string_attr_line("xls_git_revision", xls_git_revision),
         _string_attr_line("xls_version", xls_version),
         _string_attr_line("xlsynth_driver_git_revision", xlsynth_driver_git_revision),
@@ -376,6 +393,44 @@ exports_files([
     "xlsynth-driver.provenance.json",
 ])
 """,
+    )
+
+def _lean_repo_impl(repo_ctx):
+    installed_root = repo_ctx.attr.installed_lean_root_prefix.rstrip("/") + "/" + repo_ctx.attr.lean_version
+    root_path = repo_ctx.path(installed_root)
+    repo_ctx.watch(root_path)
+    if root_path.exists:
+        repo_ctx.symlink(root_path, "installation")
+    else:
+        repo_ctx.file("installation/.missing", "Installed Lean directory is unavailable.\n")
+    repo_ctx.file(
+        "BUILD.bazel",
+        """# SPDX-License-Identifier: Apache-2.0
+
+load("@rules_xlsynth//:xls_toolchain.bzl", "xls_lean_installation")
+
+filegroup(
+    name = "host_files",
+    srcs = glob([
+        "installation/bin/lean",
+        "installation/bin/cadical",
+        "installation/lib/**",
+        "installation/src/lean/**",
+    ], allow_empty = True),
+)
+
+xls_lean_installation(
+    name = "bundle",
+    host_files = ":host_files",
+    host_root = "installation",
+    installed_root = {installed_root},
+    version = {version},
+    visibility = ["//visibility:public"],
+)
+""".format(
+            installed_root = _quoted(installed_root),
+            version = _quoted(repo_ctx.attr.lean_version),
+        ),
     )
 
 def _host_driver_path(toolchain):
@@ -501,6 +556,7 @@ def _toolchain_repo_impl(repo_ctx):
             host_driver_label = repo_ctx.attr.host_driver_label,
             host_driver_provenance_label = repo_ctx.attr.host_driver_provenance_label,
             installed_driver_root_prefix = repo_ctx.attr.installed_driver_root_prefix,
+            lean_label = repo_ctx.attr.lean_label,
             local_driver_path = repo_ctx.attr.local_driver_path,
             rustup_path = "" if rustup == None else str(rustup),
             xls_git_revision = repo_ctx.attr.xls_git_revision,
@@ -535,6 +591,7 @@ _toolchain_repo_attrs = {
     "host_driver_provenance_label": attr.string(),
     "installed_driver_root_prefix": attr.string(),
     "installed_tools_root_prefix": attr.string(),
+    "lean_label": attr.string(),
     "local_driver_path": attr.string(),
     "local_dslx_stdlib_path": attr.string(),
     "local_libxls_path": attr.string(),
@@ -576,12 +633,22 @@ _xls_driver_repo = repository_rule(
     attrs = _driver_repo_attrs,
 )
 
+_xls_lean_repo = repository_rule(
+    implementation = _lean_repo_impl,
+    attrs = {
+        "installed_lean_root_prefix": attr.string(mandatory = True),
+        "lean_version": attr.string(mandatory = True),
+    },
+)
+
 _toolchain_tag = tag_class(attrs = {
     "allow_xls_pin_mismatch": attr.bool(),
     "artifact_source": attr.string(mandatory = True),
     "emit_resolved_identity": attr.bool(),
     "installed_driver_root_prefix": attr.string(),
+    "installed_lean_root_prefix": attr.string(),
     "installed_tools_root_prefix": attr.string(),
+    "lean_version": attr.string(),
     "local_driver_path": attr.string(),
     "local_dslx_stdlib_path": attr.string(),
     "local_libxls_path": attr.string(),
@@ -596,6 +663,18 @@ _toolchain_tag = tag_class(attrs = {
 def _xls_extension_impl(module_ctx):
     for module in module_ctx.modules:
         for toolchain in module.tags.toolchain:
+            if bool(toolchain.lean_version) != bool(toolchain.installed_lean_root_prefix):
+                fail("lean_version and installed_lean_root_prefix must be supplied together")
+            lean_label = ""
+            if toolchain.lean_version:
+                _validate_lean_version(toolchain.lean_version)
+                lean_name = _lean_repo_name(toolchain.name)
+                _xls_lean_repo(
+                    name = lean_name,
+                    installed_lean_root_prefix = toolchain.installed_lean_root_prefix,
+                    lean_version = toolchain.lean_version,
+                )
+                lean_label = "@{}//:bundle".format(lean_name)
             runtime_name = _runtime_repo_name(toolchain.name)
             toolchain_name = _toolchain_repo_name(toolchain.name)
             driver_name = _driver_repo_name(toolchain.name)
@@ -631,6 +710,7 @@ def _xls_extension_impl(module_ctx):
                 host_driver_provenance_label = _host_driver_provenance_label(toolchain, driver_name),
                 installed_driver_root_prefix = toolchain.installed_driver_root_prefix,
                 installed_tools_root_prefix = toolchain.installed_tools_root_prefix,
+                lean_label = lean_label,
                 local_driver_path = toolchain.local_driver_path,
                 local_dslx_stdlib_path = toolchain.local_dslx_stdlib_path,
                 local_libxls_path = toolchain.local_libxls_path,
