@@ -2,6 +2,18 @@
 
 load("//:rules.bzl", "netlist_lean_equiv_test")
 
+filegroup(
+    name = "integration_test_fixtures",
+    srcs = [
+        "Proof/Body.lean",
+        "cells.textproto",
+        "lhs.gv",
+        "rhs.gv",
+        "rhs_bad.gv",
+    ],
+    visibility = ["//:__pkg__"],
+)
+
 netlist_lean_equiv_test(
     name = "basic",
     lhs = "lhs.gv",
