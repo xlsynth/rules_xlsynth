@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "netlist_lean_equiv_test")
+
+netlist_lean_equiv_test(
+    name = "basic",
+    lhs = "lhs.gv",
+    lhs_hash = "b77aea65603feee7a0dcd157885ab7d64a4513fdd5ff07826f204b9d3649b28a",
+    lhs_top = "top",
+    liberty_proto = "cells.textproto",
+    proof = "Proof/Body.lean",
+    rhs = "rhs.gv",
+    rhs_hash = "043a8cad365a0e925aa253f33d0f4ddd0f725ae2e5585be8104899a85ed029f2",
+    rhs_top = "top",
+    # The repository's released self-test driver predates the Lean commands.
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
