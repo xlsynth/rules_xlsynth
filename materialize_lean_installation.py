@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Materializes the declared files of an installed Lean distribution."""
+"""Materializes the declared files of a Lean distribution."""
 
 import argparse
 import json
@@ -25,12 +25,12 @@ def materialize(manifest_path, output_root):
     missing = sorted(required.difference(relative_paths))
     if missing:
         raise ValueError(
-            "installed Lean {} at {} is missing required files: {}".format(
-                manifest["version"], manifest["installed_root"], ", ".join(missing)
+            "Lean {} from {} is missing required files: {}".format(
+                manifest["version"], manifest["source"], ", ".join(missing)
             )
         )
     if len(relative_paths) != len(set(relative_paths)):
-        raise ValueError("installed Lean manifest contains duplicate relative paths")
+        raise ValueError("Lean manifest contains duplicate relative paths")
 
     output_root = Path(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
@@ -47,7 +47,7 @@ def materialize(manifest_path, output_root):
     lean = output_root / "bin" / "lean"
     for executable in (lean, output_root / "bin" / "cadical"):
         if not os.access(str(executable), os.X_OK):
-            raise ValueError("installed Lean executable is not executable: {}".format(executable))
+            raise ValueError("Lean executable is not executable: {}".format(executable))
     result = subprocess.run(
         [str(lean), "--short-version"],
         stdout=subprocess.PIPE,
@@ -56,11 +56,11 @@ def materialize(manifest_path, output_root):
         check=False,
     )
     if result.returncode != 0:
-        raise ValueError("installed Lean version query failed: {}".format(result.stderr.strip()))
+        raise ValueError("Lean version query failed: {}".format(result.stderr.strip()))
     actual = result.stdout.strip()
     if actual != manifest["version"]:
         raise ValueError(
-            "installed Lean version mismatch: expected {}, got {}".format(
+            "Lean version mismatch: expected {}, got {}".format(
                 manifest["version"], actual
             )
         )

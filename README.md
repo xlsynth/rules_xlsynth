@@ -58,27 +58,40 @@ For the installed-layout modes, `rules_xlsynth` derives exact-version paths as:
 - `<installed_driver_root_prefix>/<xlsynth_driver_version>/bin/xlsynth-driver`
   for the driver binary
 
-Lean proof rules use an optional installed Lean distribution configured on the
-same toolchain:
+Lean proof rules use an optional Lean distribution configured on the same
+toolchain. For example, Bazel can download a pinned official release:
 
 ```starlark
 xls.toolchain(
     name = "workspace_xls",
     # Existing XLS artifact configuration...
+    lean_artifact_source = "download_only",
     lean_version = "4.34.1",
-    installed_lean_root_prefix = "/opt/lean",
 )
 ```
 
-The two Lean attributes must be supplied together. They select
-`<installed_lean_root_prefix>/<lean_version>`, which must contain `bin/lean`,
-`bin/cadical`, `lib/lean`, and `src/lean`. The materialization action checks
-Lean's reported version and preserves the required distribution layout in a
-declared tree artifact. Only proof rules consume that artifact. Lean resolution
-is installed-only and is independent of `artifact_source`; no Lean download or
-PATH fallback is performed. Omitting both attributes leaves Lean unavailable
-to proof rules. The existing resolved XLS identity does not authenticate the
-installed Lean distribution.
+`lean_artifact_source` is independent of the XLS `artifact_source` setting:
+
+- `download_only` downloads the official platform archive from the
+  `leanprover/lean4` GitHub release and verifies a checked-in SHA-256 digest.
+  It does not accept `installed_lean_root_prefix`.
+- `installed_only` requires `installed_lean_root_prefix` and selects
+  `<installed_lean_root_prefix>/<lean_version>`.
+- `auto` requires the same prefix, uses the installed distribution when its
+  required files exist, and otherwise downloads the same pinned version.
+
+Omitting `lean_artifact_source` retains `installed_only` behavior. Omitting all
+Lean attributes leaves Lean unavailable to proof rules. Download checksums are
+currently registered for Lean 4.34.1 on Linux and macOS, for x86-64 and AArch64.
+Bazel caches downloaded archives by checksum. Resolving a configured Lean
+repository may fetch the archive before a proof action runs.
+
+The distribution must contain `bin/lean`, `bin/cadical`, `lib/lean`, and
+`src/lean`. The materialization action checks Lean's reported version and
+preserves the required layout in a declared tree artifact. The test invokes
+Lean directly, without Elan or a PATH fallback. The existing resolved XLS
+identity does not include Lean; downloaded Lean integrity comes from the pinned
+archive checksum.
 
 The attributes accepted by each mode are strict, but runtime and driver inputs
 are resolved at different times:
@@ -95,7 +108,8 @@ are resolved at different times:
   exactly one `xlsynth_driver_version` or `xlsynth_driver_git_revision`.
 - `local_paths` does not accept `xls_version` or `xlsynth_driver_version`;
   the other modes accept no local artifact overrides.
-- `download_only` does not accept any `installed_*` attrs.
+- XLS `download_only` does not accept `installed_tools_root_prefix` or
+  `installed_driver_root_prefix`; Lean selection is independent.
 
 For provenance-sensitive consumers, `emit_resolved_identity = True` makes the
 module extension emit `resolved_identity.json` in its generated runtime
@@ -396,7 +410,7 @@ and inconclusive results also fail.
 
 Mechanically converts two Liberty-backed mapped Verilog netlists into g8r
 graphs and Lean circuits, then runs a supplied proof of their equivalence.
-The selected `xls.toolchain` must configure installed Lean as described above,
+The selected `xls.toolchain` must configure Lean as described above,
 and its driver must provide `gv2g8r`, `g8r-lean-prepare`, and
 `g8r-lean-check`.
 
@@ -460,10 +474,18 @@ Lean diagnostics. Success means Lean accepted the generated root theorem under
 its ordinary rules. Proof auditing is not performed, and the report records
 `audit_performed: false`.
 
-The basic integration targets use only
-[`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean). A separate
-`with_helpers` target exercises automatic helper imports and dependency ordering.
-The end-to-end integration test uses explicitly provisioned installations:
+The checked-in basic target uses only
+[`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean). With a selected
+toolchain that provides the required driver commands and Lean, run it directly:
+
+```shell
+bazel test //testdata/netlist_lean_equiv:basic
+```
+
+It is tagged `manual` while the repository's released self-test driver predates
+the Lean commands. The standalone integration test supplies a local driver and
+also exercises pipeline extraction, helper imports, expected failures, and both
+download and installed Lean selection:
 
 ```shell
 RULES_XLSYNTH_TEST_DRIVER=/path/to/xlsynth-driver \

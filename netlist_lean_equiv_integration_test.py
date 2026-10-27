@@ -74,13 +74,15 @@ class NetlistLeanEquivIntegrationTest(unittest.TestCase):
             self.assertIn(expected_text, result.stdout)
         return result.stdout
 
-    def module_source(self, netlists, lean_prefix, lean_attributes=True):
+    def module_source(self, netlists, lean_prefix, lean_attributes=True, lean_source=""):
         libxls = self.xls_root / ("libxls.dylib" if sys.platform == "darwin" else "libxls.so")
         lean = ""
         if lean_attributes:
-            lean = "    lean_version = {},\n    installed_lean_root_prefix = {},\n".format(
-                quote(LEAN_VERSION), quote(lean_prefix)
-            )
+            lean = "    lean_version = {},\n".format(quote(LEAN_VERSION))
+            if lean_prefix is not None:
+                lean += "    installed_lean_root_prefix = {},\n".format(quote(lean_prefix))
+            if lean_source:
+                lean += "    lean_artifact_source = {},\n".format(quote(lean_source))
         return """module(name = "netlist_lean_integration")
 bazel_dep(name = "rules_xlsynth", version = "0.0.0")
 local_path_override(module_name = "rules_xlsynth", path = {rules_root})
@@ -197,7 +199,7 @@ register_toolchains("@local_xls_toolchain//:all")
             module.write_text(self.module_source(netlists, lean_prefix, lean_attributes=False))
             self.bazel_command(
                 workspace, ["build", "//:equivalent"], expected_success=False,
-                expected_text="requires lean_version and installed_lean_root_prefix",
+                expected_text="requires Lean configuration",
             )
             partial = self.module_source(netlists, lean_prefix).replace(
                 "    installed_lean_root_prefix = {},\n".format(quote(lean_prefix)), ""
@@ -205,13 +207,25 @@ register_toolchains("@local_xls_toolchain//:all")
             module.write_text(partial)
             self.bazel_command(
                 workspace, ["build", "//:equivalent"], expected_success=False,
-                expected_text="lean_version and installed_lean_root_prefix must be supplied together",
+                expected_text="lean_artifact_source=installed_only requires installed_lean_root_prefix",
             )
             module.write_text(self.module_source(netlists, root / "missing-lean"))
             self.bazel_command(
                 workspace, ["build", "//:equivalent"], expected_success=False,
                 expected_text="missing required files",
             )
+
+            module.write_text(self.module_source(netlists, None, lean_source="download_only"))
+            self.bazel_command(
+                workspace,
+                ["test", "@rules_xlsynth//testdata/netlist_lean_equiv:basic", "--test_output=errors", "--nocache_test_results"],
+            )
+
+            module.write_text(self.module_source(netlists, root / "missing-lean", lean_source="auto"))
+            self.bazel_command(
+                workspace, ["test", "//:equivalent", "--test_output=errors", "--nocache_test_results"],
+            )
+            self.assertEqual(self.read_report(workspace, "equivalent")["status"], "accepted_by_lean")
 
 
 if __name__ == "__main__":

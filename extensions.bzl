@@ -12,6 +12,24 @@ _TOOL_BINARIES = [
 ]
 _DRIVER_GIT_PROVENANCE_FILENAME = "xlsynth-driver.provenance.json"
 
+# Official release archive digests from
+# https://github.com/leanprover/lean4/releases/expanded_assets/v4.34.1
+_LEAN_RELEASE_SHA256 = {
+    "4.34.1": {
+        "darwin": "c2fee70250444e46c1106a27bddfef948d1e563eef431eaac05bb946b2f73d3a",
+        "darwin_aarch64": "65f22a4f047738ec742667b3247e836a86ebf06eabc12655c3dee00637e37866",
+        "linux": "47bf4bbd78f70c2e9670598ab7124d92b6efb7330ff33e5fbb4030f6fd72e4e4",
+        "linux_aarch64": "fdb974c2cdb4627e090d5d4007b913e09d13c4868720fb5594e22808b3de9e37",
+    },
+}
+
+_LEAN_REQUIRED_FILES = [
+    "bin/lean",
+    "bin/cadical",
+    "lib/lean/Init.olean",
+    "src/lean/Init.lean",
+]
+
 def _metadata_dict(repo_ctx, metadata_filename):
     metadata = {}
     metadata_path = repo_ctx.path(metadata_filename)
@@ -47,6 +65,50 @@ def _validate_lean_version(version):
                 valid = False
     if not valid:
         fail("lean_version must be a release version such as 4.34.1")
+
+def _lean_artifact_source(toolchain):
+    """Validates optional Lean configuration and returns its source mode."""
+    if not (toolchain.lean_version or toolchain.lean_artifact_source or toolchain.installed_lean_root_prefix):
+        return ""
+    source = toolchain.lean_artifact_source or "installed_only"
+    if source not in ["auto", "download_only", "installed_only"]:
+        fail("lean_artifact_source must be auto, download_only, or installed_only")
+    if not toolchain.lean_version:
+        fail("lean_version is required when configuring Lean")
+    _validate_lean_version(toolchain.lean_version)
+    if source == "download_only":
+        if toolchain.installed_lean_root_prefix:
+            fail("lean_artifact_source=download_only does not accept installed_lean_root_prefix")
+    elif not toolchain.installed_lean_root_prefix:
+        fail("lean_artifact_source={} requires installed_lean_root_prefix".format(source))
+    return source
+
+def _lean_archive(repo_ctx):
+    """Returns the pinned official archive for this host and Lean release."""
+    os_name = repo_ctx.os.name.lower()
+    if os_name.startswith("mac os") or os_name == "darwin":
+        platform = "darwin"
+    elif os_name.startswith("linux"):
+        platform = "linux"
+    else:
+        fail("Lean downloads do not support host OS {}".format(repo_ctx.os.name))
+    arch = repo_ctx.os.arch.lower()
+    if arch in ["aarch64", "arm64"]:
+        platform += "_aarch64"
+    elif arch not in ["amd64", "x86_64"]:
+        fail("Lean downloads do not support host architecture {}".format(repo_ctx.os.arch))
+    checksums = _LEAN_RELEASE_SHA256.get(repo_ctx.attr.lean_version)
+    if checksums == None:
+        fail("No Lean download checksums are registered for version {}".format(repo_ctx.attr.lean_version))
+    archive_root = "lean-{}-{}".format(repo_ctx.attr.lean_version, platform)
+    return struct(
+        root = archive_root,
+        sha256 = checksums[platform],
+        url = "https://github.com/leanprover/lean4/releases/download/v{}/{}.tar.zst".format(
+            repo_ctx.attr.lean_version,
+            archive_root,
+        ),
+    )
 
 def _installed_driver_path(driver_version, installed_driver_root_prefix):
     return "{}/{}/bin/xlsynth-driver".format(
@@ -396,13 +458,35 @@ exports_files([
     )
 
 def _lean_repo_impl(repo_ctx):
-    installed_root = repo_ctx.attr.installed_lean_root_prefix.rstrip("/") + "/" + repo_ctx.attr.lean_version
-    root_path = repo_ctx.path(installed_root)
-    repo_ctx.watch(root_path)
-    if root_path.exists:
-        repo_ctx.symlink(root_path, "installation")
+    installed_root = ""
+    root_path = None
+    installed_available = False
+    if repo_ctx.attr.installed_lean_root_prefix:
+        installed_root = repo_ctx.attr.installed_lean_root_prefix.rstrip("/") + "/" + repo_ctx.attr.lean_version
+        root_path = repo_ctx.path(installed_root)
+        repo_ctx.watch(root_path)
+        required_paths = [repo_ctx.path(installed_root + "/" + relative) for relative in _LEAN_REQUIRED_FILES]
+        for path in required_paths:
+            repo_ctx.watch(path)
+        installed_available = all([path.exists for path in required_paths])
+
+    if repo_ctx.attr.artifact_source == "installed_only" or (repo_ctx.attr.artifact_source == "auto" and installed_available):
+        source_description = installed_root
+        if root_path.exists:
+            repo_ctx.symlink(root_path, "installation")
+        else:
+            repo_ctx.file("installation/.missing", "Installed Lean directory is unavailable.\n")
     else:
-        repo_ctx.file("installation/.missing", "Installed Lean directory is unavailable.\n")
+        archive = _lean_archive(repo_ctx)
+        source_description = archive.url
+        repo_ctx.download_and_extract(
+            url = archive.url,
+            output = "installation",
+            sha256 = archive.sha256,
+            type = "tar.zst",
+            strip_prefix = archive.root,
+            canonical_id = archive.url,
+        )
     repo_ctx.file(
         "BUILD.bazel",
         """# SPDX-License-Identifier: Apache-2.0
@@ -423,12 +507,12 @@ xls_lean_installation(
     name = "bundle",
     host_files = ":host_files",
     host_root = "installation",
-    installed_root = {installed_root},
+    source_description = {source_description},
     version = {version},
     visibility = ["//visibility:public"],
 )
 """.format(
-            installed_root = _quoted(installed_root),
+            source_description = _quoted(source_description),
             version = _quoted(repo_ctx.attr.lean_version),
         ),
     )
@@ -636,7 +720,8 @@ _xls_driver_repo = repository_rule(
 _xls_lean_repo = repository_rule(
     implementation = _lean_repo_impl,
     attrs = {
-        "installed_lean_root_prefix": attr.string(mandatory = True),
+        "artifact_source": attr.string(mandatory = True),
+        "installed_lean_root_prefix": attr.string(),
         "lean_version": attr.string(mandatory = True),
     },
 )
@@ -648,6 +733,7 @@ _toolchain_tag = tag_class(attrs = {
     "installed_driver_root_prefix": attr.string(),
     "installed_lean_root_prefix": attr.string(),
     "installed_tools_root_prefix": attr.string(),
+    "lean_artifact_source": attr.string(),
     "lean_version": attr.string(),
     "local_driver_path": attr.string(),
     "local_dslx_stdlib_path": attr.string(),
@@ -663,14 +749,13 @@ _toolchain_tag = tag_class(attrs = {
 def _xls_extension_impl(module_ctx):
     for module in module_ctx.modules:
         for toolchain in module.tags.toolchain:
-            if bool(toolchain.lean_version) != bool(toolchain.installed_lean_root_prefix):
-                fail("lean_version and installed_lean_root_prefix must be supplied together")
+            lean_source = _lean_artifact_source(toolchain)
             lean_label = ""
-            if toolchain.lean_version:
-                _validate_lean_version(toolchain.lean_version)
+            if lean_source:
                 lean_name = _lean_repo_name(toolchain.name)
                 _xls_lean_repo(
                     name = lean_name,
+                    artifact_source = lean_source,
                     installed_lean_root_prefix = toolchain.installed_lean_root_prefix,
                     lean_version = toolchain.lean_version,
                 )

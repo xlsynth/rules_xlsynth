@@ -20,7 +20,7 @@ XlsArtifactBundleInfo = provider(
         "dslx_stdlib": "The DSLX stdlib root tree artifact.",
         "dslx_stdlib_path": "Directory path containing the DSLX stdlib sources.",
         "libxls": "The libxls shared library file.",
-        "lean": "Optional installed Lean bundle for proof rules.",
+        "lean": "Optional Lean bundle for proof rules.",
         "runtime_files": "Declared runtime files needed to load libxls.",
         "runtime_library_path": "Directory containing libxls for runtime loading.",
         "resolved_identity": "Machine-readable resolved producer identity manifest, when requested.",
@@ -32,7 +32,7 @@ XlsArtifactBundleInfo = provider(
 )
 
 LeanInstallationInfo = provider(
-    doc = "Installed Lean distribution materialized as a declared tree artifact.",
+    doc = "Lean distribution materialized as a declared tree artifact.",
     fields = {
         "root": "Distribution root tree artifact.",
         "version": "Exact configured Lean release version.",
@@ -521,7 +521,7 @@ def _xls_lean_installation_impl(ctx):
         output = manifest,
         content = json.encode({
             "entries": entries,
-            "installed_root": ctx.attr.installed_root,
+            "source": ctx.attr.source_description,
             "version": ctx.attr.version,
         }) + "\n",
     )
@@ -532,7 +532,7 @@ def _xls_lean_installation_impl(ctx):
         arguments = [ctx.file._materializer.path, manifest.path, root.path],
         command = 'python3 "$1" --manifest "$2" --output "$3"',
         env = {"PATH": "/usr/bin:/bin"},
-        progress_message = "Materializing installed Lean {}".format(ctx.attr.version),
+        progress_message = "Materializing Lean {}".format(ctx.attr.version),
         mnemonic = "XlsynthLeanInstallation",
     )
     return [
@@ -541,12 +541,12 @@ def _xls_lean_installation_impl(ctx):
     ]
 
 xls_lean_installation = rule(
-    doc = "Internal materialization rule for an installed Lean distribution.",
+    doc = "Internal materialization rule for a Lean distribution.",
     implementation = _xls_lean_installation_impl,
     attrs = {
         "host_files": attr.label(allow_files = True, mandatory = True),
         "host_root": attr.string(mandatory = True),
-        "installed_root": attr.string(mandatory = True),
+        "source_description": attr.string(mandatory = True),
         "version": attr.string(mandatory = True),
         "_materializer": attr.label(
             default = Label("//:materialize_lean_installation.py"),
@@ -666,10 +666,10 @@ def require_driver_toolchain(ctx):
     return toolchain
 
 def require_lean_toolchain(ctx):
-    """Returns the selected XLS toolchain with its installed Lean bundle."""
+    """Returns the selected XLS toolchain with its Lean bundle."""
     toolchain = require_driver_toolchain(ctx)
     if getattr(toolchain, "lean", None) == None:
-        fail("netlist_lean_equiv_test requires lean_version and installed_lean_root_prefix on the selected xls.toolchain")
+        fail("netlist_lean_equiv_test requires Lean configuration on the selected xls.toolchain")
     return toolchain
 
 def require_tools_toolchain(ctx):

@@ -29,7 +29,7 @@ def fixture(root, reported_version="4.34.1"):
     manifest = root / "manifest.json"
     manifest.write_text(json.dumps({
         "entries": entries,
-        "installed_root": str(root / "installed"),
+        "source": str(root / "installed"),
         "version": "4.34.1",
     }))
     return manifest
