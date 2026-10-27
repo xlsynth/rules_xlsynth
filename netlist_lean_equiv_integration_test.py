@@ -119,79 +119,82 @@ register_toolchains("@local_xls_toolchain//:all")
         with zipfile.ZipFile(str(output_dir / "outputs.zip")) as archive:
             return json.loads(archive.read("netlist_lean_equiv.json").decode())
 
-    def test_expected_failures_and_toolchain_configuration(self):
-        with tempfile.TemporaryDirectory(prefix="rules-xlsynth-lean-integration-") as temporary:
-            root = Path(temporary)
-            workspace = root / "workspace"
-            workspace.mkdir()
-            netlists = root / "netlists"
-            netlists.mkdir()
-            lhs = (FIXTURES / "lhs.gv").read_bytes()
-            rhs = (FIXTURES / "rhs.gv").read_bytes()
-            bad = (FIXTURES / "rhs_bad.gv").read_bytes()
-            (netlists / "lhs.gv").write_bytes(lhs)
-            (netlists / "rhs_bad.gv").write_bytes(bad)
-            with gzip.open(str(netlists / "rhs.gv.gz"), "wb") as output:
-                output.write(rhs)
-            shutil.copyfile(str(FIXTURES / "cells.textproto"), str(workspace / "cells.textproto"))
-            (workspace / "Proof").mkdir()
-            shutil.copyfile(str(FIXTURES / "Proof/Body.lean"), str(workspace / "Proof/Body.lean"))
-            lean_prefix = root / "lean"
-            lean_prefix.mkdir()
-            (lean_prefix / LEAN_VERSION).symlink_to(self.lean_root, target_is_directory=True)
-            module = workspace / "MODULE.bazel"
-            module.write_text(self.module_source(netlists, lean_prefix))
-            lhs_hash = hashlib.sha256(lhs).hexdigest()
-            bad_hash = hashlib.sha256(bad).hexdigest()
-            (workspace / "BUILD.bazel").write_text(
-                'load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")\n' +
-                target("bad_hash", "@netlists//:rhs.gv.gz", "0" * 64, lhs_hash) +
-                target("different", "@netlists//:rhs_bad.gv", bad_hash, lhs_hash)
-            )
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="rules-xlsynth-lean-integration-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.workspace = self.root / "workspace"
+        self.workspace.mkdir()
+        self.netlists = self.root / "netlists"
+        self.netlists.mkdir()
+        lhs = (FIXTURES / "lhs.gv").read_bytes()
+        rhs = (FIXTURES / "rhs.gv").read_bytes()
+        bad = (FIXTURES / "rhs_bad.gv").read_bytes()
+        (self.netlists / "lhs.gv").write_bytes(lhs)
+        (self.netlists / "rhs_bad.gv").write_bytes(bad)
+        with gzip.open(str(self.netlists / "rhs.gv.gz"), "wb") as output:
+            output.write(rhs)
+        shutil.copyfile(str(FIXTURES / "cells.textproto"), str(self.workspace / "cells.textproto"))
+        (self.workspace / "Proof").mkdir()
+        shutil.copyfile(str(FIXTURES / "Proof/Body.lean"), str(self.workspace / "Proof/Body.lean"))
+        self.lean_prefix = self.root / "lean"
+        self.lean_prefix.mkdir()
+        (self.lean_prefix / LEAN_VERSION).symlink_to(self.lean_root, target_is_directory=True)
+        self.module = self.workspace / "MODULE.bazel"
+        self.module.write_text(self.module_source(self.netlists, self.lean_prefix))
+        lhs_hash = hashlib.sha256(lhs).hexdigest()
+        bad_hash = hashlib.sha256(bad).hexdigest()
+        (self.workspace / "BUILD.bazel").write_text(
+            'load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")\n' +
+            target("bad_hash", "@netlists//:rhs.gv.gz", "0" * 64, lhs_hash) +
+            target("different", "@netlists//:rhs_bad.gv", bad_hash, lhs_hash)
+        )
 
-            self.bazel_command(workspace, ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"])
-            self.bazel_command(
-                workspace, ["test", "//:bad_hash", "--test_output=errors"],
-                expected_success=False, expected_text="RHS netlist hash mismatch",
-            )
-            self.bazel_command(
-                workspace, ["test", "//:different", "--test_output=errors", "--nocache_test_results"],
-                expected_success=False,
-            )
-            different_report = self.read_report(workspace, "different")
-            self.assertEqual(different_report["status"], "failed")
-            self.assertIn("Lean user proof compilation failed", different_report["lean"]["error"])
-            self.assertIn("native_decide", different_report["lean"]["error"])
+    def test_rejects_sha256_mismatch_and_inequivalent_netlists(self):
+        self.bazel_command(
+            self.workspace, ["test", "//:bad_hash", "--test_output=errors"],
+            expected_success=False, expected_text="RHS netlist hash mismatch",
+        )
+        self.bazel_command(
+            self.workspace, ["test", "//:different", "--test_output=errors", "--nocache_test_results"],
+            expected_success=False,
+        )
+        different_report = self.read_report(self.workspace, "different")
+        self.assertEqual(different_report["status"], "failed")
+        self.assertIn("Lean user proof compilation failed", different_report["lean"]["error"])
+        self.assertIn("native_decide", different_report["lean"]["error"])
 
-            module.write_text(self.module_source(netlists, lean_prefix, lean_attributes=False))
-            self.bazel_command(
-                workspace, ["build", BASIC_TARGET], expected_success=False,
-                expected_text="requires Lean configuration",
-            )
-            partial = self.module_source(netlists, lean_prefix).replace(
-                "    installed_lean_root_prefix = {},\n".format(quote(lean_prefix)), ""
-            )
-            module.write_text(partial)
-            self.bazel_command(
-                workspace, ["build", BASIC_TARGET], expected_success=False,
-                expected_text="lean_artifact_source=installed_only requires installed_lean_root_prefix",
-            )
-            module.write_text(self.module_source(netlists, root / "missing-lean"))
-            self.bazel_command(
-                workspace, ["build", BASIC_TARGET], expected_success=False,
-                expected_text="missing required files",
-            )
+    def test_lean_toolchain_configuration(self):
+        self.bazel_command(self.workspace, ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"])
+        self.module.write_text(self.module_source(self.netlists, self.lean_prefix, lean_attributes=False))
+        self.bazel_command(
+            self.workspace, ["build", BASIC_TARGET], expected_success=False,
+            expected_text="requires Lean configuration",
+        )
+        partial = self.module_source(self.netlists, self.lean_prefix).replace(
+            "    installed_lean_root_prefix = {},\n".format(quote(self.lean_prefix)), ""
+        )
+        self.module.write_text(partial)
+        self.bazel_command(
+            self.workspace, ["build", BASIC_TARGET], expected_success=False,
+            expected_text="lean_artifact_source=installed_only requires installed_lean_root_prefix",
+        )
+        self.module.write_text(self.module_source(self.netlists, self.root / "missing-lean"))
+        self.bazel_command(
+            self.workspace, ["build", BASIC_TARGET], expected_success=False,
+            expected_text="missing required files",
+        )
 
-            module.write_text(self.module_source(netlists, None, lean_source="download_only"))
-            self.bazel_command(
-                workspace,
-                ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"],
-            )
+        self.module.write_text(self.module_source(self.netlists, None, lean_source="download_only"))
+        self.bazel_command(
+            self.workspace,
+            ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"],
+        )
 
-            module.write_text(self.module_source(netlists, root / "missing-lean", lean_source="auto"))
-            self.bazel_command(
-                workspace, ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"],
-            )
+        self.module.write_text(self.module_source(self.netlists, self.root / "missing-lean", lean_source="auto"))
+        self.bazel_command(
+            self.workspace, ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"],
+        )
 
 
 if __name__ == "__main__":

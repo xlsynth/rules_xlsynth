@@ -494,19 +494,37 @@ bazel test \
 ```
 
 These targets are tagged `manual` while the repository's released self-test
-driver predates the Lean commands. The standalone integration test supplies a
-local driver and retains expected hash/proof failures and toolchain configuration
-checks, using `basic` to exercise download and installed Lean selection:
+driver predates the Lean commands.
+
+Expected rejections and toolchain configuration are separate Bazel `py_test`
+targets:
+
+- `netlist_lean_equiv_rejects_sha256_mismatch_and_inequivalent_netlists_test`
+  checks that a wrong digest and an inequivalent RHS are rejected for the
+  expected reasons.
+- `netlist_lean_equiv_toolchain_configuration_test` uses `basic` to check
+  installed Lean, downloads, `auto` fallback, and missing configuration errors.
+
+These manual local tests invoke Bazel in temporary workspaces and inherit the
+existing local tool-path variables. Run both with:
 
 ```shell
 RULES_XLSYNTH_TEST_DRIVER=/path/to/xlsynth-driver \
 RULES_XLSYNTH_TEST_XLS_ROOT=/path/to/xls-release \
 RULES_XLSYNTH_TEST_LEAN_ROOT=/path/to/lean-4.34.1 \
-python3 netlist_lean_equiv_integration_test.py
+bazel test --nocache_test_results \
+  //:netlist_lean_equiv_rejects_sha256_mismatch_and_inequivalent_netlists_test \
+  //:netlist_lean_equiv_toolchain_configuration_test
 ```
 
+Use `--nocache_test_results` when validating rebuilt binaries at the same local
+paths.
+
 `RULES_XLSYNTH_TEST_BAZEL` and `RULES_XLSYNTH_TEST_BAZEL_STARTUP_OPTIONS` may
-select a Bazel executable and startup options for that standalone test.
+select the nested Bazel executable and startup options. If the required tool
+paths are absent, the tests retain their existing skipped result. The same
+Python file can still run both cases directly with
+`python3 netlist_lean_equiv_integration_test.py` and the same environment.
 
 ### `ir_to_gates` - convert IR to gate-level analysis
 
