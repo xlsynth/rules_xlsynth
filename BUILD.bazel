@@ -82,6 +82,20 @@ py_test(
 )
 
 py_test(
+    name = "netlist_lean_equiv_rejects_uncollapsed_registers_and_incomplete_cones_test",
+    srcs = ["netlist_lean_equiv_integration_test.py"],
+    args = ["NetlistLeanEquivIntegrationTest.test_rejects_uncollapsed_registers_and_incomplete_cones"],
+    data = ["//testdata/netlist_lean_equiv:integration_test_fixtures"],
+    env_inherit = _NETLIST_LEAN_INTEGRATION_ENV,
+    main = "netlist_lean_equiv_integration_test.py",
+    # Nested Bazel uses explicitly configured host tools.
+    tags = [
+        "local",
+        "manual",
+    ],
+)
+
+py_test(
     name = "netlist_lean_equiv_toolchain_configuration_test",
     srcs = ["netlist_lean_equiv_integration_test.py"],
     args = ["NetlistLeanEquivIntegrationTest.test_lean_toolchain_configuration"],

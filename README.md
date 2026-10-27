@@ -447,9 +447,9 @@ Optional extraction attributes are:
   applied to both netlists.
 - `lhs_logic_cone_sources`, `lhs_logic_cone_sinks`, `rhs_logic_cone_sources`,
   `rhs_logic_cone_sinks`: per-side selector lists for different boundaries.
-- `collapse_sequential`: collapse reached pipeline registers; default `False`.
+- `collapse_sequential_cells`: collapse reached pipeline registers; default `False`.
 - `collapse_load_enable_feedback`: collapse recognized load-enable feedback
-  with zero prior state; default `False` and requires `collapse_sequential`.
+  with zero prior state; default `False` and requires `collapse_sequential_cells`.
 
 Shared and per-side selector modes are mutually exclusive. Empty lists count as
 omitted. With no selectors, both sides use their complete module interfaces; in
@@ -513,7 +513,10 @@ The checked-in proof targets are:
 - `basic`: plain netlists and [`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean).
 - `equivalent`: the same proof with a generated gzip-compressed RHS netlist and
   different per-side selectors.
-- `pipeline`: selected cone boundaries and pipeline/load-enable collapsing.
+- `pipeline_registers`: ordinary two-stage DFF pipeline collapsing with
+  load-enable feedback collapsing disabled.
+- `pipeline`: selected cone boundaries with pipeline and load-enable feedback
+  collapsing enabled.
 - `with_helpers`: `Proof/WithHelpers.lean` and two helper modules exercising
   dependency ordering and `bv_decide`.
 
@@ -524,6 +527,7 @@ run them directly:
 bazel test \
   //testdata/netlist_lean_equiv:basic \
   //testdata/netlist_lean_equiv:equivalent \
+  //testdata/netlist_lean_equiv:pipeline_registers \
   //testdata/netlist_lean_equiv:pipeline \
   //testdata/netlist_lean_equiv:with_helpers
 ```
@@ -537,11 +541,15 @@ targets:
 - `netlist_lean_equiv_rejects_sha256_mismatch_and_inequivalent_netlists_test`
   checks that a wrong digest and an inequivalent RHS are rejected for the
   expected reasons.
+- `netlist_lean_equiv_rejects_uncollapsed_registers_and_incomplete_cones_test`
+  checks errors for reached uncollapsed registers, disabled load-enable
+  feedback collapsing, an invalid combination of collapse settings, and an
+  omitted source required by a sink.
 - `netlist_lean_equiv_toolchain_configuration_test` uses `basic` to check
   installed Lean, downloads, `auto` fallback, and missing configuration errors.
 
 These manual local tests invoke Bazel in temporary workspaces and inherit the
-existing local tool-path variables. Run both with:
+existing local tool-path variables. Run them with:
 
 ```shell
 RULES_XLSYNTH_TEST_DRIVER=/path/to/xlsynth-driver \
@@ -549,6 +557,7 @@ RULES_XLSYNTH_TEST_XLS_ROOT=/path/to/xls-release \
 RULES_XLSYNTH_TEST_LEAN_ROOT=/path/to/lean-4.34.1 \
 bazel test --nocache_test_results \
   //:netlist_lean_equiv_rejects_sha256_mismatch_and_inequivalent_netlists_test \
+  //:netlist_lean_equiv_rejects_uncollapsed_registers_and_incomplete_cones_test \
   //:netlist_lean_equiv_toolchain_configuration_test
 ```
 
@@ -558,7 +567,7 @@ paths.
 `RULES_XLSYNTH_TEST_BAZEL` and `RULES_XLSYNTH_TEST_BAZEL_STARTUP_OPTIONS` may
 select the nested Bazel executable and startup options. If the required tool
 paths are absent, the tests retain their existing skipped result. The same
-Python file can still run both cases directly with
+Python file can still run all cases directly with
 `python3 netlist_lean_equiv_integration_test.py` and the same environment.
 
 ### `ir_to_gates` - convert IR to gate-level analysis

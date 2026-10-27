@@ -91,7 +91,7 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 new_local_repository(
     name = "netlists",
     path = {netlists},
-    build_file_content = 'exports_files(["lhs.gv", "rhs.gv.gz", "rhs_bad.gv"])',
+    build_file_content = 'exports_files(["lhs.gv", "rhs.gv.gz", "rhs_bad.gv", "pipeline_lhs.gv", "pipeline_rhs.gv", "pipeline_registers_lhs.gv", "pipeline_registers_rhs.gv"])',
 )
 xls = use_extension("@rules_xlsynth//:extensions.bzl", "xls")
 xls.toolchain(
@@ -134,6 +134,15 @@ register_toolchains("@local_xls_toolchain//:all")
         (self.netlists / "rhs_bad.gv").write_bytes(bad)
         with gzip.open(str(self.netlists / "rhs.gv.gz"), "wb") as output:
             output.write(rhs)
+        pipeline_contents = {
+            name: (FIXTURES / name).read_bytes()
+            for name in (
+                "pipeline_lhs.gv", "pipeline_rhs.gv",
+                "pipeline_registers_lhs.gv", "pipeline_registers_rhs.gv",
+            )
+        }
+        for name, contents in pipeline_contents.items():
+            (self.netlists / name).write_bytes(contents)
         shutil.copyfile(str(FIXTURES / "cells.textproto"), str(self.workspace / "cells.textproto"))
         (self.workspace / "Proof").mkdir()
         shutil.copyfile(str(FIXTURES / "Proof/Body.lean"), str(self.workspace / "Proof/Body.lean"))
@@ -143,11 +152,34 @@ register_toolchains("@local_xls_toolchain//:all")
         self.module = self.workspace / "MODULE.bazel"
         self.module.write_text(self.module_source(self.netlists, self.lean_prefix))
         lhs_hash = hashlib.sha256(lhs).hexdigest()
+        rhs_hash = hashlib.sha256(rhs).hexdigest()
         bad_hash = hashlib.sha256(bad).hexdigest()
+        pipeline_hashes = {name: hashlib.sha256(contents).hexdigest() for name, contents in pipeline_contents.items()}
+        load_enable_cone = """    collapse_sequential_cells = True,
+    logic_cone_sources = ["input_port:a", "input_port:b", "input_port:c", "input_port:enable", "input_port:clk"],
+    logic_cone_sinks = ["output_port:result"],"""
+        incomplete_cone = """    lhs_logic_cone_sources = ["input_port:a", "input_port:b"],
+    lhs_logic_cone_sinks = ["output_port:result"],"""
         (self.workspace / "BUILD.bazel").write_text(
             'load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")\n' +
             target("bad_hash", "@netlists//:rhs.gv.gz", "0" * 64, lhs_hash) +
-            target("different", "@netlists//:rhs_bad.gv", bad_hash, lhs_hash)
+            target("different", "@netlists//:rhs_bad.gv", bad_hash, lhs_hash) +
+            target(
+                "uncollapsed_registers", "@netlists//:pipeline_registers_rhs.gv",
+                pipeline_hashes["pipeline_registers_rhs.gv"], pipeline_hashes["pipeline_registers_lhs.gv"],
+                lhs="@netlists//:pipeline_registers_lhs.gv",
+            ) +
+            target(
+                "load_enable_feedback_not_collapsed", "@netlists//:pipeline_rhs.gv",
+                pipeline_hashes["pipeline_rhs.gv"], pipeline_hashes["pipeline_lhs.gv"],
+                lhs="@netlists//:pipeline_lhs.gv", extra=load_enable_cone,
+            ) +
+            target(
+                "feedback_collapse_without_sequential_collapse", "@netlists//:pipeline_rhs.gv",
+                pipeline_hashes["pipeline_rhs.gv"], pipeline_hashes["pipeline_lhs.gv"],
+                lhs="@netlists//:pipeline_lhs.gv", extra="    collapse_load_enable_feedback = True,",
+            ) +
+            target("missing_required_cone_source", "@netlists//:rhs.gv.gz", rhs_hash, lhs_hash, extra=incomplete_cone)
         )
 
     def test_rejects_sha256_mismatch_and_inequivalent_netlists(self):
@@ -163,6 +195,27 @@ register_toolchains("@local_xls_toolchain//:all")
         self.assertEqual(different_report["status"], "failed")
         self.assertIn("Lean user proof compilation failed", different_report["lean"]["error"])
         self.assertIn("native_decide", different_report["lean"]["error"])
+
+    def test_rejects_uncollapsed_registers_and_incomplete_cones(self):
+        uncollapsed = self.bazel_command(
+            self.workspace, ["test", "//:uncollapsed_registers", "--test_output=errors"],
+            expected_success=False, expected_text="reached sequential cell 'DFF'",
+        )
+        self.assertIn("--collapse_sequential_cells true", uncollapsed)
+        feedback = self.bazel_command(
+            self.workspace, ["test", "//:load_enable_feedback_not_collapsed", "--test_output=errors"],
+            expected_success=False, expected_text="load-enable feedback encountered",
+        )
+        self.assertIn("--collapse_load_enable_feedback", feedback)
+        self.bazel_command(
+            self.workspace, ["test", "//:feedback_collapse_without_sequential_collapse", "--test_output=errors"],
+            expected_success=False,
+            expected_text="collapse_load_enable_feedback requires collapse_sequential_cells = True",
+        )
+        self.bazel_command(
+            self.workspace, ["test", "//:missing_required_cone_source", "--test_output=errors"],
+            expected_success=False, expected_text="reached unselected top module input 'c'",
+        )
 
     def test_lean_toolchain_configuration(self):
         self.bazel_command(self.workspace, ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"])

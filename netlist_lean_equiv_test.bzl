@@ -85,8 +85,8 @@ def _convert_netlist(ctx, side, verified, cone, top, toolchain, toolchain_file, 
         verified.path,
         "--liberty_proto",
         ctx.file.liberty_proto.path,
-        "--collapse_sequential",
-        "true" if ctx.attr.collapse_sequential else "false",
+        "--collapse_sequential_cells",
+        "true" if ctx.attr.collapse_sequential_cells else "false",
     ]
     inputs = [verified, ctx.file.liberty_proto, toolchain_file]
     if top:
@@ -124,8 +124,8 @@ def _netlist_lean_equiv_test_impl(ctx):
     lhs_hash = _validate_hash(ctx.attr.lhs_sha256, "lhs")
     rhs_hash = _validate_hash(ctx.attr.rhs_sha256, "rhs")
     cones = _resolve_logic_cones(ctx)
-    if ctx.attr.collapse_load_enable_feedback and not ctx.attr.collapse_sequential:
-        fail("collapse_load_enable_feedback requires collapse_sequential = True")
+    if ctx.attr.collapse_load_enable_feedback and not ctx.attr.collapse_sequential_cells:
+        fail("collapse_load_enable_feedback requires collapse_sequential_cells = True")
     toolchain = require_lean_toolchain(ctx)
     toolchain_file = declare_xls_toolchain_toml(ctx, name = "netlist_lean_equiv", toolchain = toolchain)
     driver_runner = ctx.actions.declare_file(ctx.label.name + "_driver.py")
@@ -171,7 +171,7 @@ def _netlist_lean_equiv_test_impl(ctx):
             "driver": _runfile_path(ctx, toolchain.driver),
             "extraction": {
                 "collapse_load_enable_feedback": ctx.attr.collapse_load_enable_feedback,
-                "collapse_sequential": ctx.attr.collapse_sequential,
+                "collapse_sequential": ctx.attr.collapse_sequential_cells,
                 "lhs_logic_cone_sources": cones.lhs.sources,
                 "lhs_logic_cone_sinks": cones.lhs.sinks,
                 "lhs_top": ctx.attr.lhs_top,
@@ -233,7 +233,7 @@ netlist_lean_equiv_test = rule(
         "lhs_logic_cone_sinks": attr.string_list(doc = "Compact sink selectors for the LHS netlist."),
         "rhs_logic_cone_sources": attr.string_list(doc = "Compact source selectors for the RHS netlist."),
         "rhs_logic_cone_sinks": attr.string_list(doc = "Compact sink selectors for the RHS netlist."),
-        "collapse_sequential": attr.bool(default = False),
+        "collapse_sequential_cells": attr.bool(default = False),
         "collapse_load_enable_feedback": attr.bool(default = False),
         "proof": attr.label(allow_single_file = [".lean"], mandatory = True),
         "proof_srcs": attr.label_list(allow_files = [".lean"]),

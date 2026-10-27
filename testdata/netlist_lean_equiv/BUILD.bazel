@@ -8,6 +8,10 @@ filegroup(
         "Proof/Body.lean",
         "cells.textproto",
         "lhs.gv",
+        "pipeline_lhs.gv",
+        "pipeline_registers_lhs.gv",
+        "pipeline_registers_rhs.gv",
+        "pipeline_rhs.gv",
         "rhs.gv",
         "rhs_bad.gv",
     ],
@@ -60,9 +64,25 @@ netlist_lean_equiv_test(
 )
 
 netlist_lean_equiv_test(
+    name = "pipeline_registers",
+    collapse_sequential_cells = True,
+    lhs = "pipeline_registers_lhs.gv",
+    lhs_sha256 = "8b1d23d22c1edf5bf99c2290ee27138f9e029b90f58e944523d05f2f81c88d34",
+    lhs_top = "top",
+    liberty_proto = "cells.textproto",
+    proof = "Proof/Body.lean",
+    rhs = "pipeline_registers_rhs.gv",
+    rhs_sha256 = "b99387d040977bf5510df9a525f0f9c9fc176e202edc7ed198ed397eb80e8610",
+    rhs_top = "top",
+    # The repository's released self-test driver predates the Lean commands.
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+netlist_lean_equiv_test(
     name = "pipeline",
     collapse_load_enable_feedback = True,
-    collapse_sequential = True,
+    collapse_sequential_cells = True,
     lhs = "pipeline_lhs.gv",
     lhs_sha256 = "153996ff28d87caf5071831a18f9995ee943ff21729b25b8b052bc7d087ec9d6",
     lhs_top = "top",
