@@ -610,6 +610,8 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
             '//:run_presubmit_test',
             '//:artifact_resolution_test',
             '//:download_release_test',
+            '//:verify_netlist_input_test',
+            '//:materialize_lean_installation_test',
             '//:external_bundle_exports_test',
             '//:trusted_identity_boundary_test',
             '//:selected_toolchain_test',

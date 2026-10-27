@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+module top(input a, input b, input c, output result);
+  wire bc;
+  AND2 first(.A(b), .B(c), .Y(bc));
+  AND2 second(.A(a), .B(bc), .Y(result));
+endmodule

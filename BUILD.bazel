@@ -1,6 +1,12 @@
 load("@rules_python//python:defs.bzl", "py_test")
 load("//:trusted_identity_boundary_test.bzl", "trusted_identity_boundary_test_suite")
 
+exports_files([
+    "materialize_lean_installation.py",
+    "netlist_lean_equiv_runner.py",
+    "verify_netlist_input.py",
+])
+
 py_test(
     name = "make_env_helpers_test",
     srcs = ["make_env_helpers_test.py"],
@@ -32,6 +38,74 @@ py_test(
     srcs = [
         "download_release.py",
         "download_release_test.py",
+    ],
+)
+
+py_test(
+    name = "verify_netlist_input_test",
+    srcs = [
+        "verify_netlist_input.py",
+        "verify_netlist_input_test.py",
+    ],
+)
+
+py_test(
+    name = "materialize_lean_installation_test",
+    srcs = [
+        "materialize_lean_installation.py",
+        "materialize_lean_installation_test.py",
+    ],
+)
+
+_NETLIST_LEAN_INTEGRATION_ENV = [
+    "BAZELISK_HOME",
+    "PATH",
+    "RULES_XLSYNTH_TEST_BAZEL",
+    "RULES_XLSYNTH_TEST_BAZEL_STARTUP_OPTIONS",
+    "RULES_XLSYNTH_TEST_DRIVER",
+    "RULES_XLSYNTH_TEST_LEAN_ROOT",
+    "RULES_XLSYNTH_TEST_XLS_ROOT",
+]
+
+py_test(
+    name = "netlist_lean_equiv_rejects_sha256_mismatch_and_inequivalent_netlists_test",
+    srcs = ["netlist_lean_equiv_integration_test.py"],
+    args = ["NetlistLeanEquivIntegrationTest.test_rejects_sha256_mismatch_and_inequivalent_netlists"],
+    data = ["//testdata/netlist_lean_equiv:integration_test_fixtures"],
+    env_inherit = _NETLIST_LEAN_INTEGRATION_ENV,
+    main = "netlist_lean_equiv_integration_test.py",
+    # Nested Bazel uses explicitly configured host tools.
+    tags = [
+        "local",
+        "manual",
+    ],
+)
+
+py_test(
+    name = "netlist_lean_equiv_rejects_uncollapsed_registers_and_incomplete_cones_test",
+    srcs = ["netlist_lean_equiv_integration_test.py"],
+    args = ["NetlistLeanEquivIntegrationTest.test_rejects_uncollapsed_registers_and_incomplete_cones"],
+    data = ["//testdata/netlist_lean_equiv:integration_test_fixtures"],
+    env_inherit = _NETLIST_LEAN_INTEGRATION_ENV,
+    main = "netlist_lean_equiv_integration_test.py",
+    # Nested Bazel uses explicitly configured host tools.
+    tags = [
+        "local",
+        "manual",
+    ],
+)
+
+py_test(
+    name = "netlist_lean_equiv_toolchain_configuration_test",
+    srcs = ["netlist_lean_equiv_integration_test.py"],
+    args = ["NetlistLeanEquivIntegrationTest.test_lean_toolchain_configuration"],
+    data = ["//testdata/netlist_lean_equiv:integration_test_fixtures"],
+    env_inherit = _NETLIST_LEAN_INTEGRATION_ENV,
+    main = "netlist_lean_equiv_integration_test.py",
+    # Nested Bazel uses explicitly configured host tools.
+    tags = [
+        "local",
+        "manual",
     ],
 )
 

@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+module top(input a, input b, input c, input enable, input clk, input unused,
+           output result, output unused_result);
+  wire ab;
+  wire data;
+  wire hold;
+  AND2 first(.A(a), .B(b), .Y(ab));
+  AND2 second(.A(ab), .B(c), .Y(data));
+  INV invert_enable(.A(enable), .Y(hold));
+  DFFEN pipeline(.DATA(data), .LOAD(enable), .HOLD(hold), .PRIOR(result),
+                 .CLK(clk), .Q(result));
+  assign unused_result = unused;
+endmodule

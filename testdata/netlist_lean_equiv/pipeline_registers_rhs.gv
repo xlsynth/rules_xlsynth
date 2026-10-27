@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+module top(input a, input b, input c, input clk, output result);
+  wire bc;
+  wire bc_q;
+  wire a_q;
+  wire data;
+  AND2 first(.A(b), .B(c), .Y(bc));
+  DFF stage1_bc(.DATA(bc), .CLK(clk), .Q(bc_q));
+  DFF stage1_a(.DATA(a), .CLK(clk), .Q(a_q));
+  AND2 second(.A(a_q), .B(bc_q), .Y(data));
+  DFF stage2_result(.DATA(data), .CLK(clk), .Q(result));
+endmodule
