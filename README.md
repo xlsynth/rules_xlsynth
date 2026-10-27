@@ -474,18 +474,20 @@ Lean diagnostics. Success means Lean accepted the generated root theorem under
 its ordinary rules. Proof auditing is not performed, and the report records
 `audit_performed: false`.
 
-The checked-in basic target uses only
-[`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean). With a selected
-toolchain that provides the required driver commands and Lean, run it directly:
+The checked-in `basic` target uses only
+[`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean). The
+`with_helpers` target uses `Proof/WithHelpers.lean` and two helper modules to
+exercise dependency ordering and `bv_decide`. With a selected toolchain that
+provides the required driver commands and Lean, run them directly:
 
 ```shell
-bazel test //testdata/netlist_lean_equiv:basic
+bazel test //testdata/netlist_lean_equiv:basic //testdata/netlist_lean_equiv:with_helpers
 ```
 
-It is tagged `manual` while the repository's released self-test driver predates
-the Lean commands. The standalone integration test supplies a local driver and
-also exercises pipeline extraction, helper imports, expected failures, and both
-download and installed Lean selection:
+Both targets are tagged `manual` while the repository's released self-test
+driver predates the Lean commands. The standalone integration test supplies a
+local driver, runs the checked-in targets, and also exercises pipeline
+extraction, expected failures, and both download and installed Lean selection:
 
 ```shell
 RULES_XLSYNTH_TEST_DRIVER=/path/to/xlsynth-driver \

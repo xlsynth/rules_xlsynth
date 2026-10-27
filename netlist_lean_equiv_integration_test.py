@@ -111,7 +111,9 @@ register_toolchains("@local_xls_toolchain//:all")
 
     def read_report(self, workspace, name):
         logs = Path(self.bazel_command(workspace, ["info", "bazel-testlogs"]).strip().splitlines()[-1])
-        output_dir = logs / name / "test.outputs"
+        matches = list(logs.glob("**/" + name + "/test.outputs"))
+        self.assertEqual(len(matches), 1, "expected one report directory for {}: {}".format(name, matches))
+        output_dir = matches[0]
         direct = output_dir / "netlist_lean_equiv.json"
         if direct.exists():
             return json.loads(direct.read_text())
@@ -138,7 +140,8 @@ register_toolchains("@local_xls_toolchain//:all")
                 output.write(rhs)
             shutil.copyfile(str(FIXTURES / "cells.textproto"), str(workspace / "cells.textproto"))
             shutil.copyfile(str(FIXTURES / "boundaries.json"), str(workspace / "boundaries.json"))
-            shutil.copytree(str(FIXTURES / "Proof"), str(workspace / "Proof"))
+            (workspace / "Proof").mkdir()
+            shutil.copyfile(str(FIXTURES / "Proof/Body.lean"), str(workspace / "Proof/Body.lean"))
             lean_prefix = root / "lean"
             lean_prefix.mkdir()
             (lean_prefix / LEAN_VERSION).symlink_to(self.lean_root, target_is_directory=True)
@@ -151,14 +154,9 @@ register_toolchains("@local_xls_toolchain//:all")
     rhs_cone_boundary_file = "boundaries.json",
     collapse_sequential = True,
     collapse_load_enable_feedback = True,"""
-            helper_options = '    proof_srcs = ["Proof/Helpers/Proof.lean", "Proof/Helpers/Lemmas.lean"],'
             (workspace / "BUILD.bazel").write_text(
                 'load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")\n' +
                 target("equivalent", "@netlists//:rhs.gv.gz", rhs_hash, lhs_hash) +
-                target(
-                    "with_helpers", "@netlists//:rhs.gv.gz", rhs_hash, lhs_hash,
-                    proof="Proof/WithHelpers.lean", extra=helper_options,
-                ) +
                 target("bad_hash", "@netlists//:rhs.gv.gz", "0" * 64, lhs_hash) +
                 target("different", "@netlists//:rhs_bad.gv", bad_hash, lhs_hash) +
                 target(
@@ -168,7 +166,11 @@ register_toolchains("@local_xls_toolchain//:all")
                 )
             )
 
-            self.bazel_command(workspace, ["test", "//:equivalent", "//:pipeline", "//:with_helpers", "--test_output=errors", "--nocache_test_results"])
+            self.bazel_command(workspace, [
+                "test", "//:equivalent", "//:pipeline",
+                "@rules_xlsynth//testdata/netlist_lean_equiv:with_helpers",
+                "--test_output=errors", "--nocache_test_results",
+            ])
             report = self.read_report(workspace, "equivalent")
             self.assertEqual(report["status"], "accepted_by_lean")
             self.assertFalse(report["audit_performed"])
