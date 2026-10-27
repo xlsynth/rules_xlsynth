@@ -12,6 +12,18 @@ cells: {
   pins: { name_string_id: 3 direction: OUTPUT function_string_id: 5 }
 }
 cells: {
+  name: "DFF"
+  pins: { name_string_id: 6 direction: INPUT }
+  pins: { name_string_id: 10 direction: INPUT is_clocking_pin: true }
+  pins: { name_string_id: 11 direction: OUTPUT function_string_id: 12 }
+  sequential: {
+    state_var: "S"
+    next_state: "DATA"
+    clock_expr: "CLK"
+    kind: SEQUENTIAL_KIND_FF
+  }
+}
+cells: {
   name: "DFFEN"
   pins: { name_string_id: 6 direction: INPUT }
   pins: { name_string_id: 7 direction: INPUT }
