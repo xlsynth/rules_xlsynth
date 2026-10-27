@@ -687,6 +687,89 @@ The report includes the audit result and, for drivers supporting it, the
 `native_checks_replayed` count. To inspect the generated proposition and
 Lean functions, build the test with `--output_groups=lean_target`.
 
+### `netlist_lean_equiv_test` - check a supplied Lean proof of netlist equivalence
+
+Mechanically converts two Liberty-backed mapped Verilog netlists into g8r
+graphs and Lean circuits, then runs a supplied proof of their equivalence.
+The selected `xls.toolchain` must configure installed Lean as described above,
+and its driver must provide `gv2g8r`, `g8r-lean-prepare`, and
+`g8r-lean-check`.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")
+
+netlist_lean_equiv_test(
+    name = "adder_equiv_test",
+    lhs = ":reference_netlist",
+    lhs_hash = "<64-character SHA-256>",
+    rhs = ":optimized_netlist",
+    rhs_hash = "<64-character SHA-256>",
+    liberty_proto = ":cells_liberty_proto",
+    lhs_top = "adder",
+    rhs_top = "adder",
+    proof = "proof/Body.lean",
+)
+```
+
+`lhs` and `rhs` each provide exactly one netlist file. Workspace files,
+generated outputs, and external-repository files are accepted. The single
+`liberty_proto` is used for both sides. The hash attributes are SHA-256 over
+the exact file contents, decompressed first for `.gz` inputs. Whitespace and
+comments count. A build action verifies each hash before conversion and writes
+the exact verified bytes consumed by `gv2g8r`. A mismatch reports the side,
+expected hash, and actual hash.
+
+Optional extraction attributes are:
+
+- `lhs_top`, `rhs_top`: module selection; omit when unambiguous.
+- `lhs_cone_boundary_file`, `rhs_cone_boundary_file`: the driver's compact JSON
+  source/sink boundary files. Omission selects the complete module interface.
+- `collapse_sequential`: collapse reached pipeline registers; default `False`.
+- `collapse_load_enable_feedback`: collapse recognized load-enable feedback
+  with zero prior state; default `False` and requires `collapse_sequential`.
+
+The initial rule checks combinational `GateFn` equivalence. Reached residual
+state is rejected. Extracted input and output ports must have matching names
+and widths in the same order.
+
+The build creates the two `.g8r` graphs and a Lean target directory containing
+`Lhs.aag`, `Rhs.aag`, shared support modules, `Target.lean`, and `Check.lean`.
+`Target.lean` embeds both AAG files through the shared loader and defines their
+equivalence proposition. Inspect that directory while developing a proof with:
+
+```shell
+bazel build //path:adder_equiv_test --output_groups=lean_target
+```
+
+The `proof` file contains a complete Lean term for `Target.Equivalent`, such as
+a `by` tactic block or a helper theorem name. The runner generates the imports
+and `UserProof.equivalent` theorem declaration. Optional `proof_srcs` supplies
+helper `.lean` files, all of which are imported mechanically. Helpers must be
+under the body's directory; their relative paths are preserved. Lean discovers
+helper dependencies and compiles them in dependency order. The runner invokes
+Lean directly; `bv_decide` uses Lean's bundled solver lookup.
+
+Under `bazel test`, the rule writes `netlist_lean_equiv.json` to the undeclared
+test outputs with status, versions, hashes, extraction settings, timing, and
+Lean diagnostics. Success means Lean accepted the generated root theorem under
+its ordinary rules. Proof auditing is not performed, and the report records
+`audit_performed: false`.
+
+The basic integration targets use only
+[`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean). A separate
+`with_helpers` target exercises automatic helper imports and dependency ordering.
+The end-to-end integration test uses explicitly provisioned installations:
+
+```shell
+RULES_XLSYNTH_TEST_DRIVER=/path/to/xlsynth-driver \
+RULES_XLSYNTH_TEST_XLS_ROOT=/path/to/xls-release \
+RULES_XLSYNTH_TEST_LEAN_ROOT=/path/to/lean-4.34.1 \
+python3 netlist_lean_equiv_integration_test.py
+```
+
+`RULES_XLSYNTH_TEST_BAZEL` and `RULES_XLSYNTH_TEST_BAZEL_STARTUP_OPTIONS` may
+select a Bazel executable and startup options for that standalone test.
+
 ### `ir_to_gates` - convert IR to gate-level analysis
 
 Given an IR target (typically from `dslx_to_ir`) as input via `ir_src`, this rule runs the `ir2gates` tool to produce a text file containing gate-level analysis (e.g., gate counts, depth).

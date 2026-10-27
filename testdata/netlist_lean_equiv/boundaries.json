@@ -1,0 +1,10 @@
+{
+  "sources": [
+    "input_port:a",
+    "input_port:b",
+    "input_port:c",
+    "input_port:enable",
+    "input_port:clk"
+  ],
+  "sinks": ["output_port:result"]
+}

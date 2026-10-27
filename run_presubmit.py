@@ -769,6 +769,7 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
         '//:download_release_test',
         '//:ir_fn_lean_equiv_runner_test',
         '//:materialize_lean_installation_test',
+        '//:verify_netlist_input_test',
         '//:trusted_identity_boundary_test',
         '//:selected_toolchain_test',
         '//:selected_toolchain_exports_test',

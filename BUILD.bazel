@@ -30,6 +30,8 @@ py_test(
 exports_files([
     "ir_fn_lean_equiv_runner.py",
     "materialize_lean_installation.py",
+    "netlist_lean_equiv_runner.py",
+    "verify_netlist_input.py",
 ])
 
 py_test(
@@ -53,6 +55,14 @@ py_test(
     srcs = [
         "download_release.py",
         "download_release_test.py",
+    ],
+)
+
+py_test(
+    name = "verify_netlist_input_test",
+    srcs = [
+        "verify_netlist_input.py",
+        "verify_netlist_input_test.py",
     ],
 )
 
