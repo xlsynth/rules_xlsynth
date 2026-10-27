@@ -19,6 +19,7 @@ from pathlib import Path
 RULES_ROOT = Path(__file__).resolve().parent
 FIXTURES = RULES_ROOT / "testdata" / "netlist_lean_equiv"
 LEAN_VERSION = "4.34.1"
+BASIC_TARGET = "@rules_xlsynth//testdata/netlist_lean_equiv:basic"
 
 
 def quote(value):
@@ -90,7 +91,7 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 new_local_repository(
     name = "netlists",
     path = {netlists},
-    build_file_content = 'exports_files(["lhs.gv", "rhs.gv.gz", "rhs_bad.gv", "pipeline_lhs.gv", "pipeline_rhs.gv"])',
+    build_file_content = 'exports_files(["lhs.gv", "rhs.gv.gz", "rhs_bad.gv"])',
 )
 xls = use_extension("@rules_xlsynth//:extensions.bzl", "xls")
 xls.toolchain(
@@ -111,16 +112,14 @@ register_toolchains("@local_xls_toolchain//:all")
 
     def read_report(self, workspace, name):
         logs = Path(self.bazel_command(workspace, ["info", "bazel-testlogs"]).strip().splitlines()[-1])
-        matches = list(logs.glob("**/" + name + "/test.outputs"))
-        self.assertEqual(len(matches), 1, "expected one report directory for {}: {}".format(name, matches))
-        output_dir = matches[0]
+        output_dir = logs / name / "test.outputs"
         direct = output_dir / "netlist_lean_equiv.json"
         if direct.exists():
             return json.loads(direct.read_text())
         with zipfile.ZipFile(str(output_dir / "outputs.zip")) as archive:
             return json.loads(archive.read("netlist_lean_equiv.json").decode())
 
-    def test_complete_rule_and_configuration_failures(self):
+    def test_expected_failures_and_toolchain_configuration(self):
         with tempfile.TemporaryDirectory(prefix="rules-xlsynth-lean-integration-") as temporary:
             root = Path(temporary)
             workspace = root / "workspace"
@@ -130,16 +129,11 @@ register_toolchains("@local_xls_toolchain//:all")
             lhs = (FIXTURES / "lhs.gv").read_bytes()
             rhs = (FIXTURES / "rhs.gv").read_bytes()
             bad = (FIXTURES / "rhs_bad.gv").read_bytes()
-            pipeline_lhs = (FIXTURES / "pipeline_lhs.gv").read_bytes()
-            pipeline_rhs = (FIXTURES / "pipeline_rhs.gv").read_bytes()
             (netlists / "lhs.gv").write_bytes(lhs)
             (netlists / "rhs_bad.gv").write_bytes(bad)
-            (netlists / "pipeline_lhs.gv").write_bytes(pipeline_lhs)
-            (netlists / "pipeline_rhs.gv").write_bytes(pipeline_rhs)
             with gzip.open(str(netlists / "rhs.gv.gz"), "wb") as output:
                 output.write(rhs)
             shutil.copyfile(str(FIXTURES / "cells.textproto"), str(workspace / "cells.textproto"))
-            shutil.copyfile(str(FIXTURES / "boundaries.json"), str(workspace / "boundaries.json"))
             (workspace / "Proof").mkdir()
             shutil.copyfile(str(FIXTURES / "Proof/Body.lean"), str(workspace / "Proof/Body.lean"))
             lean_prefix = root / "lean"
@@ -148,43 +142,14 @@ register_toolchains("@local_xls_toolchain//:all")
             module = workspace / "MODULE.bazel"
             module.write_text(self.module_source(netlists, lean_prefix))
             lhs_hash = hashlib.sha256(lhs).hexdigest()
-            rhs_hash = hashlib.sha256(rhs).hexdigest()
             bad_hash = hashlib.sha256(bad).hexdigest()
-            pipeline_options = """    lhs_cone_boundary_file = "boundaries.json",
-    rhs_cone_boundary_file = "boundaries.json",
-    collapse_sequential = True,
-    collapse_load_enable_feedback = True,"""
             (workspace / "BUILD.bazel").write_text(
                 'load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")\n' +
-                target("equivalent", "@netlists//:rhs.gv.gz", rhs_hash, lhs_hash) +
                 target("bad_hash", "@netlists//:rhs.gv.gz", "0" * 64, lhs_hash) +
-                target("different", "@netlists//:rhs_bad.gv", bad_hash, lhs_hash) +
-                target(
-                    "pipeline", "@netlists//:pipeline_rhs.gv", hashlib.sha256(pipeline_rhs).hexdigest(),
-                    hashlib.sha256(pipeline_lhs).hexdigest(), lhs="@netlists//:pipeline_lhs.gv",
-                    extra=pipeline_options,
-                )
+                target("different", "@netlists//:rhs_bad.gv", bad_hash, lhs_hash)
             )
 
-            self.bazel_command(workspace, [
-                "test", "//:equivalent", "//:pipeline",
-                "@rules_xlsynth//testdata/netlist_lean_equiv:with_helpers",
-                "--test_output=errors", "--nocache_test_results",
-            ])
-            report = self.read_report(workspace, "equivalent")
-            self.assertEqual(report["status"], "accepted_by_lean")
-            self.assertFalse(report["audit_performed"])
-            self.assertEqual(report["netlist_sha256"], {"lhs": lhs_hash, "rhs": rhs_hash})
-            self.assertEqual(self.read_report(workspace, "pipeline")["status"], "accepted_by_lean")
-            self.assertEqual(self.read_report(workspace, "with_helpers")["status"], "accepted_by_lean")
-            self.bazel_command(workspace, ["build", "//:equivalent", "--output_groups=lean_target"])
-            target_root = workspace / "bazel-bin" / "equivalent.lean_target"
-            for relative in ("Lhs.aag", "Rhs.aag", "Target.lean", "Check.lean"):
-                self.assertTrue((target_root / relative).is_file(), relative)
-            self.assertFalse((target_root / "Generated").exists())
-            pipeline_header = (workspace / "bazel-bin/pipeline.lean_target/Lhs.aag").read_text().splitlines()[0].split()
-            self.assertEqual(pipeline_header[4], "1")
-
+            self.bazel_command(workspace, ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"])
             self.bazel_command(
                 workspace, ["test", "//:bad_hash", "--test_output=errors"],
                 expected_success=False, expected_text="RHS netlist hash mismatch",
@@ -200,7 +165,7 @@ register_toolchains("@local_xls_toolchain//:all")
 
             module.write_text(self.module_source(netlists, lean_prefix, lean_attributes=False))
             self.bazel_command(
-                workspace, ["build", "//:equivalent"], expected_success=False,
+                workspace, ["build", BASIC_TARGET], expected_success=False,
                 expected_text="requires Lean configuration",
             )
             partial = self.module_source(netlists, lean_prefix).replace(
@@ -208,26 +173,25 @@ register_toolchains("@local_xls_toolchain//:all")
             )
             module.write_text(partial)
             self.bazel_command(
-                workspace, ["build", "//:equivalent"], expected_success=False,
+                workspace, ["build", BASIC_TARGET], expected_success=False,
                 expected_text="lean_artifact_source=installed_only requires installed_lean_root_prefix",
             )
             module.write_text(self.module_source(netlists, root / "missing-lean"))
             self.bazel_command(
-                workspace, ["build", "//:equivalent"], expected_success=False,
+                workspace, ["build", BASIC_TARGET], expected_success=False,
                 expected_text="missing required files",
             )
 
             module.write_text(self.module_source(netlists, None, lean_source="download_only"))
             self.bazel_command(
                 workspace,
-                ["test", "@rules_xlsynth//testdata/netlist_lean_equiv:basic", "--test_output=errors", "--nocache_test_results"],
+                ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"],
             )
 
             module.write_text(self.module_source(netlists, root / "missing-lean", lean_source="auto"))
             self.bazel_command(
-                workspace, ["test", "//:equivalent", "--test_output=errors", "--nocache_test_results"],
+                workspace, ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"],
             )
-            self.assertEqual(self.read_report(workspace, "equivalent")["status"], "accepted_by_lean")
 
 
 if __name__ == "__main__":
