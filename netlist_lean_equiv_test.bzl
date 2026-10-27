@@ -12,10 +12,10 @@ def _runfile_path(ctx, artifact):
 def _validate_hash(value, side):
     normalized = value.lower()
     if len(normalized) != 64:
-        fail("{}_hash must contain exactly 64 hexadecimal characters".format(side))
+        fail("{}_sha256 must contain exactly 64 hexadecimal characters".format(side))
     for index in range(len(normalized)):
         if normalized[index] not in "0123456789abcdef":
-            fail("{}_hash must contain exactly 64 hexadecimal characters".format(side))
+            fail("{}_sha256 must contain exactly 64 hexadecimal characters".format(side))
     return normalized
 
 def _verify_input(ctx, side, source, expected_hash):
@@ -96,8 +96,8 @@ def _proof_file(ctx, artifact, root, kind):
     return {"relative": relative, "runfile": runfile}
 
 def _netlist_lean_equiv_test_impl(ctx):
-    lhs_hash = _validate_hash(ctx.attr.lhs_hash, "lhs")
-    rhs_hash = _validate_hash(ctx.attr.rhs_hash, "rhs")
+    lhs_hash = _validate_hash(ctx.attr.lhs_sha256, "lhs")
+    rhs_hash = _validate_hash(ctx.attr.rhs_sha256, "rhs")
     if ctx.attr.collapse_load_enable_feedback and not ctx.attr.collapse_sequential:
         fail("collapse_load_enable_feedback requires collapse_sequential = True")
     toolchain = require_lean_toolchain(ctx)
@@ -193,9 +193,9 @@ netlist_lean_equiv_test = rule(
     implementation = _netlist_lean_equiv_test_impl,
     attrs = {
         "lhs": attr.label(allow_single_file = True, mandatory = True),
-        "lhs_hash": attr.string(mandatory = True),
+        "lhs_sha256": attr.string(mandatory = True),
         "rhs": attr.label(allow_single_file = True, mandatory = True),
-        "rhs_hash": attr.string(mandatory = True),
+        "rhs_sha256": attr.string(mandatory = True),
         "liberty_proto": attr.label(allow_single_file = True, mandatory = True),
         "lhs_top": attr.string(),
         "rhs_top": attr.string(),

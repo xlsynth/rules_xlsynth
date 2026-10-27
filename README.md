@@ -420,9 +420,9 @@ load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")
 netlist_lean_equiv_test(
     name = "adder_equiv_test",
     lhs = ":reference_netlist",
-    lhs_hash = "<64-character SHA-256>",
+    lhs_sha256 = "<64-character SHA-256>",
     rhs = ":optimized_netlist",
-    rhs_hash = "<64-character SHA-256>",
+    rhs_sha256 = "<64-character SHA-256>",
     liberty_proto = ":cells_liberty_proto",
     lhs_top = "adder",
     rhs_top = "adder",

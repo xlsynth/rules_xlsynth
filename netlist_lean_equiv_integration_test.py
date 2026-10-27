@@ -30,9 +30,9 @@ def target(name, rhs, rhs_hash, lhs_hash, lhs="@netlists//:lhs.gv", proof="Proof
 netlist_lean_equiv_test(
     name = {name},
     lhs = {lhs},
-    lhs_hash = {lhs_hash},
+    lhs_sha256 = {lhs_hash},
     rhs = {rhs},
-    rhs_hash = {rhs_hash},
+    rhs_sha256 = {rhs_hash},
     liberty_proto = "cells.textproto",
     lhs_top = "top",
     rhs_top = "top",
