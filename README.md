@@ -258,6 +258,39 @@ dslx_test(
 )
 ```
 
+Libraries containing multiple source files must name their root module explicitly:
+
+```starlark
+dslx_library(
+    name = "adder",
+    root = "adder.x",
+    srcs = ["adder.x", "optimized.x"],
+)
+
+dslx_test(
+    name = "adder_test",
+    lib = ":adder",
+)
+```
+
+`root` must be one of the library's direct `srcs`. A single-source library may
+omit it. Neither `srcs` nor `deps` ordering selects a module: all typechecking,
+tests, proofs, and conversions use the declared root, with the other sources
+available for imports. This does not separately typecheck unused source files.
+`dslx_test(src = ..., deps = ...)` still selects the explicit test source.
+
+`dslx_to_pipeline`, `dslx_to_pipeline_eco`, and `dslx_to_sv_types` accept `lib`
+to select the root library and `deps` for additional inputs. Their existing
+`deps = [":one_library"]` shorthand remains valid. Multiple dependencies without
+`lib` are ambiguous and fail analysis.
+
+Migration: multi-source libraries that previously relied on the last source
+must add `root`; conversion rules that relied on the last dependency must add
+`lib`. Custom rules using `DslxInfo` must use its `root` File and
+`transitive_srcs` depset, which includes the root. The old `dag` field and DAG
+construction functions have been removed. The source depset has no meaningful
+ordering, and consumers must not infer a root from it.
+
 ### `dslx_fmt_test` - format DSLX files
 
 ```starlark

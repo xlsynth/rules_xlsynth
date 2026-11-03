@@ -2,11 +2,12 @@
 
 load(":dslx_provider.bzl", "DslxInfo")
 load(":env_helpers.bzl", "python_runner_source")
-load(":helpers.bzl", "get_srcs_from_deps")
+load(":helpers.bzl", "get_dslx_input")
 load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "get_selected_driver_toolchain")
 
 def _dslx_to_pipeline_eco_impl(ctx):
-    srcs = get_srcs_from_deps(ctx)
+    dslx_input = get_dslx_input(ctx)
+    srcs = list(dslx_input.srcs)
 
     passthrough = []
 
@@ -95,7 +96,7 @@ def _dslx_to_pipeline_eco_impl(ctx):
             "--stdout_path",
             output_sv_file.path,
             "dslx2pipeline-eco",
-            "--dslx_input_file=" + srcs[0].path,
+            "--dslx_input_file=" + dslx_input.root.path,
             "--dslx_top=" + top_entry,
             "--baseline_unopt_ir=" + baseline_unopt_ir_file.path,
             "--output_unopt_ir=" + output_unopt_ir_file.path,
@@ -111,8 +112,12 @@ def _dslx_to_pipeline_eco_impl(ctx):
     )
 
 DslxToPipelineEcoAttrs = {
+    "lib": attr.label(
+        doc = "Library whose root module is converted. May be omitted with exactly one dependency.",
+        providers = [DslxInfo],
+    ),
     "deps": attr.label_list(
-        doc = "The list of DSLX libraries to be tested.",
+        doc = "Additional DSLX input libraries, or a single root library when lib is omitted.",
         providers = [DslxInfo],
     ),
     "delay_model": attr.string(

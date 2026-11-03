@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:root_selection_test.bzl", "root_selection_test_suite")
+
+root_selection_test_suite(name = "root_selection_test")

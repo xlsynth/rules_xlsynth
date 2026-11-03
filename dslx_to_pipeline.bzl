@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load(":dslx_provider.bzl", "DslxInfo")
-load(":helpers.bzl", "get_srcs_from_deps")
+load(":helpers.bzl", "get_dslx_input")
 load(":env_helpers.bzl", "python_runner_source")
 load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "get_selected_driver_toolchain")
 
 def _dslx_to_pipeline_impl(ctx):
-    srcs = get_srcs_from_deps(ctx)
+    dslx_input = get_dslx_input(ctx)
 
     passthrough = []
 
@@ -71,7 +71,7 @@ def _dslx_to_pipeline_impl(ctx):
     )
 
     ctx.actions.run(
-        inputs = srcs + [toolchain_file] + get_driver_artifact_inputs(
+        inputs = dslx_input.srcs + [toolchain_file] + get_driver_artifact_inputs(
             toolchain,
             ["ir_converter_main", "opt_main", "codegen_main"],
         ),
@@ -88,7 +88,7 @@ def _dslx_to_pipeline_impl(ctx):
             "--stdout_path",
             output_sv_file.path,
             "dslx2pipeline",
-            "--dslx_input_file=" + srcs[0].path,
+            "--dslx_input_file=" + dslx_input.root.path,
             "--dslx_top=" + top_entry,
             "--output_unopt_ir=" + output_unopt_ir_file.path,
             "--output_opt_ir=" + output_opt_ir_file.path,
@@ -101,8 +101,12 @@ def _dslx_to_pipeline_impl(ctx):
     )
 
 DslxToPipelineAttrs = {
+    "lib": attr.label(
+        doc = "Library whose root module is converted. May be omitted with exactly one dependency.",
+        providers = [DslxInfo],
+    ),
     "deps": attr.label_list(
-        doc = "The list of DSLX libraries to be tested.",
+        doc = "Additional DSLX input libraries, or a single root library when lib is omitted.",
         providers = [DslxInfo],
     ),
     "delay_model": attr.string(

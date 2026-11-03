@@ -13,9 +13,10 @@ load(
 )
 
 DslxInfo = provider(
-    doc = "Contains DAG info per node in a struct.",
+    doc = "A DSLX root module and its complete source inputs, independently of ordering.",
     fields = {
-        "dag": "A depset of the DAG entries to propagate upwards.",
+        "root": "The File containing this library's root module.",
+        "transitive_srcs": "A depset of direct and transitive source Files, including root. Order has no semantic meaning.",
     },
 )
 
@@ -28,53 +29,27 @@ DslxSelectedToolchainInfo = provider(
     },
 )
 
-def make_dag_entry(srcs, deps, label):
-    return struct(
-        srcs = tuple(srcs),
-        deps = tuple(deps),
-        label = label,
-    )
+def _dslx_library_impl(ctx):
+    """Resolves the root once and propagates its source closure to consumers."""
+    direct_srcs = depset(ctx.files.srcs).to_list()
+    if ctx.file.root:
+        root = ctx.file.root
+        if root not in direct_srcs:
+            fail("root must be one of the direct srcs", attr = "root")
+    elif len(direct_srcs) == 1:
+        root = direct_srcs[0]
+    else:
+        fail("must specify root when srcs does not contain exactly one file", attr = "root")
 
-def make_dslx_info(
-        new_entries = (),
-        old_infos = ()):
-    return DslxInfo(
-        dag = depset(
-            direct = new_entries,
-            order = "postorder",
-            transitive = [x.dag for x in old_infos],
+    dslx_info = DslxInfo(
+        root = root,
+        transitive_srcs = depset(
+            direct = direct_srcs,
+            transitive = [dep[DslxInfo].transitive_srcs for dep in ctx.attr.deps],
         ),
     )
-
-def _dslx_library_impl(ctx):
-    """Produces a DAG for the given target.
-
-    Args:
-      ctx: The context for this rule.
-
-    Returns:
-      A struct containing the DAG at this level of the dependency graph.
-    """
-    dslx_info = make_dslx_info(
-        new_entries = [make_dag_entry(
-            srcs = ctx.files.srcs,
-            deps = ctx.attr.deps,
-            label = ctx.label,
-        )],
-        old_infos = [dep[DslxInfo] for dep in ctx.attr.deps],
-    )
-
+    srcs = dslx_info.transitive_srcs.to_list()
     typecheck_output = ctx.actions.declare_file(ctx.label.name + ".typecheck")
-
-    dag_entries = []
-    for dep in ctx.attr.deps:
-        dag_entries.extend(dep[DslxInfo].dag.to_list())
-
-    srcs = []
-    for entry in dag_entries:
-        srcs += [src for src in list(entry.srcs)]
-    for src in ctx.files.srcs:
-        srcs.append(src)
 
     # Run typechecking via the embedded runner so env is read at action runtime.
     runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
@@ -93,7 +68,7 @@ def _dslx_library_impl(ctx):
             "--runtime_library_path",
             toolchain.runtime_library_path,
             "typecheck_main",
-            srcs[-1].path,
+            root.path,
             "--output_path",
             typecheck_output.path,
         ],
@@ -141,8 +116,12 @@ dslx_library = rule(
             ],
         ),
         "srcs": attr.label_list(
-            doc = "DSLX sources.",
+            doc = "DSLX source inputs. Order is not significant; set root when there is more than one file.",
             allow_files = [".x"],
+        ),
+        "root": attr.label(
+            doc = "Root DSLX module, selected from srcs. May be omitted only for a single-source library.",
+            allow_single_file = [".x"],
         ),
         "xls_bundle": attr.label(
             doc = "Optional XLS bundle override.",
