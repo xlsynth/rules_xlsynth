@@ -370,6 +370,8 @@ def _xlsynth_driver_binary_impl(ctx):
     action_env = {"PATH": ctx.attr.action_path}
     if ctx.attr.action_ld_library_path:
         action_env["LD_LIBRARY_PATH"] = ctx.attr.action_ld_library_path
+    if ctx.attr.action_library_path:
+        action_env["LIBRARY_PATH"] = ctx.attr.action_library_path
     if ctx.attr.action_dyld_library_path:
         action_env["DYLD_LIBRARY_PATH"] = ctx.attr.action_dyld_library_path
     if ctx.attr.action_home:
@@ -481,6 +483,7 @@ xlsynth_driver_binary = rule(
         "action_dyld_library_path": attr.string(),
         "action_home": attr.string(),
         "action_ld_library_path": attr.string(),
+        "action_library_path": attr.string(),
         "action_path": attr.string(mandatory = True),
         "action_rustup_home": attr.string(),
         "allow_xls_pin_mismatch": attr.bool(),

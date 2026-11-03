@@ -332,6 +332,7 @@ def _toolchain_build_file(
         action_dyld_library_path,
         action_home,
         action_ld_library_path,
+        action_library_path,
         action_rustup_home,
         artifact_source,
         allow_xls_pin_mismatch,
@@ -351,6 +352,7 @@ def _toolchain_build_file(
         _string_attr_line("action_dyld_library_path", action_dyld_library_path),
         _string_attr_line("action_home", action_home),
         _string_attr_line("action_ld_library_path", action_ld_library_path),
+        _string_attr_line("action_library_path", action_library_path),
         _string_attr_line("action_rustup_home", action_rustup_home),
     ])
     driver_attrs = "".join([
@@ -622,6 +624,7 @@ def _toolchain_repo_impl(repo_ctx):
     action_dyld_library_path = repo_ctx.os.environ.get("DYLD_LIBRARY_PATH", "")
     action_home = repo_ctx.os.environ.get("HOME", "")
     action_ld_library_path = repo_ctx.os.environ.get("LD_LIBRARY_PATH", "")
+    action_library_path = repo_ctx.os.environ.get("LIBRARY_PATH", "")
     action_rustup_home = repo_ctx.os.environ.get("RUSTUP_HOME", "")
     repo_ctx.file(
         "BUILD.bazel",
@@ -633,6 +636,7 @@ def _toolchain_repo_impl(repo_ctx):
             action_dyld_library_path = action_dyld_library_path,
             action_home = action_home,
             action_ld_library_path = action_ld_library_path,
+            action_library_path = action_library_path,
             action_rustup_home = action_rustup_home,
             allow_xls_pin_mismatch = repo_ctx.attr.allow_xls_pin_mismatch,
             artifact_source = repo_ctx.attr.artifact_source,
@@ -707,6 +711,7 @@ _xls_toolchain_repo = repository_rule(
         "DYLD_LIBRARY_PATH",
         "HOME",
         "LD_LIBRARY_PATH",
+        "LIBRARY_PATH",
         "PATH",
         "RUSTUP_HOME",
     ],

@@ -161,6 +161,14 @@ driver-backed action is built, that action installs `xlsynth-driver` with
 available. If the nightly toolchain is missing, `rules_xlsynth` bootstraps a
 repo-local `rustup` home before installing the driver.
 
+Cargo source installs also link against the system Bitwuzla development
+library. For installations outside the system linker directories, set
+`LIBRARY_PATH` in the Bazel repository environment (for example,
+`--repo_env=LIBRARY_PATH=/opt/bitwuzla/lib`). The install action also checks
+the configured runtime library path (`LD_LIBRARY_PATH` on Linux,
+`DYLD_LIBRARY_PATH` on macOS) and appends the first directory containing the
+Bitwuzla linker library to the explicit link search path.
+
 Each `xls.toolchain(...)` call now exports two public repos:
 
 - `@<name>_runtime` for runtime files, `xlsynth-sys` wiring, tools, and `libxls`
