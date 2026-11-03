@@ -207,7 +207,7 @@ Supported rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>_toolchain//:bundle"`. Today that escape hatch is available on
 `dslx_library`, `dslx_test`, `dslx_to_ir`, `dslx_prove_quickcheck_test`,
 `dslx_to_sv_types`, `dslx_to_pipeline`, `dslx_to_pipeline_eco`,
-`dslx_stitch_pipeline`, and `ir_fn_lean_equiv_test`.
+`dslx_stitch_pipeline`, `dslx_lean_equiv_test`, and `ir_fn_lean_equiv_test`.
 
 ```starlark
 dslx_to_pipeline(
@@ -413,6 +413,29 @@ undeclared test output `ir_equiv.json`, including `success` and `error_str`.
 The report is available for both successful proofs and counterexamples; a
 failure result alone is not evidence of non-equivalence because solver errors
 and inconclusive results also fail.
+
+### `dslx_lean_equiv_test` - prove equivalence of two optimized DSLX functions in Lean
+
+Pass two `dslx_library` labels and the DSLX function name to select on each
+side. The test lowers and optimizes both functions with the registered XLS
+toolchain, then checks the supplied proof against their optimized IR. An
+optional `xls_bundle` selects the proof driver and Lean distribution.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "dslx_lean_equiv_test")
+
+dslx_lean_equiv_test(
+    name = "dslx_identity_test",
+    lhs = ":identity_lib",
+    lhs_top = "identity",
+    rhs = ":reference_lib",
+    rhs_top = "add_zero",
+    proof = "Reflexivity.lean",
+)
+```
+
+The proof term, optional `proof_srcs` modules, and audit report use the same
+format as `ir_fn_lean_equiv_test`.
 
 ### `ir_fn_lean_equiv_test` - prove equivalence of two XLS IR functions in Lean
 

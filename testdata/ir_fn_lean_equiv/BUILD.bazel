@@ -1,10 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 
-load("//:rules.bzl", "dslx_library", "dslx_to_ir", "ir_fn_lean_equiv_test")
+load("//:rules.bzl", "dslx_lean_equiv_test", "dslx_library", "dslx_to_ir", "ir_fn_lean_equiv_test")
 
 dslx_library(
     name = "identity_lib",
     srcs = ["identity.x"],
+)
+
+dslx_library(
+    name = "reference_lib",
+    testonly = True,
+    srcs = ["reference.x"],
+)
+
+dslx_lean_equiv_test(
+    name = "dslx_identity_test",
+    lhs = ":identity_lib",
+    lhs_top = "identity",
+    proof = "Reflexivity.lean",
+    rhs = ":reference_lib",
+    rhs_top = "add_zero",
+    tags = ["manual"],
 )
 
 dslx_to_ir(

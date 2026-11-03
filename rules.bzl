@@ -2,6 +2,7 @@ load(
     ":dslx_fmt.bzl",
     _dslx_fmt_test = "dslx_fmt_test",
 )
+load(":dslx_lean_equiv_test.bzl", _dslx_lean_equiv_test = "dslx_lean_equiv_test")
 load(
     ":dslx_prove_quickcheck_test.bzl",
     _dslx_prove_quickcheck_test = "dslx_prove_quickcheck_test",
@@ -51,6 +52,7 @@ DslxSelectedToolchainInfo = _DslxSelectedToolchainInfo
 dslx_library = _dslx_library
 dslx_test = _dslx_test
 dslx_fmt_test = _dslx_fmt_test
+dslx_lean_equiv_test = _dslx_lean_equiv_test
 dslx_to_sv_types = _dslx_to_sv_types
 dslx_to_pipeline = _dslx_to_pipeline
 dslx_to_pipeline_eco = _dslx_to_pipeline_eco
