@@ -295,7 +295,7 @@ Use `disable_warnings` to suppress warnings for one interpreter test:
 
 ```starlark
 dslx_test(
-    name = "my_dslx_library_test",
+    name = "my_dslx_library_unused_definition_test",
     lib = ":my_dslx_library",
     disable_warnings = ["unused_definition"],
 )
