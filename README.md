@@ -195,11 +195,11 @@ The runtime repo exposes:
 `artifact_config`, `libxls_file`, `libxls`, or `dslx_stdlib` directly in
 downstream `MODULE.bazel` files.
 
-Supported DSLX rules may opt out of the registered default bundle with
+Supported rules may opt out of the registered default bundle with
 `xls_bundle = "@<name>_toolchain//:bundle"`. Today that escape hatch is available on
 `dslx_library`, `dslx_test`, `dslx_to_ir`, `dslx_prove_quickcheck_test`,
-`dslx_to_sv_types`, `dslx_to_pipeline`, `dslx_to_pipeline_eco`, and
-`dslx_stitch_pipeline`.
+`dslx_to_sv_types`, `dslx_to_pipeline`, `dslx_to_pipeline_eco`,
+`dslx_stitch_pipeline`, and `ir_fn_lean_equiv_test`.
 
 ```starlark
 dslx_to_pipeline(
@@ -405,6 +405,39 @@ undeclared test output `ir_equiv.json`, including `success` and `error_str`.
 The report is available for both successful proofs and counterexamples; a
 failure result alone is not evidence of non-equivalence because solver errors
 and inconclusive results also fail.
+
+### `ir_fn_lean_equiv_test` - prove equivalence of two XLS IR functions in Lean
+
+Pass a `dslx_to_ir` target on either side to check its optimized IR, or give a
+single `.ir` file to select an exact package. The driver chooses each package's
+top or sole function. Use `lhs_top` and `rhs_top` to select different entrypoints.
+The functions must have the same positional argument and result types.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "ir_fn_lean_equiv_test")
+
+ir_fn_lean_equiv_test(
+    name = "identity_equiv_test",
+    lhs = ":identity_ir",
+    rhs = "reference.ir",
+    rhs_top = "add_zero",
+    proof = "Body.lean",
+    proof_srcs = ["Identity.lean"],
+)
+```
+
+The rule invokes `ir-fn-lean-prepare` to generate a typed `Target.Equivalent`
+proposition. The `lean_target` output group exposes this directory for inspection.
+The test invokes `ir-fn-lean-check` with the configured Lean distribution. The
+proof file supplies a term of `Target.Equivalent`, and optional helper modules
+under its directory are imported before checking the term. Success requires
+Lean to accept the theorem and the driver to complete its proof audit. Under
+`bazel test`, the result is recorded in `ir_fn_lean_equiv.json` in the test's
+undeclared outputs. Configure a toolchain with a driver providing these two
+subcommands and the matching Lean version. Use `xls_bundle` to select the
+proof toolchain independently of the toolchain that produced the IR.
+
+See [the complete example](testdata/ir_fn_lean_equiv/BUILD.bazel).
 
 ### `netlist_lean_equiv_test` - check a supplied Lean proof of netlist equivalence
 

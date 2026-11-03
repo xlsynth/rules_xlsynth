@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "dslx_library", "dslx_to_ir", "ir_fn_lean_equiv_test")
+
+dslx_library(
+    name = "identity_lib",
+    srcs = ["identity.x"],
+)
+
+dslx_to_ir(
+    name = "identity_ir",
+    lib = ":identity_lib",
+    top = "identity",
+)
+
+ir_fn_lean_equiv_test(
+    name = "identity_test",
+    lhs = ":identity_ir",
+    proof = "Body.lean",
+    proof_srcs = ["Identity.lean"],
+    rhs = "reference.ir",
+    rhs_top = "add_zero",
+    tags = ["manual"],
+)

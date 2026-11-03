@@ -41,6 +41,17 @@ def stage_proof_files(config, destination):
     return paths
 
 
+def verified_netlist_hashes(config):
+    hashes = {}
+    for side in ("lhs", "rhs"):
+        with open(resolve_runfile(config[side + "_hash_metadata"])) as source:
+            metadata = json.load(source)
+        if metadata["sha256"] != config[side + "_hash"]:
+            raise ValueError("{} verified hash metadata is inconsistent".format(side))
+        hashes[side] = metadata["sha256"]
+    return hashes
+
+
 def run(config):
     started = time.monotonic()
     driver = resolve_runfile(config["driver"])
@@ -53,13 +64,9 @@ def run(config):
         existing = environment.get(variable)
         environment[variable] = runtime_directory + (os.pathsep + existing if existing else "")
 
-    hashes = {}
-    for side in ("lhs", "rhs"):
-        with open(resolve_runfile(config[side + "_hash_metadata"])) as source:
-            metadata = json.load(source)
-        if metadata["sha256"] != config[side + "_hash"]:
-            raise ValueError("{} verified hash metadata is inconsistent".format(side))
-        hashes[side] = metadata["sha256"]
+    checker = config.get("checker", "g8r-lean-check")
+    ir_proof = checker == "ir-fn-lean-check"
+    hashes = None if ir_proof else verified_netlist_hashes(config)
 
     version = subprocess.run(
         [driver, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -68,7 +75,7 @@ def run(config):
     if version.returncode != 0:
         raise RuntimeError("xlsynth-driver version query failed: {}".format(version.stderr))
 
-    with tempfile.TemporaryDirectory(prefix="netlist-lean-equiv-", dir=os.environ.get("TEST_TMPDIR")) as temporary:
+    with tempfile.TemporaryDirectory(prefix="lean-equiv-", dir=os.environ.get("TEST_TMPDIR")) as temporary:
         temporary = Path(temporary)
         proof_root = temporary / "proof_inputs"
         proof_root.mkdir()
@@ -77,7 +84,7 @@ def run(config):
         command = [
             driver,
             "--toolchain=" + resolve_runfile(config["toolchain"]),
-            "g8r-lean-check",
+            checker,
             "--target-dir", resolve_runfile(config["target"]),
             "--proof-root", str(proof_root),
             "--proof", staged[config["proof"]["relative"]],
@@ -99,24 +106,31 @@ def run(config):
         else:
             lean_report = {"status": "failed", "error": "driver did not write a Lean result report"}
         accepted = result.returncode == 0 and lean_report["status"] == "accepted_by_lean"
+        audited = lean_report.get("audit_performed") is True
+        if ir_proof:
+            accepted = accepted and audited
         report = {
-            "audit_performed": False,
+            "audit_performed": audited if ir_proof else False,
             "driver_version": version.stdout.strip(),
             "elapsed_seconds": time.monotonic() - started,
-            "extraction": config["extraction"],
             "lean": lean_report,
             "lean_version": config["lean_version"],
-            "netlist_sha256": hashes,
             "status": "accepted_by_lean" if accepted else "failed",
         }
+        if ir_proof:
+            report_name = "ir_fn_lean_equiv.json"
+        else:
+            report["extraction"] = config["extraction"]
+            report["netlist_sha256"] = hashes
+            report_name = "netlist_lean_equiv.json"
         output_directory = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR")
         if output_directory:
             Path(output_directory).mkdir(parents=True, exist_ok=True)
-            with open(os.path.join(output_directory, "netlist_lean_equiv.json"), "w") as output:
+            with open(os.path.join(output_directory, report_name), "w") as output:
                 json.dump(report, output, indent=2, sort_keys=True)
                 output.write("\n")
         if result.returncode == 0 and not accepted:
-            raise RuntimeError("driver succeeded without an accepted Lean result")
+            raise RuntimeError("driver succeeded without the required Lean proof or audit")
         return result.returncode
 
 

@@ -665,11 +665,11 @@ def require_driver_toolchain(ctx):
     _require_common_toolchain(toolchain)
     return toolchain
 
-def require_lean_toolchain(ctx):
+def require_lean_toolchain(ctx, rule_name = "netlist_lean_equiv_test"):
     """Returns the selected XLS toolchain with its Lean bundle."""
-    toolchain = require_driver_toolchain(ctx)
+    toolchain = get_selected_driver_toolchain(ctx)
     if getattr(toolchain, "lean", None) == None:
-        fail("netlist_lean_equiv_test requires Lean configuration on the selected xls.toolchain")
+        fail("{} requires Lean configuration on the selected xls.toolchain".format(rule_name))
     return toolchain
 
 def require_tools_toolchain(ctx):

@@ -37,6 +37,7 @@ load(
     _dslx_to_sv_types = "dslx_to_sv_types",
 )
 load(":helpers.bzl", _mangle_dslx_name = "mangle_dslx_name")
+load(":ir_fn_lean_equiv_test.bzl", _ir_fn_lean_equiv_test = "ir_fn_lean_equiv_test")
 load(":ir_prove_equiv_test.bzl", _ir_prove_equiv_test = "ir_prove_equiv_test")
 load(
     ":ir_to_delay_info.bzl",
@@ -57,6 +58,7 @@ dslx_to_ir = _dslx_to_ir
 ir_to_delay_info = _ir_to_delay_info
 mangle_dslx_name = _mangle_dslx_name
 dslx_prove_quickcheck_test = _dslx_prove_quickcheck_test
+ir_fn_lean_equiv_test = _ir_fn_lean_equiv_test
 ir_prove_equiv_test = _ir_prove_equiv_test
 ir_to_gates = _ir_to_gates
 netlist_lean_equiv_test = _netlist_lean_equiv_test
