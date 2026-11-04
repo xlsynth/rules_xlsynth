@@ -1,0 +1,125 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "netlist_lean_equiv_test")
+
+filegroup(
+    name = "integration_test_fixtures",
+    srcs = [
+        "Proof/Body.lean",
+        "cells.textproto",
+        "lhs.gv",
+        "pipeline_lhs.gv",
+        "pipeline_registers_lhs.gv",
+        "pipeline_registers_rhs.gv",
+        "pipeline_rhs.gv",
+        "rhs.gv",
+        "rhs_bad.gv",
+    ],
+    visibility = ["//:__pkg__"],
+)
+
+netlist_lean_equiv_test(
+    name = "basic",
+    lhs = "lhs.gv",
+    lhs_sha256 = "b77aea65603feee7a0dcd157885ab7d64a4513fdd5ff07826f204b9d3649b28a",
+    lhs_top = "top",
+    liberty_proto = "cells.textproto",
+    proof = "Proof/Body.lean",
+    rhs = "rhs.gv",
+    rhs_sha256 = "043a8cad365a0e925aa253f33d0f4ddd0f725ae2e5585be8104899a85ed029f2",
+    rhs_top = "top",
+    # The repository's released self-test driver predates the Lean commands.
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "rhs_gzip",
+    srcs = ["rhs.gv"],
+    outs = ["rhs.gv.gz"],
+    cmd = "gzip -n -c $(location rhs.gv) > $@",
+)
+
+netlist_lean_equiv_test(
+    name = "equivalent",
+    lhs = "lhs.gv",
+    lhs_logic_cone_sinks = ["output_port_regex:result"],
+    lhs_logic_cone_sources = ["input_port_regex:[abc]"],
+    lhs_sha256 = "b77aea65603feee7a0dcd157885ab7d64a4513fdd5ff07826f204b9d3649b28a",
+    lhs_top = "top",
+    liberty_proto = "cells.textproto",
+    proof = "Proof/Body.lean",
+    rhs = ":rhs_gzip",
+    rhs_logic_cone_sinks = ["output_port:result"],
+    rhs_logic_cone_sources = [
+        "input_port:a",
+        "input_port:b",
+        "input_port:c",
+    ],
+    rhs_sha256 = "043a8cad365a0e925aa253f33d0f4ddd0f725ae2e5585be8104899a85ed029f2",
+    rhs_top = "top",
+    # The repository's released self-test driver predates the Lean commands.
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+netlist_lean_equiv_test(
+    name = "pipeline_registers",
+    collapse_sequential_cells = True,
+    lhs = "pipeline_registers_lhs.gv",
+    lhs_sha256 = "8b1d23d22c1edf5bf99c2290ee27138f9e029b90f58e944523d05f2f81c88d34",
+    lhs_top = "top",
+    liberty_proto = "cells.textproto",
+    proof = "Proof/Body.lean",
+    rhs = "pipeline_registers_rhs.gv",
+    rhs_sha256 = "b99387d040977bf5510df9a525f0f9c9fc176e202edc7ed198ed397eb80e8610",
+    rhs_top = "top",
+    # The repository's released self-test driver predates the Lean commands.
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+netlist_lean_equiv_test(
+    name = "pipeline",
+    collapse_load_enable_feedback = True,
+    collapse_sequential_cells = True,
+    lhs = "pipeline_lhs.gv",
+    lhs_sha256 = "153996ff28d87caf5071831a18f9995ee943ff21729b25b8b052bc7d087ec9d6",
+    lhs_top = "top",
+    liberty_proto = "cells.textproto",
+    logic_cone_sinks = ["output_port:result"],
+    logic_cone_sources = [
+        "input_port:a",
+        "input_port:b",
+        "input_port:c",
+        "input_port:enable",
+        "input_port:clk",
+    ],
+    proof = "Proof/Body.lean",
+    rhs = "pipeline_rhs.gv",
+    rhs_sha256 = "6ddea9f16c52cd7f6d7cedb223b74cdcad553d29053a6423227eecf257878436",
+    rhs_top = "top",
+    # The repository's released self-test driver predates the Lean commands.
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+netlist_lean_equiv_test(
+    name = "with_helpers",
+    lhs = "lhs.gv",
+    lhs_sha256 = "b77aea65603feee7a0dcd157885ab7d64a4513fdd5ff07826f204b9d3649b28a",
+    lhs_top = "top",
+    liberty_proto = "cells.textproto",
+    proof = "Proof/WithHelpers.lean",
+    proof_srcs = [
+        # Deliberately list the dependent helper first.
+        "Proof/Helpers/Proof.lean",
+        "Proof/Helpers/Lemmas.lean",
+    ],
+    rhs = "rhs.gv",
+    rhs_sha256 = "043a8cad365a0e925aa253f33d0f4ddd0f725ae2e5585be8104899a85ed029f2",
+    rhs_top = "top",
+    # The repository's released self-test driver predates the Lean commands.
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
