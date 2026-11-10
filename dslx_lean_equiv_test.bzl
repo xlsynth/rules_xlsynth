@@ -4,7 +4,7 @@
 load(":dslx_to_ir.bzl", "dslx_to_ir")
 load(":ir_fn_lean_equiv_test.bzl", "ir_fn_lean_equiv_test")
 
-def dslx_lean_equiv_test(name, lhs, lhs_top, rhs, rhs_top, proof, proof_srcs = [], xls_bundle = None, **kwargs):
+def dslx_lean_equiv_test(name, lhs, lhs_top, rhs, rhs_top, proof, proof_theorem, proof_srcs = [], xls_bundle = None, **kwargs):
     """Lowers two DSLX functions and checks a Lean proof of their equivalence.
 
     Args:
@@ -13,8 +13,9 @@ def dslx_lean_equiv_test(name, lhs, lhs_top, rhs, rhs_top, proof, proof_srcs = [
       lhs_top: Function name in the left DSLX module.
       rhs: Right DSLX library.
       rhs_top: Function name in the right DSLX module.
-      proof: Lean proof term for the generated Target.Equivalent.
-      proof_srcs: Lean helper modules imported by the proof.
+      proof: Lean module containing the selected theorem.
+      proof_theorem: Fully qualified name of the theorem proving Target.Equivalent.
+      proof_srcs: Additional Lean modules available for the proof to import.
       xls_bundle: Optional bundle for the proof driver and Lean. DSLX lowering
         uses the registered XLS toolchain.
       **kwargs: Common Bazel test attributes.
@@ -34,6 +35,7 @@ def dslx_lean_equiv_test(name, lhs, lhs_top, rhs, rhs_top, proof, proof_srcs = [
         lhs = ":" + name + "_lhs_ir",
         rhs = ":" + name + "_rhs_ir",
         proof = proof,
+        proof_theorem = proof_theorem,
         proof_srcs = proof_srcs,
         xls_bundle = xls_bundle,
         **kwargs

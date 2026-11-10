@@ -431,11 +431,12 @@ dslx_lean_equiv_test(
     rhs = ":reference_lib",
     rhs_top = "add_zero",
     proof = "Reflexivity.lean",
+    proof_theorem = "Reflexivity.equivalent",
 )
 ```
 
-The proof term, optional `proof_srcs` modules, and audit report use the same
-format as `ir_fn_lean_equiv_test`.
+The proof module, theorem name, optional helper modules, and audit report use
+the same format as `ir_fn_lean_equiv_test`.
 
 ### `ir_fn_lean_equiv_test` - prove equivalence of two XLS IR functions in Lean
 
@@ -452,17 +453,20 @@ ir_fn_lean_equiv_test(
     lhs = ":identity_ir",
     rhs = "reference.ir",
     rhs_top = "add_zero",
-    proof = "Body.lean",
-    proof_srcs = ["Identity.lean"],
+    proof = "Identity.lean",
+    proof_theorem = "Identity.equivalent",
 )
 ```
 
 The rule invokes `ir-fn-lean-prepare` to generate a typed `Target.Equivalent`
 proposition. The `lean_target` output group exposes this directory for inspection.
 The test invokes `ir-fn-lean-check` with the configured Lean distribution. The
-proof file supplies a term of `Target.Equivalent`, and optional helper modules
-under its directory are imported before checking the term. Success requires
-Lean to accept the theorem and the driver to complete its proof audit. Under
+`proof` file is an ordinary Lean module. Set `proof_theorem` to the fully
+qualified name of its theorem. For example, `Identity.lean` imports `Target`
+and proves `theorem Identity.equivalent : Target.Equivalent`. List any local
+modules it imports in `proof_srcs`, with paths relative to the proof file’s
+directory determining their Lean module names. The driver generates the root
+theorem and verifies its compiled proof against the original target. Under
 `bazel test`, the result is recorded in `ir_fn_lean_equiv.json` in the test's
 undeclared outputs. Configure a toolchain with a driver providing these two
 subcommands and the matching Lean version. Use `xls_bundle` to select the

@@ -43,7 +43,14 @@ def _ir_fn_lean_equiv_test_impl(ctx):
         progress_message = "Generating Lean function equivalence target for {}".format(ctx.label),
         mnemonic = "XlsynthIrFnLeanPrepare",
     )
-    return lean_equiv_test_result(ctx, target, toolchain, toolchain_file, "ir-fn-lean-check")
+    return lean_equiv_test_result(
+        ctx,
+        target,
+        toolchain,
+        toolchain_file,
+        "ir-fn-lean-check",
+        metadata = {"proof_theorem": ctx.attr.proof_theorem},
+    )
 
 ir_fn_lean_equiv_test = rule(
     doc = "Checks and audits a Lean proof of pointwise equivalence for two pure XLS IR functions.",
@@ -53,8 +60,9 @@ ir_fn_lean_equiv_test = rule(
         "rhs": attr.label(allow_files = [".ir"], mandatory = True, doc = "Right IR file or DSLX-to-IR target (optimized IR)."),
         "lhs_top": attr.string(doc = "Override the left package's top or sole function."),
         "rhs_top": attr.string(doc = "Override the right package's top or sole function."),
-        "proof": attr.label(allow_single_file = [".lean"], mandatory = True),
-        "proof_srcs": attr.label_list(allow_files = [".lean"]),
+        "proof": attr.label(allow_single_file = [".lean"], mandatory = True, doc = "Lean module containing the selected equivalence theorem."),
+        "proof_theorem": attr.string(mandatory = True, doc = "Fully qualified name of the theorem proving Target.Equivalent."),
+        "proof_srcs": attr.label_list(allow_files = [".lean"], doc = "Additional Lean modules available for the proof to import."),
         "xls_bundle": attr.label(providers = [XlsArtifactBundleInfo], doc = "Optional XLS bundle override for the proof driver and Lean distribution."),
         "_test_runner": attr.label(default = Label("//:netlist_lean_equiv_runner.py"), allow_single_file = True),
     },

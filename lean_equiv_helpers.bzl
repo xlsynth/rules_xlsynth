@@ -28,7 +28,7 @@ def _proof_file(ctx, artifact, root, kind):
     runfile = lean_runfile_path(ctx, artifact)
     prefix = root + "/"
     if not runfile.startswith(prefix):
-        fail("{} file {} must be under the proof body's directory".format(kind, artifact.path))
+        fail("{} file {} must be under the directory containing the proof file".format(kind, artifact.path))
     relative = runfile[len(prefix):]
     if kind == "proof_srcs" and not relative.endswith(".lean"):
         fail("proof_srcs file must have a .lean extension: {}".format(artifact.path))

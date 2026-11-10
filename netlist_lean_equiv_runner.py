@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Bazel test runner for a Lean proof body and generated equivalence target."""
+"""Bazel test runner for a Lean proof and generated equivalence target."""
 
 import json
 import os
@@ -92,6 +92,8 @@ def run(config):
             "--work-dir", str(temporary / "work"),
             "--output-json", str(child_report_path),
         ]
+        if ir_proof:
+            command.extend(["--proof-theorem", config["proof_theorem"]])
         for item in config["proof_srcs"]:
             command.extend(["--proof-source", staged[item["relative"]]])
         result = subprocess.run(
