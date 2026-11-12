@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+# proto-file: xlsynth-g8r/proto/liberty.proto
+# proto-message: liberty.Library
+# Synthetic area-only library for the registered inverter example.
+
+format_magic: 5496997758228255311
+cells: [{
+  name: "DFF"
+  pins: [{
+    direction: INPUT
+    name_string_id: 4
+  }, {
+    direction: INPUT
+    name_string_id: 3
+    is_clocking_pin: true
+  }, {
+    direction: OUTPUT
+    function_string_id: 5
+    name_string_id: 6
+  }]
+  area: 3.0
+  sequential: [{
+    state_var: "IQ"
+    next_state: "D"
+    clock_expr: "CLK"
+    kind: SEQUENTIAL_KIND_FF
+    complementary_state_var: "IQN"
+  }]
+}, {
+  name: "INV"
+  pins: [{
+    direction: INPUT
+    name_string_id: 2
+  }, {
+    direction: OUTPUT
+    function_string_id: 1
+    name_string_id: 7
+  }]
+  area: 1.0
+}]
+interned_strings: ["!A", "A", "CLK", "D", "IQ", "Q", "Y"]

@@ -365,6 +365,162 @@ dslx_to_ir(
 )
 ```
 
+### BX libraries, Block IR, and SystemVerilog
+
+BX describes RTL with explicit registers, enables, feedback, and block
+instances. For these rules, select a bundle with `xlsynth_driver_version =
+"0.83.0"` and `xls_version = "0.62.0"`. Use the registered bundle or set
+`xls_bundle` on a target. The `bx_to_sv` macro uses the same
+bundle for both steps.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "block_ir_to_sv", "bx_library", "bx_to_ir", "bx_to_sv", "dslx_library")
+
+bx_library(
+    name = "counter_cells",
+    srcs = ["counter_cells.bx"],
+)
+
+dslx_library(
+    name = "counter_math",
+    srcs = ["counter_math.x"],
+)
+
+bx_library(
+    name = "counter_bx",
+    srcs = ["counter.bx"],
+    deps = [":counter_cells"],
+    dslx_deps = [":counter_math"],
+)
+
+bx_to_sv(
+    name = "counter_rtl",
+    lib = ":counter_bx",
+    top = "counter",
+)
+
+bx_to_ir(
+    name = "counter_ir",
+    lib = ":counter_bx",
+    top = "counter",
+)
+
+block_ir_to_sv(
+    name = "counter_named_rtl",
+    ir = ":counter_ir",
+    module_name = "my_counter",
+)
+```
+
+Set `root` to one of the direct `srcs` for a multi-source `bx_library`.
+Libraries carry the root and transitive sources in `BxInfo`. They may contain
+generic blocks, functions, or types, and the driver checks imported
+declarations during design compilation. Explicit toolchain import paths are
+searched first, followed by the roots of the declared source files and the
+root module's directory. Use paths qualified from a repository root for
+imports across packages.
+
+`bx_to_ir` produces `<name>.block.ir` and exports `BlockIrInfo` with the
+selected top. Set `link_ir` to one IR package providing the implementations
+for BX `extern fn` and `extern block` declarations. A `dslx_to_ir` target
+supplies its unoptimized package. `reset_active_low` and
+`reset_asynchronous` default to `False` and apply to the hierarchy.
+`warnings_as_errors` defaults to `True`. `bx_to_sv` also accepts these
+attributes.
+
+`block_ir_to_sv` emits `<name>.sv` with the top module and its instantiated
+modules. It lowers maps and counted loops before emission and uses the
+driver's default RTL layout, which supports register feedback. It also
+accepts a single package-form `.ir` file. Supply `top` if the package has no
+marked top block.
+
+### `bx_to_gv` - map BX to a gate-level netlist
+
+`bx_to_gv` accepts the same compilation attributes as `bx_to_ir` and
+produces `<name>.gv` using the driver's native mapper. The required
+`liberty_proto` input is a normalized Liberty library with the cells the
+design needs. The mapper supports register enables and synchronous resets.
+Use `bx_to_sv` to emit RTL with asynchronous resets.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "bx_to_gv")
+
+bx_to_gv(
+    name = "counter_mapped",
+    lib = ":counter_bx",
+    top = "counter",
+    liberty_proto = "cells.textproto",
+)
+```
+
+### Run and prove BX properties
+
+`bx_test` runs `#[test]` functions and blocks and samples clocked
+`#[quickcheck]` and `#[invariant]` blocks. Set `quickcheck_trials`,
+`invariant_cycles`, and `seed` to control and reproduce sampling. Pass
+`seed` as a decimal string to cover the full unsigned 64-bit range. Set
+`cross_check_vastly = True` to compare samples against generated RTL.
+
+`bx_prove_quickcheck_test` proves each clocked QuickCheck over its declared
+tick schedule, for all legal stimulus and initial DUT state.
+`bx_prove_invariant_test` checks invariants and their lemmas with k-induction
+from the declared initialization. Set `max_depth` to cap the induction
+depth or set `mode = "bmc"` to check a prefix of that many cycles. Both
+proof rules support `time_limit_ms` per solver query and require a
+Bitwuzla-enabled driver. Disproved and inconclusive properties fail the
+Bazel test, with diagnostics in the test log.
+
+These rules run declarations in the root file of `lib`. Imports supply
+dependencies. All three accept `link_ir`, `warnings_as_errors`,
+`reset_active_low`, and `xls_bundle`, and use synchronous reset.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "bx_prove_invariant_test", "bx_prove_quickcheck_test", "bx_test")
+
+bx_test(
+    name = "counter_bx_test",
+    lib = ":counter_bx",
+    quickcheck_trials = 200,
+    seed = "42",
+)
+
+bx_prove_quickcheck_test(
+    name = "counter_quickcheck_proof_test",
+    lib = ":counter_bx",
+    time_limit_ms = 30000,
+)
+
+bx_prove_invariant_test(
+    name = "counter_invariant_proof_test",
+    lib = ":counter_bx",
+    max_depth = 8,
+)
+```
+
+### `sv_sim_test` - run a SystemVerilog testbench
+
+`sv_sim_test` runs Icarus Verilog under `bazel test`. Add the testbench and
+generated or checked-in RTL to `srcs` and set `top` to the testbench module.
+Pass executable Bazel targets for `iverilog` and `vvp` that carry any
+runtime files they need. Use `data` for includes and memory initialization
+files and `iverilog_args` for extra compiler options.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "sv_sim_test")
+
+sv_sim_test(
+    name = "counter_sim_test",
+    srcs = [":counter_rtl", "counter_tb.sv"],
+    top = "counter_tb",
+    iverilog = ":iverilog",
+    vvp = ":vvp",
+)
+```
+
+The [BX sample](sample_bx/BUILD.bazel) includes a hierarchical accumulator,
+a mapped registered inverter, and a clocked testbench. With Icarus Verilog on
+your path, run `bazel test //sample_bx:accumulator_sim_test --test_env=PATH`.
+
 ### `ir_to_delay_info` - convert IR to delay info
 
 ```starlark

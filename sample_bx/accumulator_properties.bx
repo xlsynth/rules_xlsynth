@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: Apache-2.0
+
+use sample_bx::accumulator;
+use sample_bx::capture;
+
+#[test]
+block captures_inverted_input() {
+    reg x: bool;
+    let q = capture::capture(x);
+    tick!();
+    assert_eq(q, true);
+    x := true;
+    tick!();
+    assert_eq(q, false);
+}
+
+#[quickcheck]
+block accumulator_updates_and_holds(x: u8, hold: bool) -> bool {
+    reg enable: bool;
+    reg input: u8;
+    let total = accumulator::accumulate(enable, input);
+    let next_enable = capture::capture(hold);
+    tick!(rst: true);
+    enable := true;
+    input := x;
+    tick!();
+    assert_eq(total, x + u8:7);
+    enable := next_enable;
+    input := u8:2;
+    tick!();
+    total == x + u8:7 + (if hold { u8:0 } else { u8:9 })
+}
+
+#[invariant]
+block accumulator_matches_half_width_model(clk, rst, hold: bool, x: u7) -> bool {
+    let enable = capture::capture(hold);
+    // The DUT adds its input plus seven. Odd inputs make the update even.
+    let total = accumulator::accumulate(enable, ((x as u8) << u32:1) | u8:1);
+    reg previous_hold: bool;
+    reg expected: u7 = u7:0;
+    previous_hold := hold;
+    if !previous_hold {
+        expected := expected + x + u7:4;
+    }
+    #[lemma]
+    let enable_matches = enable == !previous_hold;
+    #[lemma]
+    let total_is_even = (total & u8:1) == u8:0;
+    (total >> u32:1) as u7 == expected
+}

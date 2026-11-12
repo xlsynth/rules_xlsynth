@@ -229,6 +229,11 @@ def run_sample(config: PresubmitConfig):
 
 
 @register
+def run_sample_bx(config: PresubmitConfig):
+    bazel_test_opt(('//sample_bx/...',), config, dslx_path = ())
+
+
+@register
 def run_root_selection_tests(config: PresubmitConfig):
     """Require selected-root execution and typechecking in both source orders."""
     positive_targets = tuple(

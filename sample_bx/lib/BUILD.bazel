@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "bx_library", "dslx_library")
+
+package(default_visibility = ["//sample_bx:__pkg__"])
+
+dslx_library(
+    name = "arithmetic",
+    srcs = ["arithmetic.x"],
+)
+
+bx_library(
+    name = "stages",
+    srcs = ["stages.bx"],
+)

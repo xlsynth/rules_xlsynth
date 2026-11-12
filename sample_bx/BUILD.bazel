@@ -1,0 +1,159 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
+load(
+    "//:rules.bzl",
+    "block_ir_to_sv",
+    "bx_library",
+    "bx_prove_invariant_test",
+    "bx_prove_quickcheck_test",
+    "bx_test",
+    "bx_to_gv",
+    "bx_to_ir",
+    "bx_to_sv",
+    "sv_sim_test",
+)
+
+bx_library(
+    name = "accumulator_src",
+    srcs = [
+        "accum_params.bx",
+        "accumulator.bx",
+    ],
+    dslx_deps = ["//sample_bx/lib:arithmetic"],
+    root = "accumulator.bx",
+    deps = ["//sample_bx/lib:stages"],
+)
+
+bx_to_ir(
+    name = "accumulator_ir",
+    lib = ":accumulator_src",
+    reset_active_low = True,
+    top = "accumulate",
+    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
+)
+
+# Use a filegroup to exercise the plain IR file input.
+filegroup(
+    name = "accumulator_ir_file",
+    srcs = [":accumulator_ir"],
+)
+
+block_ir_to_sv(
+    name = "accumulator_from_ir",
+    ir = ":accumulator_ir_file",
+    module_name = "accumulator",
+    top = "accumulate",
+    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
+)
+
+bx_to_sv(
+    name = "accumulator",
+    lib = ":accumulator_src",
+    module_name = "accumulator",
+    reset_active_low = True,
+    top = "accumulate",
+    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
+)
+
+diff_test(
+    name = "accumulator_rtl_test",
+    file1 = ":accumulator",
+    file2 = "accumulator.golden.sv",
+)
+
+diff_test(
+    name = "accumulator_split_flow_test",
+    file1 = ":accumulator_from_ir",
+    file2 = ":accumulator",
+)
+
+bx_library(
+    name = "capture_src",
+    srcs = ["capture.bx"],
+)
+
+bx_to_gv(
+    name = "capture_gates",
+    lib = ":capture_src",
+    liberty_proto = "cells.textproto",
+    link_ir = "invert.ir",
+    top = "capture",
+    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
+)
+
+diff_test(
+    name = "capture_gates_test",
+    file1 = ":capture_gates",
+    file2 = "capture.golden.gv",
+)
+
+bx_library(
+    name = "accumulator_properties",
+    srcs = ["accumulator_properties.bx"],
+    deps = [
+        ":accumulator_src",
+        ":capture_src",
+    ],
+)
+
+bx_test(
+    name = "accumulator_bx_test",
+    cross_check_vastly = True,
+    invariant_cycles = 6,
+    lib = ":accumulator_properties",
+    link_ir = "invert.ir",
+    quickcheck_trials = 8,
+    reset_active_low = True,
+    seed = "42",
+    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
+)
+
+bx_prove_quickcheck_test(
+    name = "accumulator_quickcheck_proof_test",
+    lib = ":accumulator_properties",
+    link_ir = "invert.ir",
+    reset_active_low = True,
+    time_limit_ms = 5000,
+    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
+)
+
+bx_prove_invariant_test(
+    name = "accumulator_invariant_proof_test",
+    lib = ":accumulator_properties",
+    link_ir = "invert.ir",
+    max_depth = 1,
+    mode = "induction",
+    reset_active_low = True,
+    time_limit_ms = 5000,
+    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
+)
+
+native_binary(
+    name = "host_iverilog",
+    src = "iverilog.sh",
+    tags = ["manual"],
+)
+
+native_binary(
+    name = "host_vvp",
+    src = "vvp.sh",
+    tags = ["manual"],
+)
+
+# Run with `bazel test //sample_bx:accumulator_sim_test --test_env=PATH`.
+sv_sim_test(
+    name = "accumulator_sim_test",
+    srcs = [
+        "accumulator_tb.sv",
+        ":accumulator",
+    ],
+    iverilog = ":host_iverilog",
+    tags = [
+        "manual",
+        "no-remote",
+    ],
+    top = "accumulator_tb",
+    vvp = ":host_vvp",
+)

@@ -1,3 +1,17 @@
+"""Public rules and providers for XLSynth builds."""
+
+load(":block_ir_provider.bzl", _BlockIrInfo = "BlockIrInfo")
+load(":block_ir_to_sv.bzl", _block_ir_to_sv = "block_ir_to_sv")
+load(":bx_provider.bzl", _BxInfo = "BxInfo", _bx_library = "bx_library")
+load(
+    ":bx_test.bzl",
+    _bx_prove_invariant_test = "bx_prove_invariant_test",
+    _bx_prove_quickcheck_test = "bx_prove_quickcheck_test",
+    _bx_test = "bx_test",
+)
+load(":bx_to_gv.bzl", _bx_to_gv = "bx_to_gv")
+load(":bx_to_ir.bzl", _bx_to_ir = "bx_to_ir")
+load(":bx_to_sv.bzl", _bx_to_sv = "bx_to_sv")
 load(
     ":dslx_fmt.bzl",
     _dslx_fmt_test = "dslx_fmt_test",
@@ -43,7 +57,18 @@ load(
     _ir_to_delay_info = "ir_to_delay_info",
 )
 load(":ir_to_gates.bzl", _ir_to_gates = "ir_to_gates")
+load(":sv_sim_test.bzl", _sv_sim_test = "sv_sim_test")
 
+BlockIrInfo = _BlockIrInfo
+BxInfo = _BxInfo
+block_ir_to_sv = _block_ir_to_sv
+bx_library = _bx_library
+bx_prove_invariant_test = _bx_prove_invariant_test
+bx_prove_quickcheck_test = _bx_prove_quickcheck_test
+bx_test = _bx_test
+bx_to_gv = _bx_to_gv
+bx_to_ir = _bx_to_ir
+bx_to_sv = _bx_to_sv
 DslxInfo = _DslxInfo
 DslxSelectedToolchainInfo = _DslxSelectedToolchainInfo
 dslx_library = _dslx_library
@@ -59,3 +84,4 @@ dslx_prove_quickcheck_test = _dslx_prove_quickcheck_test
 ir_prove_equiv_test = _ir_prove_equiv_test
 ir_to_gates = _ir_to_gates
 dslx_stitch_pipeline = _dslx_stitch_pipeline
+sv_sim_test = _sv_sim_test
