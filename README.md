@@ -415,10 +415,10 @@ block_ir_to_sv(
 Set `root` to one of the direct `srcs` for a multi-source `bx_library`.
 Libraries carry the root and transitive sources in `BxInfo`. They may contain
 generic blocks, functions, or types, and the driver checks imported
-declarations during design compilation. Explicit toolchain import paths are
-searched first, followed by the roots of the declared source files and the
-root module's directory. Use paths qualified from a repository root for
-imports across packages.
+declarations during design compilation. The rules pass explicit toolchain
+import paths followed by the roots of the declared source files. Imports
+relative to the root module also find its declared generated siblings. Use
+paths qualified from a repository root for imports across packages.
 
 `bx_to_ir` produces `<name>.block.ir` and exports `BlockIrInfo` with the
 selected top. Set `link_ir` to one IR package providing the implementations

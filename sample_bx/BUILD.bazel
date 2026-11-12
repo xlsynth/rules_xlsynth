@@ -13,6 +13,13 @@ load(
     "bx_to_sv",
 )
 
+genrule(
+    name = "generate_accum_params",
+    srcs = ["accum_params.bx.in"],
+    outs = ["accum_params.bx"],
+    cmd = "cp \"$<\" \"$@\"",
+)
+
 bx_library(
     name = "accumulator_src",
     srcs = [

@@ -2,6 +2,7 @@
 
 """Compile BX into XLS block IR."""
 
+load("@bazel_skylib//lib:paths.bzl", "paths")
 load(":block_ir_provider.bzl", "BlockIrInfo")
 load(":bx_provider.bzl", "BxInfo")
 load(":bx_toolchain.bzl", "require_bx_toolchain", "run_bx_driver")
@@ -80,11 +81,18 @@ def get_bx_source_input(ctx, toolchain, runfiles = False):
     inputs = bx.transitive_srcs.to_list()
 
     # Preserve explicit search-path precedence, then allow imports qualified
-    # from the roots of declared source files. The driver adds the root
-    # module's own directory after these search paths.
+    # from the roots of declared source files.
     roots = {path: None for path in toolchain.dslx_path}
     for path in sorted({_source_import_root(src, runfiles): None for src in inputs}):
         roots[path] = None
+    if not runfiles:
+        # Runfiles place generated and source siblings in one directory. Build
+        # actions need both directories to resolve the same sibling imports.
+        root_directory = paths.dirname(bx.root.short_path)
+        roots[bx.root.dirname or "."] = None
+        for src in inputs:
+            if paths.dirname(src.short_path) == root_directory:
+                roots[src.dirname or "."] = None
 
     arguments = [
         bx.root.short_path if runfiles else bx.root.path,
