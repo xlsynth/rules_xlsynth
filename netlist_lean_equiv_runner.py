@@ -66,6 +66,7 @@ def run(config):
 
     checker = config.get("checker", "g8r-lean-check")
     ir_proof = checker == "ir-fn-lean-check"
+    reject_native_checks = ir_proof and not config.get("allow_native_checks", True)
     hashes = None if ir_proof else verified_netlist_hashes(config)
 
     version = subprocess.run(
@@ -94,6 +95,8 @@ def run(config):
         ]
         if ir_proof:
             command.extend(["--proof-theorem", config["proof_theorem"]])
+            if reject_native_checks:
+                command.append("--reject-native-checks")
         for item in config["proof_srcs"]:
             command.extend(["--proof-source", staged[item["relative"]]])
         result = subprocess.run(
@@ -109,22 +112,30 @@ def run(config):
             lean_report = {"status": "failed", "error": "driver did not write a Lean result report"}
         accepted = result.returncode == 0 and lean_report["status"] == "accepted_by_lean"
         audited = lean_report.get("audit_performed") is True
-        if ir_proof:
-            accepted = accepted and audited
         report = {
             "audit_performed": audited if ir_proof else False,
             "driver_version": version.stdout.strip(),
             "elapsed_seconds": time.monotonic() - started,
             "lean": lean_report,
             "lean_version": config["lean_version"],
-            "status": "accepted_by_lean" if accepted else "failed",
         }
         if ir_proof:
             report_name = "ir_fn_lean_equiv.json"
+            accepted = accepted and audited
+            if "native_checks_replayed" in lean_report:
+                count = lean_report["native_checks_replayed"]
+                if type(count) is int and count >= 0:
+                    report["native_checks_replayed"] = count
+                elif accepted:
+                    report["error"] = "expected a nonnegative integer for native_checks_replayed"
+            if accepted and reject_native_checks and report.get("native_checks_replayed") != 0:
+                report["error"] = "strict Lean audit requires the driver to report native_checks_replayed = 0"
         else:
             report["extraction"] = config["extraction"]
             report["netlist_sha256"] = hashes
             report_name = "netlist_lean_equiv.json"
+        accepted = accepted and "error" not in report
+        report["status"] = "accepted_by_lean" if accepted else "failed"
         output_directory = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR")
         if output_directory:
             Path(output_directory).mkdir(parents=True, exist_ok=True)
@@ -132,7 +143,7 @@ def run(config):
                 json.dump(report, output, indent=2, sort_keys=True)
                 output.write("\n")
         if result.returncode == 0 and not accepted:
-            raise RuntimeError("driver succeeded without the required Lean proof or audit")
+            raise RuntimeError(report.get("error", "driver succeeded without the required Lean proof or audit"))
         return result.returncode
 
 

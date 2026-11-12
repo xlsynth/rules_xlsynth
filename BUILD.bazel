@@ -57,6 +57,14 @@ py_test(
     ],
 )
 
+py_test(
+    name = "lean_equiv_runner_test",
+    srcs = [
+        "lean_equiv_runner_test.py",
+        "netlist_lean_equiv_runner.py",
+    ],
+)
+
 _NETLIST_LEAN_INTEGRATION_ENV = [
     "BAZELISK_HOME",
     "PATH",

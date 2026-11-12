@@ -435,8 +435,8 @@ dslx_lean_equiv_test(
 )
 ```
 
-The proof module, theorem name, optional helper modules, and audit report use
-the same format as `ir_fn_lean_equiv_test`.
+The proof module, theorem name, optional helper modules, `allow_native_checks`
+attribute, and audit report use the same format as `ir_fn_lean_equiv_test`.
 
 ### `ir_fn_lean_equiv_test` - prove equivalence of two XLS IR functions in Lean
 
@@ -471,6 +471,14 @@ theorem and verifies its compiled proof against the original target. Under
 undeclared outputs. Configure a toolchain with a driver providing these two
 subcommands and the matching Lean version. Use `xls_bundle` to select the
 proof toolchain independently of the toolchain that produced the IR.
+
+The default `allow_native_checks = True` lets the verifier replay native Boolean
+checks used by the selected theorem or its dependencies. Drivers that report
+the count expose it as `native_checks_replayed` in `ir_fn_lean_equiv.json`.
+Set `allow_native_checks = False` to require that the theorem depends only on
+Lean’s standard axioms (`propext`, `Classical.choice`, and `Quot.sound`).
+This setting requires a driver supporting `ir-fn-lean-check --reject-native-checks`
+and a successful audit reporting zero native checks.
 
 See [the complete example](testdata/ir_fn_lean_equiv/BUILD.bazel).
 

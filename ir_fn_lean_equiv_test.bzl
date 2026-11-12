@@ -49,7 +49,10 @@ def _ir_fn_lean_equiv_test_impl(ctx):
         toolchain,
         toolchain_file,
         "ir-fn-lean-check",
-        metadata = {"proof_theorem": ctx.attr.proof_theorem},
+        metadata = {
+            "allow_native_checks": ctx.attr.allow_native_checks,
+            "proof_theorem": ctx.attr.proof_theorem,
+        },
     )
 
 ir_fn_lean_equiv_test = rule(
@@ -63,6 +66,7 @@ ir_fn_lean_equiv_test = rule(
         "proof": attr.label(allow_single_file = [".lean"], mandatory = True, doc = "Lean module containing the selected equivalence theorem."),
         "proof_theorem": attr.string(mandatory = True, doc = "Fully qualified name of the theorem proving Target.Equivalent."),
         "proof_srcs": attr.label_list(allow_files = [".lean"], doc = "Additional Lean modules available for the proof to import."),
+        "allow_native_checks": attr.bool(default = True, doc = "Allow replaying native Boolean checks. Set to False to require only the three standard Lean axioms."),
         "xls_bundle": attr.label(providers = [XlsArtifactBundleInfo], doc = "Optional XLS bundle override for the proof driver and Lean distribution."),
         "_test_runner": attr.label(default = Label("//:netlist_lean_equiv_runner.py"), allow_single_file = True),
     },
