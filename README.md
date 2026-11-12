@@ -501,26 +501,6 @@ Run `bazel test //sample_bx/...` to build and verify the hierarchical BX
 accumulator and mapped inverter. The accumulator QuickCheck exercises reset,
 update, and hold with the Vastly RTL cross-check enabled.
 
-### `sv_sim_test` - run a SystemVerilog testbench
-
-`sv_sim_test` runs Icarus Verilog under `bazel test`. Add the testbench and
-generated or checked-in RTL to `srcs` and set `top` to the testbench module.
-Pass executable Bazel targets for `iverilog` and `vvp` that carry any
-runtime files they need. Use `data` for includes and memory initialization
-files and `iverilog_args` for extra compiler options.
-
-```starlark
-load("@rules_xlsynth//:rules.bzl", "sv_sim_test")
-
-sv_sim_test(
-    name = "counter_sim_test",
-    srcs = [":counter_rtl", "counter_tb.sv"],
-    top = "counter_tb",
-    iverilog = ":iverilog",
-    vvp = ":vvp",
-)
-```
-
 ### `ir_to_delay_info` - convert IR to delay info
 
 ```starlark
