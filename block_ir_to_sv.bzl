@@ -3,12 +3,10 @@
 """SystemVerilog emission for XLS block IR."""
 
 load(":block_ir_provider.bzl", "BlockIrInfo")
-load(":bx_toolchain.bzl", "require_bx_toolchain", "run_bx_driver")
-load(":env_helpers.bzl", "python_runner_source")
+load(":bx_toolchain.bzl", "bx_runtime_env", "require_bx_toolchain", "run_bx_driver")
 load(
     ":xls_toolchain.bzl",
     "XlsArtifactBundleInfo",
-    "declare_xls_toolchain_toml",
     "get_selected_driver_toolchain",
     "get_tool_artifact_inputs",
 )
@@ -29,30 +27,20 @@ def _block_ir_to_sv_impl(ctx):
         source = files[0]
 
     lowered_ir = ctx.actions.declare_file(ctx.label.name + ".lowered.block.ir")
-    runner = ctx.actions.declare_file(ctx.label.name + "_lower_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = "block_ir_lower", toolchain = toolchain)
     top_args = ["--top=" + top] if top else []
 
     # Keep the authored register graph. Only lower constructs the emitter
     # cannot yet translate directly.
     ctx.actions.run(
-        inputs = [source, toolchain_file] + get_tool_artifact_inputs(toolchain, "opt_main"),
+        inputs = [source] + get_tool_artifact_inputs(toolchain, "opt_main"),
         outputs = [lowered_ir],
-        executable = runner,
+        executable = toolchain.tools_path + "/opt_main",
         arguments = [
-            "tool",
-            "--runtime_library_path",
-            toolchain.runtime_library_path,
-            "--toolchain",
-            toolchain_file.path,
-            "--stdout_path",
-            lowered_ir.path,
-            "opt_main",
             source.path,
             "--passes=[map_inlining loop_unroll inlining]",
+            "--output_path=" + lowered_ir.path,
         ] + top_args,
-        use_default_shell_env = False,
+        env = bx_runtime_env(toolchain.runtime_library_path),
         mnemonic = "BlockIrLower",
     )
 

@@ -18,6 +18,7 @@ def _bx_to_gv_impl(ctx):
         inputs = compile_input.inputs + [liberty],
         arguments = compile_input.arguments + ["--liberty-proto", liberty.path],
         output = ctx.outputs.gv_file,
+        output_flag = "--output",
         mnemonic = "BxToGv",
     )
     return DefaultInfo(files = depset([ctx.outputs.gv_file]))

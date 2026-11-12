@@ -5,8 +5,7 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//lib:shell.bzl", "shell")
 load(":bx_to_ir.bzl", "BX_SOURCE_ATTRS", "get_bx_source_input")
-load(":bx_toolchain.bzl", "require_bx_toolchain")
-load(":env_helpers.bzl", "python_runner_source")
+load(":bx_toolchain.bzl", "bx_runtime_env", "require_bx_toolchain")
 load(":helpers.bzl", "write_executable_shell_script")
 load(
     ":xls_toolchain.bzl",
@@ -23,32 +22,28 @@ def _run_bx_test(ctx, command, arguments):
     toolchain = get_selected_driver_toolchain(ctx)
     require_bx_toolchain(toolchain, command)
     source = get_bx_source_input(ctx, toolchain, runfiles = True)
-    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
     toolchain_file = declare_xls_toolchain_toml(ctx, name = command, toolchain = toolchain)
 
-    # Resolve these against the test's working directory even when a bundle
-    # places the executable and shared library at the repository root.
+    # Bazel starts tests in the workspace runfiles directory.
+    library_path = '"$PWD/"' + shell.quote(paths.dirname(toolchain.libxls.short_path) or ".")
+    env_exports = {
+        name: value + '"${' + name + ":+:$" + name + '}"'
+        for name, value in bx_runtime_env(library_path).items()
+    }
     command_line = [
-        "/usr/bin/env python3",
-        shell.quote(runner.short_path),
-        "driver --driver_path",
-        '"$PWD/"' + shell.quote(toolchain.driver.short_path),
-        "--runtime_library_path",
-        '"$PWD/"' + shell.quote(paths.dirname(toolchain.libxls.short_path) or "."),
-        "--toolchain",
-    ] + [shell.quote(arg) for arg in [
-        toolchain_file.short_path,
+        "./" + toolchain.driver.short_path,
+        "--toolchain=" + toolchain_file.short_path,
         command,
-    ] + source.arguments + arguments]
+    ] + source.arguments + arguments
     executable = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
-        cmd = "exec " + " ".join(command_line) + "\n",
+        cmd = "exec " + " ".join([shell.quote(arg) for arg in command_line]) + "\n",
+        env_exports = env_exports,
     )
     return DefaultInfo(
         executable = executable,
-        runfiles = ctx.runfiles(files = source.inputs + [runner, toolchain_file] + get_driver_artifact_inputs(toolchain)),
+        runfiles = ctx.runfiles(files = source.inputs + [toolchain_file] + get_driver_artifact_inputs(toolchain)),
     )
 
 def _bx_test_impl(ctx):

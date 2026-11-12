@@ -2,7 +2,6 @@
 
 """Shared action setup for BX and block IR rules."""
 
-load(":env_helpers.bzl", "python_runner_source")
 load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_driver_artifact_inputs")
 
 _COMMAND_MINIMUM_VERSIONS = {
@@ -37,8 +36,12 @@ def require_bx_toolchain(toolchain, command):
             pin.value,
         ))
 
-def run_bx_driver(ctx, toolchain, *, command, inputs, arguments, output, mnemonic):
-    """Runs a BX or block IR driver command and captures its stdout.
+def bx_runtime_env(library_path):
+    """Sets the dynamic library search path on Linux and macOS."""
+    return {"LD_LIBRARY_PATH": library_path, "DYLD_LIBRARY_PATH": library_path}
+
+def run_bx_driver(ctx, toolchain, *, command, inputs, arguments, output, mnemonic, output_flag = None):
+    """Runs a BX or block IR driver command to produce one artifact.
 
     Args:
       ctx: Rule context.
@@ -46,28 +49,38 @@ def run_bx_driver(ctx, toolchain, *, command, inputs, arguments, output, mnemoni
       command: Driver subcommand to run.
       inputs: Design inputs to declare on the action.
       arguments: Arguments to pass to the subcommand.
-      output: File to receive stdout.
+      output: Declared output file.
       mnemonic: Bazel action mnemonic.
+      output_flag: Optional driver flag for writing to a file. Otherwise capture stdout.
     """
-    runner = ctx.actions.declare_file(ctx.label.name + "_runner.py")
-    ctx.actions.write(output = runner, content = python_runner_source(), is_executable = True)
     toolchain_file = declare_xls_toolchain_toml(ctx, name = command, toolchain = toolchain)
-    ctx.actions.run(
-        inputs = inputs + [toolchain_file] + get_driver_artifact_inputs(toolchain),
-        outputs = [output],
-        executable = runner,
-        arguments = [
-            "driver",
-            "--driver_path",
-            toolchain.driver_path,
-            "--runtime_library_path",
-            toolchain.runtime_library_path,
-            "--toolchain",
-            toolchain_file.path,
-            "--stdout_path",
-            output.path,
-            command,
-        ] + arguments,
-        use_default_shell_env = False,
-        mnemonic = mnemonic,
-    )
+    inputs = inputs + [toolchain_file] + get_driver_artifact_inputs(toolchain)
+    arguments = ["--toolchain=" + toolchain_file.path, command] + arguments
+    env = {"XLSYNTH_TOOLS": toolchain.tools_path}
+    if output_flag:
+        ctx.actions.run(
+            inputs = inputs,
+            outputs = [output],
+            executable = toolchain.driver,
+            arguments = arguments + [output_flag, output.path],
+            env = dict(env, **bx_runtime_env(toolchain.runtime_library_path)),
+            mnemonic = mnemonic,
+        )
+    else:
+        ctx.actions.run_shell(
+            inputs = inputs,
+            outputs = [output],
+            arguments = ["./" + toolchain.driver_path, output.path, toolchain.runtime_library_path] + arguments,
+            # Export inside the shell so macOS cannot strip DYLD_LIBRARY_PATH
+            # while launching the shell.
+            command = """
+                driver="$1"
+                output="$2"
+                export LD_LIBRARY_PATH="$3"
+                export DYLD_LIBRARY_PATH="$3"
+                shift 3
+                exec "$driver" "$@" > "$output"
+            """,
+            env = env,
+            mnemonic = mnemonic,
+        )
