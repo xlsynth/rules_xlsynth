@@ -631,6 +631,7 @@ def declare_xls_toolchain_toml(
         *,
         name,
         toolchain = None,
+        dslx_path = None,
         additional_disable_warnings = [],
         gate_format = None,
         assert_format = None,
@@ -643,6 +644,7 @@ def declare_xls_toolchain_toml(
       ctx: Rule context used to declare the output.
       name: Stable output-name component.
       toolchain: Optional already-selected XLS toolchain.
+      dslx_path: Optional list of DSLX import roots for this invocation.
       additional_disable_warnings: DSLX warning suppressions to add for this invocation.
       gate_format: Optional codegen gate format override.
       assert_format: Optional codegen assertion format override.
@@ -655,6 +657,7 @@ def declare_xls_toolchain_toml(
     """
     resolved_toolchain = require_tools_toolchain(ctx) if toolchain == None else toolchain
 
+    resolved_dslx_path = resolved_toolchain.dslx_path if dslx_path == None else dslx_path
     resolved_disable_warnings = resolved_toolchain.disable_warnings + additional_disable_warnings
     resolved_use_system_verilog = _resolve_tri_state(resolved_toolchain.use_system_verilog, use_system_verilog)
     resolved_add_invariant_assertions = _resolve_tri_state(resolved_toolchain.add_invariant_assertions, add_invariant_assertions)
@@ -667,7 +670,7 @@ def declare_xls_toolchain_toml(
         "",
         "[toolchain.dslx]",
         "dslx_stdlib_path = {}".format(_toml_quote(resolved_toolchain.dslx_stdlib_path)),
-        "dslx_path = {}".format(_toml_array(resolved_toolchain.dslx_path)),
+        "dslx_path = {}".format(_toml_array(resolved_dslx_path)),
         "enable_warnings = {}".format(_toml_array(resolved_toolchain.enable_warnings)),
         "disable_warnings = {}".format(_toml_array(resolved_disable_warnings)),
     ]

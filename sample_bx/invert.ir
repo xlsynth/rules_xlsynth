@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package logic
+
+fn invert_bit(x: bits[1] id=1) -> bits[1] {
+  ret inverted: bits[1] = not(x, id=2)
+}

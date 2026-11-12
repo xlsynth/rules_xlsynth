@@ -1,0 +1,14 @@
+module capture(x, out, clk);
+  input x;
+  output out;
+  input clk;
+  wire __g8r_n0;
+  wire __g8r_n1;
+  wire __g8r_n2;
+  wire __g8r_n3;
+  assign __g8r_n2 = __g8r_n3;
+  assign __g8r_n0 = x;
+  assign out = __g8r_n1;
+  INV __g8r_c0 (.A(__g8r_n0), .Y(__g8r_n3));
+  DFF __reg_0 (.CLK(clk), .D(__g8r_n2), .Q(__g8r_n1));
+endmodule

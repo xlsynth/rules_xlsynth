@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0
+
+pub block accumulate(clk, rst, enable: bool, increment: u8) -> u8 {
+    reg total: u8 = u8:0;
+    if enable {
+        total := total + increment;
+    }
+    total
+}

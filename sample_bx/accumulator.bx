@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+
+use sample_bx::accum_params::BIAS;
+use sample_bx::lib::arithmetic;
+use sample_bx::lib::stages;
+
+pub block accumulate(clk, rst, enable: bool, x: u8) -> u8 {
+    let total = stages::accumulate(enable, arithmetic::add_step(x) + BIAS);
+    total
+}

@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// The generated sample_bx/accum_params.bx takes precedence over this file
+// when presubmit adds sample_bx/import_shadow to the search path.
+pub const BIAS: u8 = u8:2;

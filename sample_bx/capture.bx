@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0
+
+extern fn invert(x: bool) -> bool = "invert_bit";
+
+pub block capture(clk, x: bool) -> bool {
+    reg q: bool;
+    q := invert(x);
+    q
+}

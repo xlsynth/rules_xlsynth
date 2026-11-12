@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package extended_carry_package
+
+top block extended_carry(lhs: bits[8], rhs: bits[8], carry_in: bits[1], carry_out: bits[1]) {
+  lhs: bits[8] = input_port(name=lhs, id=1)
+  rhs: bits[8] = input_port(name=rhs, id=2)
+  carry_in: bits[1] = input_port(name=carry_in, id=3)
+  result: bits[1] = ext_carry_out(lhs, rhs, carry_in, id=4)
+  carry_out: () = output_port(result, name=carry_out, id=5)
+}
