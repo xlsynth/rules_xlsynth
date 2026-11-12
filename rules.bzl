@@ -16,6 +16,7 @@ load(
     ":dslx_fmt.bzl",
     _dslx_fmt_test = "dslx_fmt_test",
 )
+load(":dslx_lean_equiv_test.bzl", _dslx_lean_equiv_test = "dslx_lean_equiv_test")
 load(
     ":dslx_prove_quickcheck_test.bzl",
     _dslx_prove_quickcheck_test = "dslx_prove_quickcheck_test",
@@ -51,6 +52,7 @@ load(
     _dslx_to_sv_types = "dslx_to_sv_types",
 )
 load(":helpers.bzl", _mangle_dslx_name = "mangle_dslx_name")
+load(":ir_fn_lean_equiv_test.bzl", _ir_fn_lean_equiv_test = "ir_fn_lean_equiv_test")
 load(":ir_prove_equiv_test.bzl", _ir_prove_equiv_test = "ir_prove_equiv_test")
 load(
     ":ir_to_delay_info.bzl",
@@ -70,6 +72,7 @@ bx_to_ir = _bx_to_ir
 bx_to_sv = _bx_to_sv
 DslxInfo = _DslxInfo
 DslxSelectedToolchainInfo = _DslxSelectedToolchainInfo
+dslx_lean_equiv_test = _dslx_lean_equiv_test
 dslx_library = _dslx_library
 dslx_test = _dslx_test
 dslx_fmt_test = _dslx_fmt_test
@@ -80,6 +83,7 @@ dslx_to_ir = _dslx_to_ir
 ir_to_delay_info = _ir_to_delay_info
 mangle_dslx_name = _mangle_dslx_name
 dslx_prove_quickcheck_test = _dslx_prove_quickcheck_test
+ir_fn_lean_equiv_test = _ir_fn_lean_equiv_test
 ir_prove_equiv_test = _ir_prove_equiv_test
 ir_to_gates = _ir_to_gates
 dslx_stitch_pipeline = _dslx_stitch_pipeline

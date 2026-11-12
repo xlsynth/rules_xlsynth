@@ -558,6 +558,94 @@ The report is available for both successful proofs and counterexamples; a
 failure result alone is not evidence of non-equivalence because solver errors
 and inconclusive results also fail.
 
+### Lean equivalence tests for DSLX and XLS IR functions
+
+Use `dslx_lean_equiv_test` to prove two DSLX functions return equal results for
+every input. Supply a `dslx_library` and a top function name on each side. The
+rule lowers and optimizes both functions with the registered XLS toolchain.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "dslx_lean_equiv_test")
+
+dslx_lean_equiv_test(
+    name = "dslx_identity_test",
+    lhs = ":identity_lib",
+    lhs_top = "identity",
+    rhs = ":reference_lib",
+    rhs_top = "add_zero",
+    proof = "Reflexivity.lean",
+    proof_theorem = "Reflexivity.equivalent",
+)
+```
+
+Use `ir_fn_lean_equiv_test` to start at the IR boundary. Its `lhs` and `rhs`
+each accept a single `.ir` file or a `dslx_to_ir` target providing optimized
+IR. The driver selects the package top or sole function on each side.
+Set `lhs_top` or `rhs_top` to select another IR function. The argument and
+result types must match.
+
+Both rules generate the proposition `Target.Equivalent` from the selected
+functions. Supply an ordinary Lean module that imports `Target`, and name
+the theorem that proves the proposition. For the example above, the
+optimizer reduces both functions to the identity, so the proof is:
+
+```lean
+import Target
+
+theorem Reflexivity.equivalent : Target.Equivalent := by
+  intro x
+  rfl
+```
+
+List any additional local modules in `proof_srcs`. Their paths under the proof
+file's directory determine their module names. The driver checks the compiled
+proof against the generated proposition and audits its dependencies. The
+default `allow_native_checks = True` permits replaying closed Boolean checks
+using native evaluation. Set it to `False` to require a kernel-only proof
+using at most Lean’s three standard axioms (`propext`, `Classical.choice` and
+`Quot.sound`). In this mode the test also requires the verifier to report zero
+native checks.
+
+Configure the proof toolchain in `MODULE.bazel`. For example:
+
+```starlark
+xls.toolchain(
+    name = "proof_xls",
+    artifact_source = "download_only",
+    xls_version = "0.62.0",
+    xlsynth_driver_version = "0.83.0",
+    lean_artifact_source = "download_only",
+    lean_version = "4.34.1",
+)
+use_repo(xls, "proof_xls_toolchain")
+```
+
+Register that toolchain, or set `xls_bundle = "@proof_xls_toolchain//:bundle"`
+on the test to select the proof driver and Lean independently of DSLX lowering.
+The driver must provide `ir-fn-lean-prepare` and `ir-fn-lean-check`.
+
+Lean is optional for other rules. Its artifact source can be configured
+independently of XLS. With `download_only`, Bazel verifies the official
+release archive against a pinned SHA-256. Checksums are included for Lean
+4.34.1 on Linux and macOS, on x86-64 and AArch64. To use an installation,
+set `installed_lean_root_prefix` and `lean_version`. The default
+`installed_only` source selects `<installed_lean_root_prefix>/<lean_version>`.
+The `auto` source checks the same location first and falls back to the pinned
+download. The distribution must include `bin/lean`, `bin/cadical`,
+`lib/lean` and `src/lean`.
+
+Run the [examples](testdata/ir_fn_lean_equiv/BUILD.bazel) from this
+repository with:
+
+```sh
+bazel test //testdata/ir_fn_lean_equiv:dslx_identity_test //testdata/ir_fn_lean_equiv:identity_test
+```
+
+The test writes `ir_fn_lean_equiv.json` to Bazel's undeclared test outputs.
+The report includes the audit result and, for drivers supporting it, the
+`native_checks_replayed` count. To inspect the generated proposition and
+Lean functions, build the test with `--output_groups=lean_target`.
+
 ### `ir_to_gates` - convert IR to gate-level analysis
 
 Given an IR target (typically from `dslx_to_ir`) as input via `ir_src`, this rule runs the `ir2gates` tool to produce a text file containing gate-level analysis (e.g., gate counts, depth).
