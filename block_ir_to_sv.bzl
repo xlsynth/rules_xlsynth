@@ -11,23 +11,8 @@ load(
     "get_tool_artifact_inputs",
 )
 
-def _block_ir_to_sv_impl(ctx):
-    toolchain = get_selected_driver_toolchain(ctx)
-    require_bx_toolchain(toolchain, "block2sv")
-
-    ir = ctx.attr.ir
-    top = ctx.attr.top
-    if BlockIrInfo in ir:
-        source = ir[BlockIrInfo].ir_file
-        top = top or ir[BlockIrInfo].top
-    else:
-        files = ir[DefaultInfo].files.to_list()
-        if len(files) != 1 or files[0].is_directory or files[0].extension != "ir":
-            fail("ir must provide BlockIrInfo or exactly one .ir file")
-        source = files[0]
-
+def _lower_ir(ctx, toolchain, source, top_args):
     lowered_ir = ctx.actions.declare_file(ctx.label.name + ".lowered.block.ir")
-    top_args = ["--top=" + top] if top else []
 
     # Keep the authored register graph. Only lower constructs the emitter
     # cannot yet translate directly.
@@ -43,15 +28,35 @@ def _block_ir_to_sv_impl(ctx):
         env = bx_runtime_env(toolchain.runtime_library_path),
         mnemonic = "BlockIrLower",
     )
+    return lowered_ir
 
-    arguments = [lowered_ir.path] + top_args
+def _block_ir_to_sv_impl(ctx):
+    toolchain = get_selected_driver_toolchain(ctx)
+    require_bx_toolchain(toolchain, "block2sv")
+
+    ir = ctx.attr.ir
+    top = ctx.attr.top
+    if BlockIrInfo in ir:
+        source = ir[BlockIrInfo].ir_file
+        top = top or ir[BlockIrInfo].top
+    else:
+        files = ir[DefaultInfo].files.to_list()
+        if len(files) != 1 or files[0].is_directory or files[0].extension != "ir":
+            fail("ir must provide BlockIrInfo or exactly one .ir file")
+        source = files[0]
+
+    top_args = ["--top=" + top] if top else []
+    if ctx.attr.lower_ir:
+        source = _lower_ir(ctx, toolchain, source, top_args)
+
+    arguments = [source.path] + top_args
     if ctx.attr.module_name:
         arguments.append("--module-name=" + ctx.attr.module_name)
     run_bx_driver(
         ctx,
         toolchain,
         command = "block2sv",
-        inputs = [lowered_ir],
+        inputs = [source],
         arguments = arguments,
         output = ctx.outputs.sv_file,
         mnemonic = "BlockIrToSv",
@@ -67,6 +72,7 @@ block_ir_to_sv = rule(
             doc = "A BlockIrInfo target or a single package-form XLS IR file.",
             mandatory = True,
         ),
+        "lower_ir": attr.bool(doc = "Inline function calls and maps and unroll counted loops before emission."),
         "module_name": attr.string(doc = "Override the emitted top module name."),
         "top": attr.string(doc = "Select a block other than the package or provider's top."),
         "xls_bundle": attr.label(

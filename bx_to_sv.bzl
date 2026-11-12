@@ -14,6 +14,7 @@ def bx_to_sv(
         reset_active_low = False,
         reset_asynchronous = False,
         warnings_as_errors = True,
+        lower_ir = True,
         module_name = "",
         xls_bundle = None,
         **kwargs):
@@ -27,6 +28,7 @@ def bx_to_sv(
       reset_active_low: Whether the BX hierarchy uses active-low reset.
       reset_asynchronous: Whether the BX hierarchy uses asynchronous reset.
       warnings_as_errors: Whether BX warnings fail compilation.
+      lower_ir: Whether to inline function calls and maps and unroll counted loops before emission.
       module_name: Optional override for the emitted top module name.
       xls_bundle: Optional XLS bundle override for both actions.
       **kwargs: Common Bazel attributes for the emitted target.
@@ -61,6 +63,7 @@ def bx_to_sv(
     block_ir_to_sv(
         name = name,
         ir = ":" + ir_name,
+        lower_ir = lower_ir,
         module_name = module_name,
         xls_bundle = xls_bundle,
         **kwargs

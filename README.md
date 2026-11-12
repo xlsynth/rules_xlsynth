@@ -408,6 +408,7 @@ bx_to_ir(
 block_ir_to_sv(
     name = "counter_named_rtl",
     ir = ":counter_ir",
+    lower_ir = True,
     module_name = "my_counter",
 )
 ```
@@ -418,8 +419,9 @@ generic blocks, functions, or types, and the driver checks imported
 declarations during design compilation. The rules pass explicit toolchain
 import paths followed by the roots of the declared source files. When a source
 is generated, builds stage the declared sources in the same layout used by
-test runfiles. Use paths qualified from a repository root for imports across
-packages.
+test runfiles. Explicit paths into declared external repositories are translated
+between Bazel's `external/<repository>` and `../<repository>` layouts. Use
+paths qualified from a repository root for imports across packages.
 
 `bx_to_ir` produces `<name>.block.ir` and exports `BlockIrInfo` with the
 selected top. Set `link_ir` to one IR package providing the implementations
@@ -430,10 +432,11 @@ supplies its unoptimized package. `reset_active_low` and
 attributes.
 
 `block_ir_to_sv` emits `<name>.sv` with the top module and its instantiated
-modules. It lowers maps and counted loops before emission and uses the
-driver's default RTL layout, which supports register feedback. It also
-accepts a single package-form `.ir` file. Supply `top` if the package has no
-marked top block.
+modules using the driver's default RTL layout, which supports register
+feedback. It accepts a single package-form `.ir` file. Supply `top` if the
+package has no marked top block. Set `lower_ir = True` to inline function calls
+and maps and unroll counted loops before emission. `bx_to_sv` enables this
+lowering by default.
 
 ### `bx_to_gv` - map BX to a gate-level netlist
 

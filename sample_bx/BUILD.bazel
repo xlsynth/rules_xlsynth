@@ -49,6 +49,7 @@ filegroup(
 block_ir_to_sv(
     name = "accumulator_from_ir",
     ir = ":accumulator_ir_file",
+    lower_ir = True,
     module_name = "accumulator",
     top = "accumulate",
     xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
@@ -73,6 +74,19 @@ diff_test(
     name = "accumulator_split_flow_test",
     file1 = ":accumulator_from_ir",
     file2 = ":accumulator",
+)
+
+# ext_carry_out is an XLSynth IR extension handled by the native emitter.
+block_ir_to_sv(
+    name = "extended_carry",
+    ir = "extended_carry.block.ir",
+    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
+)
+
+diff_test(
+    name = "extended_carry_rtl_test",
+    file1 = ":extended_carry",
+    file2 = "extended_carry.golden.sv",
 )
 
 bx_library(

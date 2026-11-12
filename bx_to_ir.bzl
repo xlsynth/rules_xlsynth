@@ -47,13 +47,21 @@ def _source_import_root(src, logical_paths):
     # The short path of an external file starts with the runfiles prefix
     # ../<repository>/, while the rest is the repository-relative source path.
     relative_path = src.short_path
+    repository = None
     if relative_path.startswith("../"):
         _, repository, relative_path = relative_path.split("/", 2)
-        if logical_paths:
-            return "../" + repository
     if logical_paths:
-        return "."
-    return src.path[:-len(relative_path)].rstrip("/") or "."
+        path = "../" + repository if repository else "."
+    else:
+        path = src.path[:-len(relative_path)].rstrip("/") or "."
+    return struct(repository = repository, path = path)
+
+def _configured_import_path(path, external_roots):
+    parts = paths.normalize(path).split("/", 2)
+    if len(parts) < 2 or parts[0] not in ["external", ".."] or parts[1] not in external_roots:
+        return path
+    root = external_roots[parts[1]]
+    return paths.join(root, parts[2]) if len(parts) == 3 else root
 
 def _stage_bx_sources(ctx, srcs):
     tree = ctx.actions.declare_directory(ctx.label.name + ".bx_sources")
@@ -116,8 +124,15 @@ def get_bx_source_input(ctx, toolchain, runfiles = False):
 
     # Preserve explicit search-path precedence, then allow imports qualified
     # from the roots of declared source files.
-    roots = {path: None for path in toolchain.dslx_path}
-    for path in sorted({_source_import_root(src, logical_paths): None for src in srcs}):
+    source_roots = {}
+    external_roots = {}
+    for src in srcs:
+        root = _source_import_root(src, logical_paths)
+        source_roots[root.path] = None
+        if root.repository:
+            external_roots[root.repository] = root.path
+    roots = {_configured_import_path(path, external_roots): None for path in toolchain.dslx_path}
+    for path in sorted(source_roots):
         roots[path] = None
 
     arguments = [
