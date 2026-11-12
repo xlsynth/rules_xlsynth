@@ -21,7 +21,7 @@ def _lower_ir(ctx, toolchain, source, top_args):
         outputs = [lowered_ir],
         executable = toolchain.tools_path + "/opt_main",
         arguments = [
-            source.path,
+            "./" + source.path,
             "--passes=[map_inlining loop_unroll inlining]",
             "--output_path=" + lowered_ir.path,
         ] + top_args,
@@ -49,7 +49,7 @@ def _block_ir_to_sv_impl(ctx):
     if ctx.attr.lower_ir:
         source = _lower_ir(ctx, toolchain, source, top_args)
 
-    arguments = [source.path] + top_args
+    arguments = ["./" + source.path] + top_args
     if ctx.attr.module_name:
         arguments.append("--module-name=" + ctx.attr.module_name)
     run_bx_driver(

@@ -19,6 +19,7 @@ def _bx_to_gv_impl(ctx):
         command = "bx2gv",
         inputs = compile_input.inputs + [liberty],
         arguments = compile_input.arguments,
+        dslx_path = compile_input.dslx_path,
         path_arguments = path_arguments,
         working_directory = compile_input.working_directory,
         output = ctx.outputs.gv_file,

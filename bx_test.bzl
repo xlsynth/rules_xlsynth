@@ -22,9 +22,8 @@ def _run_bx_test(ctx, command, arguments):
     toolchain = get_selected_driver_toolchain(ctx)
     require_bx_toolchain(toolchain, command)
     source = get_bx_source_input(ctx, toolchain, runfiles = True)
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = command, toolchain = toolchain)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = command, toolchain = toolchain, dslx_path = source.dslx_path)
 
-    # Bazel starts tests in the workspace runfiles directory.
     library_path = '"$PWD/"' + shell.quote(paths.dirname(toolchain.libxls.short_path) or ".")
     env_exports = {
         name: value + '"${' + name + ":+:$" + name + '}"'
@@ -35,11 +34,21 @@ def _run_bx_test(ctx, command, arguments):
         "--toolchain=" + toolchain_file.short_path,
         command,
     ] + source.arguments + arguments
+
+    # Coverage can start the test outside the runfiles directory. The driver's
+    # implicit XLS runfiles search would precede the declared import roots.
+    script = [
+        'if [[ -n "${TEST_SRCDIR:-}" ]]; then',
+        '    cd "$TEST_SRCDIR${TEST_WORKSPACE:+/$TEST_WORKSPACE}"',
+        "fi",
+        "unset RUNFILES_DIR RUNFILES_MANIFEST_FILE",
+    ]
+    script.extend(["export " + name + "=" + value for name, value in env_exports.items()])
+    script.append("exec " + " ".join([shell.quote(arg) for arg in command_line]))
     executable = write_executable_shell_script(
         ctx = ctx,
         filename = ctx.label.name + ".sh",
-        cmd = "exec " + " ".join([shell.quote(arg) for arg in command_line]) + "\n",
-        env_exports = env_exports,
+        cmd = "\n".join(script) + "\n",
     )
     return DefaultInfo(
         executable = executable,

@@ -135,12 +135,10 @@ def get_bx_source_input(ctx, toolchain, runfiles = False):
     for path in sorted(source_roots):
         roots[path] = None
 
-    arguments = [
-        bx.root.short_path if logical_paths else bx.root.path,
-        "--dslx-path",
-        ";".join(roots.keys()),
-        "--warnings-as-errors=" + str(ctx.attr.warnings_as_errors).lower(),
-    ]
+    root_path = bx.root.short_path if logical_paths else bx.root.path
+    if root_path.startswith("-"):
+        root_path = "./" + root_path
+    arguments = [root_path, "--warnings-as-errors=" + str(ctx.attr.warnings_as_errors).lower()]
     path_arguments = {}
     if runfiles:
         # The toolchain TOML uses an execroot path for the standard library.
@@ -160,6 +158,7 @@ def get_bx_source_input(ctx, toolchain, runfiles = False):
     return struct(
         inputs = inputs,
         arguments = arguments,
+        dslx_path = roots.keys(),
         path_arguments = path_arguments,
         working_directory = working_directory,
     )
@@ -183,6 +182,7 @@ def get_bx_compile_input(ctx, toolchain):
     return struct(
         inputs = source.inputs,
         arguments = arguments,
+        dslx_path = source.dslx_path,
         path_arguments = source.path_arguments,
         working_directory = source.working_directory,
     )
@@ -198,6 +198,7 @@ def _bx_to_ir_impl(ctx):
         command = "bx2ir",
         inputs = compile_input.inputs,
         arguments = compile_input.arguments,
+        dslx_path = compile_input.dslx_path,
         path_arguments = compile_input.path_arguments,
         working_directory = compile_input.working_directory,
         output = ir_file,

@@ -55,6 +55,7 @@ def run_bx_driver(
         output,
         mnemonic,
         output_flag = None,
+        dslx_path = None,
         path_arguments = {},
         working_directory = None):
     """Runs a BX or block IR driver command to produce one artifact.
@@ -68,10 +69,11 @@ def run_bx_driver(
       output: Declared output file.
       mnemonic: Bazel action mnemonic.
       output_flag: Optional driver flag for writing to a file. Otherwise capture stdout.
+      dslx_path: Optional list of DSLX and BX import roots relative to the working directory.
       path_arguments: Driver options mapped to input files in the execroot.
       working_directory: Optional directory relative to the execroot for import resolution.
     """
-    toolchain_file = declare_xls_toolchain_toml(ctx, name = command, toolchain = toolchain)
+    toolchain_file = declare_xls_toolchain_toml(ctx, name = command, toolchain = toolchain, dslx_path = dslx_path)
     inputs = inputs + [toolchain_file] + get_driver_artifact_inputs(toolchain)
     arguments = [command] + arguments
     files = dict(path_arguments)
