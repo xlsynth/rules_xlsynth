@@ -25,6 +25,7 @@ bx_library(
     srcs = [
         "accum_params.bx",
         "accumulator.bx",
+        "import_shadow/sample_bx/accum_params.bx",
     ],
     dslx_deps = ["//sample_bx/lib:arithmetic"],
     root = "accumulator.bx",

@@ -230,7 +230,7 @@ def run_sample(config: PresubmitConfig):
 
 @register
 def run_sample_bx(config: PresubmitConfig):
-    bazel_test_opt(('//sample_bx/...',), config, dslx_path = ())
+    bazel_test_opt(('//sample_bx/...',), config, dslx_path = ('sample_bx/import_shadow',))
 
 
 @register

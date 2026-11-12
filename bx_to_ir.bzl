@@ -43,17 +43,42 @@ BX_COMPILE_ATTRS = dict(
     ),
 )
 
-def _source_import_root(src, runfiles):
+def _source_import_root(src, logical_paths):
     # The short path of an external file starts with the runfiles prefix
     # ../<repository>/, while the rest is the repository-relative source path.
     relative_path = src.short_path
     if relative_path.startswith("../"):
         _, repository, relative_path = relative_path.split("/", 2)
-        if runfiles:
+        if logical_paths:
             return "../" + repository
-    if runfiles:
+    if logical_paths:
         return "."
     return src.path[:-len(relative_path)].rstrip("/") or "."
+
+def _stage_bx_sources(ctx, srcs):
+    tree = ctx.actions.declare_directory(ctx.label.name + ".bx_sources")
+    copies = ctx.actions.args()
+    copies.use_param_file("%s", use_always = True)
+    copies.set_param_file_format("multiline")
+    for src in srcs:
+        copies.add(src.path)
+        copies.add(paths.normalize(paths.join("_main", src.short_path)))
+    ctx.actions.run_shell(
+        inputs = srcs,
+        outputs = [tree],
+        arguments = [tree.path, copies],
+        command = """
+            set -eu
+            mkdir -p "$1/_main"
+            while IFS= read -r source && IFS= read -r destination; do
+                destination="$1/$destination"
+                mkdir -p "${destination%/*}"
+                cp "$source" "$destination"
+            done < "$2"
+        """,
+        mnemonic = "BxStageSources",
+    )
+    return tree
 
 def _link_ir_file(ctx):
     target = ctx.attr.link_ir
@@ -75,44 +100,54 @@ def get_bx_source_input(ctx, toolchain, runfiles = False):
         runfiles: Use paths relative to the workspace runfiles directory.
 
     Returns:
-        A struct containing inputs and arguments lists.
+        A struct containing inputs, driver arguments, and the action working directory.
     """
     bx = ctx.attr.lib[BxInfo]
-    inputs = bx.transitive_srcs.to_list()
+    srcs = bx.transitive_srcs.to_list()
+    inputs = srcs
+    working_directory = None
+    if not runfiles and any([not src.is_source for src in srcs]):
+        # Match the test runfiles layout so implicit and explicit imports
+        # resolve identically when Bazel generates part of the source tree.
+        tree = _stage_bx_sources(ctx, srcs)
+        inputs = [tree]
+        working_directory = paths.join(tree.path, "_main")
+    logical_paths = runfiles or working_directory != None
 
     # Preserve explicit search-path precedence, then allow imports qualified
     # from the roots of declared source files.
     roots = {path: None for path in toolchain.dslx_path}
-    for path in sorted({_source_import_root(src, runfiles): None for src in inputs}):
+    for path in sorted({_source_import_root(src, logical_paths): None for src in srcs}):
         roots[path] = None
-    if not runfiles:
-        # Runfiles place generated and source siblings in one directory. Build
-        # actions need both directories to resolve the same sibling imports.
-        root_directory = paths.dirname(bx.root.short_path)
-        roots[bx.root.dirname or "."] = None
-        for src in inputs:
-            if paths.dirname(src.short_path) == root_directory:
-                roots[src.dirname or "."] = None
 
     arguments = [
-        bx.root.short_path if runfiles else bx.root.path,
+        bx.root.short_path if logical_paths else bx.root.path,
         "--dslx-path",
         ";".join(roots.keys()),
         "--warnings-as-errors=" + str(ctx.attr.warnings_as_errors).lower(),
     ]
+    path_arguments = {}
     if runfiles:
-        stdlib = getattr(toolchain, "dslx_stdlib", None)
-
         # The toolchain TOML uses an execroot path for the standard library.
-        arguments.extend(["--dslx-stdlib-path", stdlib.short_path if stdlib else toolchain.dslx_stdlib_path])
+        arguments.extend(["--dslx-stdlib-path", toolchain.dslx_stdlib.short_path])
+    elif working_directory:
+        path_arguments["--dslx-stdlib-path"] = toolchain.dslx_stdlib
     if ctx.attr.reset_active_low:
         arguments.append("--reset-active-low")
     if ctx.attr.link_ir:
         link_ir = _link_ir_file(ctx)
-        arguments.extend(["--link-ir", link_ir.short_path if runfiles else link_ir.path])
+        if runfiles:
+            arguments.extend(["--link-ir", link_ir.short_path])
+        else:
+            path_arguments["--link-ir"] = link_ir
         inputs.append(link_ir)
 
-    return struct(inputs = inputs, arguments = arguments)
+    return struct(
+        inputs = inputs,
+        arguments = arguments,
+        path_arguments = path_arguments,
+        working_directory = working_directory,
+    )
 
 def get_bx_compile_input(ctx, toolchain):
     """Adds design top and reset options to the shared BX source inputs.
@@ -122,7 +157,7 @@ def get_bx_compile_input(ctx, toolchain):
         toolchain: Selected XLS driver toolchain.
 
     Returns:
-        A struct containing inputs and arguments lists.
+        A struct containing inputs, driver arguments, and the action working directory.
     """
     if not ctx.attr.top:
         fail("top must be a nonempty block name", attr = "top")
@@ -130,7 +165,12 @@ def get_bx_compile_input(ctx, toolchain):
     arguments = source.arguments + ["--top", ctx.attr.top]
     if ctx.attr.reset_asynchronous:
         arguments.append("--reset-asynchronous")
-    return struct(inputs = source.inputs, arguments = arguments)
+    return struct(
+        inputs = source.inputs,
+        arguments = arguments,
+        path_arguments = source.path_arguments,
+        working_directory = source.working_directory,
+    )
 
 def _bx_to_ir_impl(ctx):
     toolchain = get_selected_driver_toolchain(ctx)
@@ -143,6 +183,8 @@ def _bx_to_ir_impl(ctx):
         command = "bx2ir",
         inputs = compile_input.inputs,
         arguments = compile_input.arguments,
+        path_arguments = compile_input.path_arguments,
+        working_directory = compile_input.working_directory,
         output = ir_file,
         mnemonic = "BX2IR",
     )

@@ -11,12 +11,16 @@ def _bx_to_gv_impl(ctx):
     require_bx_toolchain(toolchain, "bx2gv")
     compile_input = get_bx_compile_input(ctx, toolchain)
     liberty = ctx.file.liberty_proto
+    path_arguments = dict(compile_input.path_arguments)
+    path_arguments["--liberty-proto"] = liberty
     run_bx_driver(
         ctx,
         toolchain,
         command = "bx2gv",
         inputs = compile_input.inputs + [liberty],
-        arguments = compile_input.arguments + ["--liberty-proto", liberty.path],
+        arguments = compile_input.arguments,
+        path_arguments = path_arguments,
+        working_directory = compile_input.working_directory,
         output = ctx.outputs.gv_file,
         output_flag = "--output",
         mnemonic = "BxToGv",
