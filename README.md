@@ -497,6 +497,10 @@ bx_prove_invariant_test(
 )
 ```
 
+Run `bazel test //sample_bx/...` to build and verify the hierarchical BX
+accumulator and mapped inverter. The accumulator QuickCheck exercises reset,
+update, and hold with the Vastly RTL cross-check enabled.
+
 ### `sv_sim_test` - run a SystemVerilog testbench
 
 `sv_sim_test` runs Icarus Verilog under `bazel test`. Add the testbench and
@@ -516,10 +520,6 @@ sv_sim_test(
     vvp = ":vvp",
 )
 ```
-
-The [BX sample](sample_bx/BUILD.bazel) includes a hierarchical accumulator,
-a mapped registered inverter, and a clocked testbench. With Icarus Verilog on
-your path, run `bazel test //sample_bx:accumulator_sim_test --test_env=PATH`.
 
 ### `ir_to_delay_info` - convert IR to delay info
 

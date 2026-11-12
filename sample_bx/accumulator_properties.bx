@@ -21,6 +21,7 @@ block accumulator_updates_and_holds(x: u8, hold: bool) -> bool {
     let total = accumulator::accumulate(enable, input);
     let next_enable = capture::capture(hold);
     tick!(rst: true);
+    assert_eq(total, u8:0);
     enable := true;
     input := x;
     tick!();
@@ -28,7 +29,10 @@ block accumulator_updates_and_holds(x: u8, hold: bool) -> bool {
     enable := next_enable;
     input := u8:2;
     tick!();
-    total == x + u8:7 + (if hold { u8:0 } else { u8:9 })
+    assert_eq(total, x + u8:7 + (if hold { u8:0 } else { u8:9 }));
+    enable := true;
+    tick!(rst: true);
+    total == u8:0
 }
 
 #[invariant]
