@@ -43,25 +43,11 @@ BX_COMPILE_ATTRS = dict(
     ),
 )
 
-def _source_import_root(src, logical_paths):
-    # The short path of an external file starts with the runfiles prefix
-    # ../<repository>/, while the rest is the repository-relative source path.
-    relative_path = src.short_path
-    repository = None
-    if relative_path.startswith("../"):
-        _, repository, relative_path = relative_path.split("/", 2)
-    if logical_paths:
-        path = "../" + repository if repository else "."
-    else:
-        path = src.path[:-len(relative_path)].rstrip("/") or "."
-    return struct(repository = repository, path = path)
-
-def _configured_import_path(path, external_roots):
+def _configured_import_path(path, external_repositories):
     parts = paths.normalize(path).split("/", 2)
-    if len(parts) < 2 or parts[0] not in ["external", ".."] or parts[1] not in external_roots:
+    if len(parts) < 2 or parts[0] != "external" or parts[1] not in external_repositories:
         return path
-    root = external_roots[parts[1]]
-    return paths.join(root, parts[2]) if len(parts) == 3 else root
+    return paths.join("..", *parts[1:])
 
 def _stage_bx_sources(ctx, srcs):
     tree = ctx.actions.declare_directory(ctx.label.name + ".bx_sources")
@@ -81,7 +67,7 @@ def _stage_bx_sources(ctx, srcs):
             while IFS= read -r source && IFS= read -r destination; do
                 destination="$1/$destination"
                 mkdir -p "${destination%/*}"
-                cp "$source" "$destination"
+                cp -- "$source" "$destination"
             done < "$2"
         """,
         mnemonic = "BxStageSources",
@@ -114,43 +100,37 @@ def get_bx_source_input(ctx, toolchain, runfiles = False):
     srcs = bx.transitive_srcs.to_list()
     inputs = srcs
     working_directory = None
-    if not runfiles and any([not src.is_source for src in srcs]):
-        # Match the test runfiles layout so implicit and explicit imports
-        # resolve identically when Bazel generates part of the source tree.
+    if not runfiles:
+        # Match the test runfiles layout. The driver searches its current
+        # directory first, so isolate declared sources even for local builds.
         tree = _stage_bx_sources(ctx, srcs)
         inputs = [tree]
         working_directory = paths.join(tree.path, "_main")
-    logical_paths = runfiles or working_directory != None
 
     # Preserve explicit search-path precedence, then allow imports qualified
     # from the roots of declared source files.
-    source_roots = {}
-    external_roots = {}
-    for src in srcs:
-        root = _source_import_root(src, logical_paths)
-        source_roots[root.path] = None
-        if root.repository:
-            external_roots[root.repository] = root.path
-    roots = {_configured_import_path(path, external_roots): None for path in toolchain.dslx_path}
-    for path in sorted(source_roots):
-        roots[path] = None
+    external_repositories = {src.short_path.split("/", 2)[1]: None for src in srcs if src.short_path.startswith("../")}
+    roots = {_configured_import_path(path, external_repositories): None for path in toolchain.dslx_path}
+    roots["."] = None
+    for repository in sorted(external_repositories):
+        roots["../" + repository] = None
 
-    root_path = bx.root.short_path if logical_paths else bx.root.path
+    root_path = bx.root.short_path
     if root_path.startswith("-"):
         root_path = "./" + root_path
     arguments = [root_path, "--warnings-as-errors=" + str(ctx.attr.warnings_as_errors).lower()]
     path_arguments = {}
     if runfiles:
         # The toolchain TOML uses an execroot path for the standard library.
-        arguments.extend(["--dslx-stdlib-path", toolchain.dslx_stdlib.short_path])
-    elif working_directory:
+        arguments.append("--dslx-stdlib-path=" + toolchain.dslx_stdlib.short_path)
+    else:
         path_arguments["--dslx-stdlib-path"] = toolchain.dslx_stdlib
     if ctx.attr.reset_active_low:
         arguments.append("--reset-active-low")
     if ctx.attr.link_ir:
         link_ir = _link_ir_file(ctx)
         if runfiles:
-            arguments.extend(["--link-ir", link_ir.short_path])
+            arguments.append("--link-ir=" + link_ir.short_path)
         else:
             path_arguments["--link-ir"] = link_ir
         inputs.append(link_ir)

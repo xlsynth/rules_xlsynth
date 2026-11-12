@@ -79,16 +79,6 @@ def run_bx_driver(
     files = dict(path_arguments)
     if output_flag:
         files[output_flag] = output
-    if output_flag and not working_directory and toolchain.libxls.extension != "dylib":
-        ctx.actions.run(
-            inputs = inputs,
-            outputs = [output],
-            executable = toolchain.driver,
-            arguments = ["--toolchain=" + toolchain_file.path] + arguments + [flag + "=" + file.path for flag, file in files.items()],
-            env = dict(bx_runtime_env(toolchain.runtime_library_path), XLSYNTH_TOOLS = toolchain.tools_path),
-            mnemonic = mnemonic,
-        )
-        return
 
     # Set the loader paths after Bazel's macOS sandbox launcher, which can
     # strip DYLD_LIBRARY_PATH before the action starts.
