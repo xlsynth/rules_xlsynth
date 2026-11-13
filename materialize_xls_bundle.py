@@ -873,6 +873,16 @@ def build_driver_install_environment(
         sys_platform = sys_platform,
     )
     resolved_host_platform = host_platform or detect_host_platform()
+    # Cargo installs the driver with system Bitwuzla. Its link-time search
+    # path can differ from the runtime loader's path on the same machine.
+    library_name = "libbitwuzla.dylib" if sys_platform == "darwin" else "libbitwuzla.so"
+    runtime_paths = env[runtime_library_env_var(sys_platform)].split(os.pathsep)
+    for directory in runtime_paths:
+        if directory and (Path(directory) / library_name).is_file():
+            link_path = env.get("LIBRARY_PATH", "")
+            if directory not in link_path.split(os.pathsep):
+                env["LIBRARY_PATH"] = os.pathsep.join([link_path, directory]) if link_path else directory
+            break
     env["RUSTUP_HOME"] = str(rustup_home_root(repo_root, resolved_host_platform))
     env["CARGO_HOME"] = str(cargo_home_root(repo_root, resolved_host_platform))
     env["CARGO_TARGET_DIR"] = str(cargo_target_root(repo_root, resolved_host_platform))

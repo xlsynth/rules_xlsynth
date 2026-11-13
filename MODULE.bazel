@@ -27,10 +27,21 @@ xls.toolchain(
     xls_version = "0.54.7",
     xlsynth_driver_version = "0.66.0",
 )
+
+# Selected explicitly by the Lean proof examples.
+xls.toolchain(
+    name = "rules_xlsynth_lean_test_xls",
+    artifact_source = "download_only",
+    lean_artifact_source = "download_only",
+    lean_version = "4.34.1",
+    xls_version = "0.62.0",
+    xlsynth_driver_version = "0.83.0",
+)
 use_repo(
     xls,
     "rules_xlsynth_bx_xls_runtime",
     "rules_xlsynth_bx_xls_toolchain",
+    "rules_xlsynth_lean_test_xls_toolchain",
     "rules_xlsynth_selftest_xls_runtime",
     "rules_xlsynth_selftest_xls_toolchain",
     "workspace_override_xls_runtime",

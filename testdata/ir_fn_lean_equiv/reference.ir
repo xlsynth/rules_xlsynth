@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+package reference
+
+fn add_zero(x: bits[8] id=1) -> bits[8] {
+  zero: bits[8] = literal(value=0, id=2)
+  ret sum: bits[8] = add(x, zero, id=3)
+}
+
+top fn different(x: bits[8] id=4) -> bits[8] {
+  ret flipped: bits[8] = not(x, id=5)
+}
