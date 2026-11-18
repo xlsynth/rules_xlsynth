@@ -37,7 +37,6 @@ bx_to_ir(
     lib = ":accumulator_src",
     reset_active_low = True,
     top = "accumulate",
-    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
 )
 
 # Use a filegroup to exercise the plain IR file input.
@@ -52,7 +51,6 @@ block_ir_to_sv(
     lower_ir = True,
     module_name = "accumulator",
     top = "accumulate",
-    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
 )
 
 bx_to_sv(
@@ -61,7 +59,6 @@ bx_to_sv(
     module_name = "accumulator",
     reset_active_low = True,
     top = "accumulate",
-    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
 )
 
 diff_test(
@@ -80,7 +77,6 @@ diff_test(
 block_ir_to_sv(
     name = "extended_carry",
     ir = "extended_carry.block.ir",
-    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
 )
 
 diff_test(
@@ -100,7 +96,6 @@ bx_to_gv(
     liberty_proto = "cells.textproto",
     link_ir = "invert.ir",
     top = "capture",
-    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
 )
 
 diff_test(
@@ -127,7 +122,6 @@ bx_test(
     quickcheck_trials = 8,
     reset_active_low = True,
     seed = "42",
-    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
 )
 
 bx_prove_quickcheck_test(
@@ -136,7 +130,6 @@ bx_prove_quickcheck_test(
     link_ir = "invert.ir",
     reset_active_low = True,
     time_limit_ms = 5000,
-    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
 )
 
 bx_prove_invariant_test(
@@ -147,5 +140,4 @@ bx_prove_invariant_test(
     mode = "induction",
     reset_active_low = True,
     time_limit_ms = 5000,
-    xls_bundle = "@rules_xlsynth_bx_xls_toolchain//:bundle",
 )

@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("//:rules.bzl", "dslx_library", "dslx_to_pipeline")
+
+dslx_library(
+    name = "byte_sum",
+    srcs = ["byte_sum.x"],
+    tags = ["manual"],
+    xls_bundle = "@compat_xls_toolchain//:bundle",
+)
+
+dslx_to_pipeline(
+    name = "byte_sum_pipeline",
+    delay_model = "unit",
+    flop_inputs = False,
+    flop_outputs = True,
+    lib = ":byte_sum",
+    module_name = "byte_sum",
+    pipeline_stages = 1,
+    tags = ["manual"],
+    top = "add",
+    xls_bundle = "@compat_xls_toolchain//:bundle",
+)
+
+diff_test(
+    name = "older_release_pipeline_test",
+    file1 = ":byte_sum_pipeline",
+    file2 = "byte_sum.golden.sv",
+    tags = ["manual"],
+)

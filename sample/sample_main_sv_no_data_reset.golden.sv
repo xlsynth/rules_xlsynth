@@ -6,15 +6,15 @@ module __sample__main(
 );
   // ===== Pipe stage 0:
   wire p0_stage_outputs_valid_0_comb;
-  wire [31:0] p0_literal_25_comb;
+  wire [31:0] p0_literal_26_comb;
   assign p0_stage_outputs_valid_0_comb = 1'h1;
-  assign p0_literal_25_comb = 32'h0000_002a;
+  assign p0_literal_26_comb = 32'h0000_002a;
 
   // Registers for pipe stage 0:
   reg output_valid__output_flop;
   reg [31:0] out__output_flop;
   always_ff @ (posedge clk) begin
-    out__output_flop <= p0_literal_25_comb;
+    out__output_flop <= p0_literal_26_comb;
   end
   always_ff @ (posedge clk) begin
     if (rst) begin
