@@ -185,7 +185,8 @@ jobs:
   dslx_ci_py36:
     needs: build_driver
     runs-on: ubuntu-24.04
-    name: dslx_ci (Python 3.6.15 in ubuntu:20.04 container)
+    # The main branch ruleset requires this exact historical check name.
+    name: dslx_ci (Python 3.6.8 in ubuntu:20.04 container)
     container: ubuntu:20.04
     env:
       DEBIAN_FRONTEND: noninteractive
