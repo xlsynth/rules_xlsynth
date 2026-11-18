@@ -9,7 +9,30 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ir_fn_lean_equiv_runner import run
+from ir_fn_lean_equiv_runner import resolve_runfile, run, stage_proof_file
+
+
+class RunfilesManifestTest(unittest.TestCase):
+    def test_stages_proof_from_manifest_with_spaces(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proof = root / "proof sources" / "Proof.lean"
+            proof.parent.mkdir()
+            proof.touch()
+            helper = root / "Helper.lean"
+            helper.touch()
+            manifest = root / "MANIFEST"
+            manifest.write_text(
+                " _main/proof\\sfiles/Proof.lean {}\n"
+                "_main/Helper.lean {}\n".format(proof, helper)
+            )
+
+            env = {"RUNFILES_MANIFEST_FILE": str(manifest)}
+            with patch.dict(os.environ, env, clear=True), patch("sys.argv", [str(root / "runner")]):
+                item = {"relative": "Proof.lean", "runfile": "_main/proof files/Proof.lean"}
+                staged = stage_proof_file(item, root / "staged")
+                self.assertTrue(Path(staged).samefile(proof))
+                self.assertTrue(Path(resolve_runfile("_main/Helper.lean")).samefile(helper))
 
 
 class IrAuditTest(unittest.TestCase):

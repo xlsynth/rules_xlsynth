@@ -25,9 +25,16 @@ def resolve_runfile(logical_path):
     if manifest_path:
         with open(manifest_path) as manifest:
             for line in manifest:
-                key, separator, value = line.rstrip("\n").partition(" ")
+                line = line.rstrip("\n")
+                if line.startswith(" "):
+                    # Bazel escapes spaces only in the key, and backslashes and newlines in both paths.
+                    key, _, value = line[1:].partition(" ")
+                    key = key.replace(r"\s", " ").replace(r"\n", "\n").replace(r"\b", "\\")
+                    value = value.replace(r"\n", "\n").replace(r"\b", "\\")
+                else:
+                    key, _, value = line.partition(" ")
                 if key == logical_path:
-                    return value if separator else key
+                    return value or key
     raise FileNotFoundError("runfile is unavailable: {}".format(logical_path))
 
 
