@@ -27,6 +27,7 @@ class PresubmitConfig(NamedTuple):
     dslx_path: Optional[Tuple[str, ...]]
     xlsynth_driver_version: str
     xls_version: str
+    ci_driver: Optional[Path] = None
 
 
 def _build_setting_override_flags(more_action_env: Optional[Dict[str, str]]) -> List[str]:
@@ -687,12 +688,14 @@ def _resolve_example_artifacts(config: PresubmitConfig, temp_root: Path) -> Dict
     resolved = materialize_xls_bundle.download_versioned_artifacts(temp_root, plan['xls_version'])
     normalized_libxls = temp_root / materialize_xls_bundle.normalized_libxls_name(resolved['libxls'])
     materialize_xls_bundle.copy_path(resolved['libxls'], normalized_libxls)
-    driver_path = materialize_xls_bundle.install_driver(
-        temp_root,
-        plan['driver_version'],
-        normalized_libxls,
-        resolved['dslx_stdlib_root'],
-    )
+    driver_path = config.ci_driver
+    if driver_path is None:
+        driver_path = materialize_xls_bundle.install_driver(
+            temp_root,
+            plan['driver_version'],
+            normalized_libxls,
+            resolved['dslx_stdlib_root'],
+        )
     return {
         'tools_root': resolved['tools_root'],
         'dslx_stdlib_root': resolved['dslx_stdlib_root'],
@@ -703,22 +706,22 @@ def _resolve_example_artifacts(config: PresubmitConfig, temp_root: Path) -> Dict
 
 @register
 def run_toolchain_helper_tests(config: PresubmitConfig):
-    bazel_test_opt(
-        (
-            '//:make_env_helpers_test',
-            '//:env_helpers_test',
-            '//:run_presubmit_test',
-            '//:artifact_resolution_test',
-            '//:download_release_test',
-            '//:ir_fn_lean_equiv_runner_test',
-            '//:materialize_lean_installation_test',
-            '//:external_bundle_exports_test',
-            '//:trusted_identity_boundary_test',
-            '//:selected_toolchain_test',
-            '//:selected_toolchain_exports_test',
-        ),
-        config,
+    targets = (
+        '//:make_env_helpers_test',
+        '//:env_helpers_test',
+        '//:run_presubmit_test',
+        '//:artifact_resolution_test',
+        '//:download_release_test',
+        '//:ir_fn_lean_equiv_runner_test',
+        '//:materialize_lean_installation_test',
+        '//:trusted_identity_boundary_test',
+        '//:selected_toolchain_test',
+        '//:selected_toolchain_exports_test',
     )
+    # The CI job that produces the driver already ran the source-build test.
+    if config.ci_driver is None:
+        targets += ('//:external_bundle_exports_test',)
+    bazel_test_opt(targets, config)
 
 
 @register
@@ -905,6 +908,7 @@ def build_presubmit_config(repo_root: Path, dslx_path: Optional[Tuple[str, ...]]
 def main():
     parser = optparse.OptionParser()
     parser.add_option('--dslx-path', type = 'string', help = 'Colon-separated extra DSLX import roots for steps that need them')
+    parser.add_option('--ci-driver', help = 'Use the driver installed by the CI source-build job for the local_paths example and skip its already-run source-build test')
     parser.add_option('-k', '--keyword', type='string', help='Only run tests whose function name contains this keyword')
     (options, args) = parser.parse_args()
     if args:
@@ -912,6 +916,12 @@ def main():
         return
     dslx_path = options.dslx_path.split(':') if options.dslx_path else None
     config = build_presubmit_config(Path(__file__).resolve().parent, tuple(dslx_path) if dslx_path else None)
+
+    if options.ci_driver:
+        driver = Path(options.ci_driver).resolve()
+        if not driver.is_file() or not os.access(str(driver), os.X_OK):
+            parser.error('Expected an executable CI driver at {}'.format(driver))
+        config = config._replace(ci_driver = driver)
 
     to_run = TO_RUN
     if options.keyword:

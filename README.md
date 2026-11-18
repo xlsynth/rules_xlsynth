@@ -17,8 +17,8 @@ xls = use_extension("@rules_xlsynth//:extensions.bzl", "xls")
 
 xls.toolchain(
     name = "workspace_xls",
-    xls_version = "0.54.7",
-    xlsynth_driver_version = "0.66.0",
+    xls_version = "0.62.0",
+    xlsynth_driver_version = "0.83.0",
     artifact_source = "auto",
     installed_tools_root_prefix = "/opt/xlsynth",
     installed_driver_root_prefix = "/opt/xlsynth-driver",
@@ -211,8 +211,8 @@ producer pins:
 ```json
 {
   "schema_version": 1,
-  "xls_pin": {"kind": "release_tag", "value": "v0.54.7"},
-  "xlsynth_crate_pin": {"kind": "release_tag", "value": "v0.66.0"}
+  "xls_pin": {"kind": "release_tag", "value": "v0.62.0"},
+  "xlsynth_crate_pin": {"kind": "release_tag", "value": "v0.83.0"}
 }
 ```
 
@@ -626,7 +626,7 @@ building the driver, and the dynamic loader needs the matching shared libraries
 when the driver runs. For a custom library directory, set `LIBRARY_PATH` for
 the build and `LD_LIBRARY_PATH` wherever the driver runs. The Ubuntu CI job
 installs the libraries in `/usr/lib` and runs `ldconfig` to register them.
-See the [Ubuntu CI setup](.github/workflows/ci.yml#L21-L48) and its
+See the [Ubuntu CI setup](.github/workflows/ci.yml) and its
 [Bitwuzla installer](scripts/install_ci_bitwuzla.py#L23-L52).
 
 Register that toolchain, or set `xls_bundle = "@proof_xls_toolchain//:bundle"`

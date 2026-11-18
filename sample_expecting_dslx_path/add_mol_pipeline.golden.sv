@@ -12,15 +12,15 @@ module __main__add_mol(
   end
 
   // ===== Pipe stage 1:
-  wire [30:0] p1_add_26_comb;
-  wire [31:0] p1_concat_31_comb;
-  assign p1_add_26_comb = x__input_flop[31:1] + 31'h0000_0015;
-  assign p1_concat_31_comb = {p1_add_26_comb, x__input_flop[0]};
+  wire [30:0] p1_add_27_comb;
+  wire [31:0] p1_concat_32_comb;
+  assign p1_add_27_comb = x__input_flop[31:1] + 31'h0000_0015;
+  assign p1_concat_32_comb = {p1_add_27_comb, x__input_flop[0]};
 
   // Registers for pipe stage 1:
   reg [31:0] out__output_flop;
   always_ff @ (posedge clk) begin
-    out__output_flop <= p1_concat_31_comb;
+    out__output_flop <= p1_concat_32_comb;
   end
   assign out = out__output_flop;
 endmodule

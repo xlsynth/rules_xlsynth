@@ -19,7 +19,7 @@ class ExternalBundleExportsTest(unittest.TestCase):
         self.assertTrue(location_file.is_file())
         self.assertEqual(Path(location_file.read_text(encoding = "utf-8").strip()).name, "dslx_stdlib")
 
-        stdlib_dir = Path(runfiles_lookup.Rlocation("rules_xlsynth_selftest_xls_runtime/dslx_stdlib"))
+        stdlib_dir = Path(runfiles_lookup.Rlocation("rules_xlsynth_source_xls_runtime/dslx_stdlib"))
         self.assertTrue(stdlib_dir.is_dir())
         self.assertTrue(any(stdlib_dir.glob("*.x")))
 
@@ -69,7 +69,7 @@ class ExternalBundleExportsTest(unittest.TestCase):
         runfiles_lookup = runfiles.Create()
         config_path = Path(
             runfiles_lookup.Rlocation(
-                "rules_xlsynth_selftest_xls_runtime/artifact_config/xlsynth_artifact_config.toml",
+                "rules_xlsynth_source_xls_runtime/artifact_config/xlsynth_artifact_config.toml",
             ),
         )
         self.assertTrue(config_path.is_file())
@@ -127,14 +127,14 @@ class ExternalBundleExportsTest(unittest.TestCase):
 
         identity_path = Path(
             runfiles_lookup.Rlocation(
-                "rules_xlsynth_selftest_xls_toolchain/xlsynth-driver.resolved_identity.json",
+                "rules_xlsynth_source_xls_toolchain/xlsynth-driver.resolved_identity.json",
             ),
         )
         identity = json.loads(identity_path.read_text(encoding = "utf-8"))
-        self.assertEqual(identity["xlsynth_crate_pin"], {"kind": "release_tag", "value": "v0.66.0"})
-        self.assertEqual(identity["xls_pin"], {"kind": "release_tag", "value": "v0.54.7"})
-        self.assertEqual(identity["crate_implied_xls_release_tag"], "v0.54.7")
-        self.assertEqual(identity["resolved_xls_release_tag"], "v0.54.7")
+        self.assertEqual(identity["xlsynth_crate_pin"], {"kind": "release_tag", "value": "v0.83.0"})
+        self.assertEqual(identity["xls_pin"], {"kind": "release_tag", "value": "v0.62.0"})
+        self.assertEqual(identity["crate_implied_xls_release_tag"], "v0.62.0")
+        self.assertEqual(identity["resolved_xls_release_tag"], "v0.62.0")
 
 
 if __name__ == "__main__":

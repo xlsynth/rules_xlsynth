@@ -7,14 +7,9 @@ bazel_dep(name = "rules_python", version = "1.0.0")
 xls = use_extension("//:extensions.bzl", "xls", dev_dependency = True)
 xls.toolchain(
     name = "rules_xlsynth_selftest_xls",
-    artifact_source = "download_only",
-    emit_resolved_identity = True,
-    xls_version = "0.54.7",
-    xlsynth_driver_version = "0.66.0",
-)
-xls.toolchain(
-    name = "rules_xlsynth_bx_xls",
-    artifact_source = "download_only",
+    artifact_source = "auto",
+    installed_driver_root_prefix = "/opt/rules_xlsynth-ci/drivers",
+    installed_tools_root_prefix = "/opt/rules_xlsynth-ci/tools",
     xls_version = "0.62.0",
     xlsynth_driver_version = "0.83.0",
 )
@@ -23,15 +18,28 @@ xls.toolchain(
 # so `bazel test //...` from the repo root can still analyze that package.
 xls.toolchain(
     name = "workspace_override_xls",
+    artifact_source = "auto",
+    installed_driver_root_prefix = "/opt/rules_xlsynth-ci/drivers",
+    installed_tools_root_prefix = "/opt/rules_xlsynth-ci/tools",
+    xls_version = "0.62.0",
+    xlsynth_driver_version = "0.83.0",
+)
+
+# Only the external bundle export test needs identity from a source-built driver.
+xls.toolchain(
+    name = "rules_xlsynth_source_xls",
     artifact_source = "download_only",
-    xls_version = "0.54.7",
-    xlsynth_driver_version = "0.66.0",
+    emit_resolved_identity = True,
+    xls_version = "0.62.0",
+    xlsynth_driver_version = "0.83.0",
 )
 
 # Selected explicitly by the Lean proof examples.
 xls.toolchain(
     name = "rules_xlsynth_lean_test_xls",
-    artifact_source = "download_only",
+    artifact_source = "auto",
+    installed_driver_root_prefix = "/opt/rules_xlsynth-ci/drivers",
+    installed_tools_root_prefix = "/opt/rules_xlsynth-ci/tools",
     lean_artifact_source = "download_only",
     lean_version = "4.34.1",
     xls_version = "0.62.0",
@@ -39,11 +47,11 @@ xls.toolchain(
 )
 use_repo(
     xls,
-    "rules_xlsynth_bx_xls_runtime",
-    "rules_xlsynth_bx_xls_toolchain",
     "rules_xlsynth_lean_test_xls_toolchain",
     "rules_xlsynth_selftest_xls_runtime",
     "rules_xlsynth_selftest_xls_toolchain",
+    "rules_xlsynth_source_xls_runtime",
+    "rules_xlsynth_source_xls_toolchain",
     "workspace_override_xls_runtime",
     "workspace_override_xls_toolchain",
 )

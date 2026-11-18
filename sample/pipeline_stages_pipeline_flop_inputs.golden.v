@@ -2,11 +2,11 @@ module foo_cycle0(
   input wire [31:0] x,
   output wire [31:0] out
 );
-  wire [31:0] literal_11;
-  wire [31:0] add_14;
-  assign literal_11 = 32'h0000_0001;
-  assign add_14 = x + literal_11;
-  assign out = add_14;
+  wire [31:0] literal_12;
+  wire [31:0] add_15;
+  assign literal_12 = 32'h0000_0001;
+  assign add_15 = x + literal_12;
+  assign out = add_15;
 endmodule
 module foo(
   input wire clk,

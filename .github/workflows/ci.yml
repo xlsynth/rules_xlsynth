@@ -9,132 +9,126 @@ on:
       - main
 
 jobs:
+  build_driver:
+    name: Build the pinned driver from source
+    runs-on: ubuntu-24.04
+    # Build on the oldest supported CI image so the executable runs in every test job.
+    container: ubuntu:20.04
+    outputs:
+      driver-version: ${{ steps.package.outputs.driver-version }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - &focal_setup
+        name: Install Ubuntu 20.04 prerequisites
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates curl git gnupg unzip build-essential python3
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key -o /usr/share/keyrings/llvm.asc
+          echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/focal/ llvm-toolchain-focal-18 main' > /etc/apt/sources.list.d/llvm18.list
+          apt-get update
+          apt-get install -y libc++-18-dev libc++abi-18-dev
+
+      - uses: actions/checkout@v4
+
+      - name: Install source build prerequisites
+        run: |
+          apt-get install -y pkg-config libssl-dev zlib1g-dev patchelf
+          curl -fsSL https://github.com/protocolbuffers/protobuf/releases/download/v29.1/protoc-29.1-linux-x86_64.zip -o "$RUNNER_TEMP/protoc.zip"
+          unzip -j "$RUNNER_TEMP/protoc.zip" bin/protoc -d /usr/local/bin
+          protoc --version
+          curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | CARGO_HOME=/opt/cargo sh -s -- -y --profile minimal --default-toolchain none
+          echo "/opt/cargo/bin" >> "$GITHUB_PATH"
+          python3 scripts/install_ci_bitwuzla.py
+
+      - &setup_bazel
+        name: Set up Bazelisk
+        run: |
+          mkdir -p "$RUNNER_TEMP/bazelisk"
+          curl -fsSL https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64 -o "$RUNNER_TEMP/bazelisk/bazel"
+          chmod +x "$RUNNER_TEMP/bazelisk/bazel"
+          echo "$RUNNER_TEMP/bazelisk" >> "$GITHUB_PATH"
+
+      - name: Build and test the download_only toolchain
+        run: bazel test -c opt --test_output=errors //:external_bundle_exports_test
+
+      - name: Check and package the driver
+        id: package
+        run: |
+          exec_root=$(bazel info execution_root)
+          driver=$(bazel cquery -c opt --output=files @rules_xlsynth_source_xls_toolchain//:xlsynth-driver)
+          libxls=$(bazel cquery -c opt --output=files @rules_xlsynth_source_xls_runtime//:libxls_file)
+          expected=$(awk -F'"' '/^crate[[:space:]]*=/ {print $2}' xlsynth-versions.toml)
+          actual=$(LD_LIBRARY_PATH="$(dirname "$exec_root/$libxls")" "$exec_root/$driver" --version)
+          echo "$actual"
+          test "$actual" = "xlsynth-driver $expected"
+          tar -czf "$RUNNER_TEMP/xlsynth-driver.tar.gz" -C "$(dirname "$exec_root/$driver")" xlsynth-driver
+          echo "driver-version=$expected" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the executable for the test jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: xlsynth-driver
+          path: ${{ runner.temp }}/xlsynth-driver.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+
   dslx_ci:
+    needs: build_driver
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.9", "3.11"]
     name: dslx_ci (Python ${{ matrix.python-version }})
-
     steps:
-      - name: Install LLVM 18 libc++
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libc++-18-dev libc++abi-18-dev
-
-      - name: Install protobuf compiler
-        run: |
-          wget https://github.com/protocolbuffers/protobuf/releases/download/v29.1/protoc-29.1-linux-x86_64.zip
-          unzip protoc-29.1-linux-x86_64.zip -d protoc
-          sudo mv protoc/bin/protoc /usr/local/bin/protoc
-          sudo mv protoc /tmp/  # Move these out of the way to not interfere with build.
-          sudo mv protoc-*.zip /tmp/  # Move these out of the way to not interfere with build.
-          # Emit the protobuf compiler version number.
-          protoc --version
-
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install system Bitwuzla shared libraries
-        run: |
-          python scripts/install_ci_bitwuzla_test.py
-          sudo "$(command -v python)" scripts/install_ci_bitwuzla.py
-          echo "LIBRARY_PATH=/usr/lib:${LIBRARY_PATH:-}" >> "$GITHUB_ENV"
-
-      - name: Parse xlsynth-versions.toml
-        id: versions
-        run: |
-          CRATE_VERSION=$(grep '^crate' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
-          DSO_VERSION=$(grep '^dso' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
-          echo "CRATE_VERSION=$CRATE_VERSION" >> $GITHUB_ENV
-          echo "DSO_VERSION=v$DSO_VERSION" >> $GITHUB_ENV
-
-      - name: Download and rename libxls
-        run: |
-          XLSYNTH_VERSION=${{ env.DSO_VERSION }}
-          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
-          GZ_FILE="libxls-ubuntu2004.so.gz"
-          SHA_FILE="${GZ_FILE}.sha256"
-          LIB_FILE="libxls-ubuntu2004.so"
-          echo "Downloading ${BASE_URL}/${GZ_FILE}"
-          curl -fL -o "${GZ_FILE}" "${BASE_URL}/${GZ_FILE}"
-          echo "Downloading ${BASE_URL}/${SHA_FILE}"
-          curl -fL -o "${SHA_FILE}" "${BASE_URL}/${SHA_FILE}"
-          # Verify checksum of the gzipped file
-          EXPECTED=$(cut -d' ' -f1 "${SHA_FILE}")
-          echo "${EXPECTED}  ${GZ_FILE}" | sha256sum -c -
-          # Unzip to produce the .so
-          echo "Unzipping ${GZ_FILE}"
-          gunzip -f "${GZ_FILE}"  # yields ${LIB_FILE}
-          # Version the library filename
-          mv "${LIB_FILE}" "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
-          ls libxls-*.so
-          file libxls-*.so
-          # Ensure current dir is searched first; tolerate empty LD_LIBRARY_PATH
-          export LD_LIBRARY_PATH="$(pwd):${LD_LIBRARY_PATH:-}"
-          # Symlink into /usr/lib (force if it already exists)
-          sudo ln -sf "${PWD}/libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
-
-      - name: Download xlsynth binaries
-        run: |
-          python download_release.py -o dependencies/ -p ubuntu2004 -v ${{ env.DSO_VERSION }}
-
-      - name: Install Rust nightly toolchain
-        run: |
-          rustup toolchain install nightly
-          rustup default nightly
-
-      - name: Install xlsynth-driver using Cargo
-        run: |
-          cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }} --features with-bitwuzla-system
-
-      - name: Prove split toolchain materialization
-        run: |
-          PROOF_ROOT=$(mktemp -d /tmp/rules_xls_toolchain_materialization.XXXXXX)
-          python3 materialize_xls_bundle.py \
-            --repo-root "${PROOF_ROOT}" \
-            --artifact-source download_only \
-            --surface toolchain \
-            --xls-version "${DSO_VERSION#v}" \
-            --xlsynth-driver-version "${CRATE_VERSION}"
-          test -f "${PROOF_ROOT}/toolchain_metadata.txt"
-          cat "${PROOF_ROOT}/toolchain_metadata.txt"
-          file "${PROOF_ROOT}/xlsynth-driver"
-
-      - name: Set up Bazelisk
+      - name: Install runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl gnupg
-          sudo curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
-          sudo chmod +x /usr/local/bin/bazel
-          bazel version
+          sudo apt-get install -y libc++-18-dev libc++abi-18-dev
+          python scripts/install_ci_bitwuzla_test.py
+          sudo "$(command -v python)" scripts/install_ci_bitwuzla.py
 
-      - name: Download and unpack DSLX standard library
-        run: |
-          XLSYNTH_VERSION=${{ env.DSO_VERSION }}
-          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
-          STD_LIB_FILE="dslx_stdlib.tar.gz"
-          echo "Downloading ${BASE_URL}/${STD_LIB_FILE}"
-          curl -L -o "${STD_LIB_FILE}" "${BASE_URL}/${STD_LIB_FILE}"
-          curl -L -o "${STD_LIB_FILE}.sha256" "${BASE_URL}/${STD_LIB_FILE}.sha256"
-          EXPECTED=$(cut -d' ' -f1 "${STD_LIB_FILE}.sha256")
-          echo "${EXPECTED}  ${STD_LIB_FILE}" | sha256sum -c -
-          tar -xzf "${STD_LIB_FILE}" -C dependencies/
+      - *setup_bazel
 
-      - name: Run presubmit script
+      - &download_driver
+        name: Download the source-built driver
+        uses: actions/download-artifact@v4
+        with:
+          name: xlsynth-driver
+          path: ${{ runner.temp }}
+
+      - &presubmit
+        name: Run presubmit with the shared driver
+        shell: bash
+        env:
+          DRIVER_VERSION: ${{ needs.build_driver.outputs.driver-version }}
         run: |
-          python run_presubmit.py \
-            --dslx-path dependencies/dslx_stdlib
+          tar -xzf "$RUNNER_TEMP/xlsynth-driver.tar.gz" -C "$RUNNER_TEMP"
+          driver="/opt/rules_xlsynth-ci/drivers/$DRIVER_VERSION/bin/xlsynth-driver"
+          as_root=()
+          if [[ $(id -u) != 0 ]]; then as_root=(sudo); fi
+          "${as_root[@]}" install -D -m 0755 "$RUNNER_TEMP/xlsynth-driver" "$driver"
+
+          # Fail if a test falls back to a Rust build instead of using the uploaded driver.
+          mkdir -p "$RUNNER_TEMP/no-cargo"
+          ln -s /bin/false "$RUNNER_TEMP/no-cargo/rustup"
+          PATH="$RUNNER_TEMP/no-cargo:$PATH" python run_presubmit.py --ci-driver "$driver"
 
   dslx_ci_py36:
-    runs-on: ubuntu-latest
-    name: dslx_ci (Python 3.6.8 in ubuntu:20.04 container)
+    needs: build_driver
+    runs-on: ubuntu-24.04
+    name: dslx_ci (Python 3.6.15 in ubuntu:20.04 container)
     container: ubuntu:20.04
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -142,146 +136,24 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Install prerequisites (apt, curl, unzip, gnupg, git, build tools)
-        run: |
-          apt-get update
-          apt-get install -y -q tzdata
-          ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime
-          dpkg-reconfigure -f noninteractive tzdata
-          apt-get install -y -q wget curl unzip gnupg software-properties-common ca-certificates git \
-            build-essential pkg-config libssl-dev zlib1g-dev
+      - *focal_setup
 
-      - name: Install libc++ from llvm-18
-        run: |
-          cd /tmp/
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          bash ./llvm.sh 18
-          apt-get install -y libc++-18-dev libc++abi-18-dev
-
-      - name: Install protobuf compiler
-        run: |
-          wget https://github.com/protocolbuffers/protobuf/releases/download/v29.1/protoc-29.1-linux-x86_64.zip
-          unzip protoc-29.1-linux-x86_64.zip -d protoc
-          mv protoc/bin/protoc /usr/local/bin/protoc
-          mv protoc /tmp/
-          mv protoc-*.zip /tmp/
-          protoc --version
-
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Parse xlsynth-versions.toml
-        id: versions
-        run: |
-          CRATE_VERSION=$(grep '^crate' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
-          DSO_VERSION=$(grep '^dso' xlsynth-versions.toml | sed 's/.*"\([0-9.]*\)".*/\1/')
-          echo "CRATE_VERSION=$CRATE_VERSION" >> $GITHUB_ENV
-          echo "DSO_VERSION=v$DSO_VERSION" >> $GITHUB_ENV
+      - uses: actions/checkout@v4
 
       - name: Set up Python 3.6
         uses: actions/setup-python@v5
         with:
           python-version: "3.6.15"
 
-      - name: Ensure python3.6 command is available
+      - name: Install Bitwuzla runtime dependencies
         run: |
-          python --version
-          python - <<'PY'
-          import sys
-          assert sys.version_info[:2] == (3, 6), sys.version
-          PY
-          if ! command -v python3.6 >/dev/null 2>&1; then
-            ln -sf "$(command -v python)" /usr/local/bin/python3.6
+          python -c 'import sys; assert sys.version_info[:2] == (3, 6), sys.version'
+          if ! command -v python3.6 >/dev/null; then
+            ln -s "$(command -v python)" /usr/local/bin/python3.6
           fi
-          python3.6 --version
-
-      - name: Install system Bitwuzla shared libraries
-        run: |
           python3.6 scripts/install_ci_bitwuzla_test.py
           python3.6 scripts/install_ci_bitwuzla.py
-          echo "LIBRARY_PATH=/usr/lib:${LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
-      - name: Download and rename libxls
-        run: |
-          XLSYNTH_VERSION=${{ env.DSO_VERSION }}
-          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
-          GZ_FILE="libxls-ubuntu2004.so.gz"
-          SHA_FILE="${GZ_FILE}.sha256"
-          LIB_FILE="libxls-ubuntu2004.so"
-          echo "Downloading ${BASE_URL}/${GZ_FILE}"
-          curl -fL -o "${GZ_FILE}" "${BASE_URL}/${GZ_FILE}"
-          echo "Downloading ${BASE_URL}/${SHA_FILE}"
-          curl -fL -o "${SHA_FILE}" "${BASE_URL}/${SHA_FILE}"
-          # Verify checksum of the gzipped file
-          EXPECTED=$(cut -d' ' -f1 "${SHA_FILE}")
-          echo "${EXPECTED}  ${GZ_FILE}" | sha256sum -c -
-          # Unzip to produce the .so
-          echo "Unzipping ${GZ_FILE}"
-          gunzip -f "${GZ_FILE}"  # yields ${LIB_FILE}
-          # Version the library filename
-          mv "${LIB_FILE}" "libxls-${XLSYNTH_VERSION}-ubuntu2004.so"
-          ls libxls-*.so
-          file libxls-*.so
-          # Ensure current dir is searched first; tolerate empty LD_LIBRARY_PATH
-          export LD_LIBRARY_PATH="$(pwd):${LD_LIBRARY_PATH:-}"
-          # Symlink into /usr/lib (force if it already exists)
-          ln -sf "${PWD}/libxls-${XLSYNTH_VERSION}-ubuntu2004.so" /usr/lib/
-
-      - name: Download xlsynth binaries
-        run: |
-          python3.6 download_release.py -o dependencies/ -p ubuntu2004 -v ${{ env.DSO_VERSION }}
-
-      - name: Install rustup
-        run: |
-          curl https://sh.rustup.rs -sSf | sh -s -- -y
-          # rustup/cargo may be installed under /root due to container euid; add both to PATH for subsequent steps
-          echo "/root/.cargo/bin" >> $GITHUB_PATH
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-      - name: Install Rust nightly toolchain
-        run: |
-          rustup toolchain install nightly
-          rustup default nightly
-
-      - name: Install xlsynth-driver using Cargo
-        run: |
-          cargo +nightly install -vv xlsynth-driver --version ${{ env.CRATE_VERSION }} --features with-bitwuzla-system
-
-      - name: Prove split toolchain materialization
-        run: |
-          PROOF_ROOT=$(mktemp -d /tmp/rules_xls_toolchain_materialization.XXXXXX)
-          python3.6 materialize_xls_bundle.py \
-            --repo-root "${PROOF_ROOT}" \
-            --artifact-source download_only \
-            --surface toolchain \
-            --xls-version "${DSO_VERSION#v}" \
-            --xlsynth-driver-version "${CRATE_VERSION}"
-          test -f "${PROOF_ROOT}/toolchain_metadata.txt"
-          cat "${PROOF_ROOT}/toolchain_metadata.txt"
-          file "${PROOF_ROOT}/xlsynth-driver"
-
-      - name: Set up Bazelisk
-        run: |
-          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
-          chmod +x /usr/local/bin/bazel
-          bazel version
-
-      - name: Download and unpack DSLX standard library
-        run: |
-          XLSYNTH_VERSION=${{ env.DSO_VERSION }}
-          BASE_URL="https://github.com/xlsynth/xlsynth/releases/download/${XLSYNTH_VERSION}"
-          STD_LIB_FILE="dslx_stdlib.tar.gz"
-          echo "Downloading ${BASE_URL}/${STD_LIB_FILE}"
-          curl -L -o "${STD_LIB_FILE}" "${BASE_URL}/${STD_LIB_FILE}"
-          curl -L -o "${STD_LIB_FILE}.sha256" "${BASE_URL}/${STD_LIB_FILE}.sha256"
-          EXPECTED=$(cut -d' ' -f1 "${STD_LIB_FILE}.sha256")
-          echo "${EXPECTED}  ${STD_LIB_FILE}" | sha256sum -c -
-          mkdir -p dependencies/
-          tar -xzf "${STD_LIB_FILE}" -C dependencies/
-
-      - name: Run presubmit script (Python 3.6)
-        run: |
-          source $HOME/.cargo/env
-          python3.6 run_presubmit.py \
-            --dslx-path dependencies/dslx_stdlib
+      - *setup_bazel
+      - *download_driver
+      - *presubmit

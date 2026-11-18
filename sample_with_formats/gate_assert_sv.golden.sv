@@ -26,9 +26,9 @@ module __gate_assert_minimal__main(
   end
 
   // ===== Pipe stage 1:
-  wire p1_or_84_comb;
+  wire p1_or_85_comb;
   wire p1_gated_comb;
-  assign p1_or_84_comb = ~input_valid__input_flop | x__input_flop | rst;
+  assign p1_or_85_comb = ~input_valid__input_flop | x__input_flop | rst;
   br_gate_buf gated_p1_gated_comb(.in(x__input_flop), .out(p1_gated_comb));
 
   // Registers for pipe stage 1:
@@ -46,7 +46,7 @@ module __gate_assert_minimal__main(
   assign output_valid = output_valid__output_flop;
   assign out = out__output_flop;
   `ifdef ASSERT_ON
-  `BR_ASSERT(__gate_assert_minimal__main_0_non_synth___gate_assert_minimal__main_should_be_one, p1_or_84_comb)
+  `BR_ASSERT(__gate_assert_minimal__main_0_non_synth___gate_assert_minimal__main_should_be_one, p1_or_85_comb)
   `endif  // ASSERT_ON
 endmodule
 
