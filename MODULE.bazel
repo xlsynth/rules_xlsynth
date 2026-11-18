@@ -34,6 +34,14 @@ xls.toolchain(
     xlsynth_driver_version = "0.83.0",
 )
 
+# Exercise an older released toolchain in the pipeline compatibility test.
+xls.toolchain(
+    name = "compat_xls",
+    artifact_source = "download_only",
+    xls_version = "0.59.0",
+    xlsynth_driver_version = "0.73.0",
+)
+
 # Selected explicitly by the Lean proof examples.
 xls.toolchain(
     name = "rules_xlsynth_lean_test_xls",
@@ -47,6 +55,7 @@ xls.toolchain(
 )
 use_repo(
     xls,
+    "compat_xls_toolchain",
     "rules_xlsynth_lean_test_xls_toolchain",
     "rules_xlsynth_selftest_xls_runtime",
     "rules_xlsynth_selftest_xls_toolchain",

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# CI installs this ahead of its real rustup for the source-build job only.
+set -euo pipefail
+ci_root=$(cd "$(dirname "$0")/.." && pwd)
+rustup="$ci_root/cargo/bin/rustup"
+
+if [[ ${1:-} != run || ${2:-} != nightly || ${3:-} != cargo || ${4:-} != install ]]; then
+    exec "$rustup" "$@"
+fi
+
+# sccache's Rust keys include the compiler cwd and CARGO_* paths. Use the
+# same paths in each fresh producer container, without restoring Cargo output.
+work="${TMPDIR:-/tmp}/rules_xlsynth_ci_driver"
+mkdir -m 700 "$work"
+server_started=false
+cleanup() {
+    local status=$?
+    if "$server_started"; then
+        # --stop-server prints this build's compile requests, hits and misses.
+        if ! "$RUSTC_WRAPPER" --stop-server && [[ $status == 0 ]]; then
+            status=1
+        fi
+    fi
+    rm -rf -- "$work"
+    exit "$status"
+}
+trap cleanup EXIT
+cd "$work"
+ln -s "$RUSTUP_HOME" rustup
+export RUSTUP_HOME="$work/rustup"
+export CARGO_HOME="$work/cargo"
+export CARGO_TARGET_DIR="$work/target"
+export RUSTC_WRAPPER=sccache
+export SCCACHE_DIR="$ci_root/sccache"
+export SCCACHE_SERVER_UDS="$work/sccache.sock"
+
+# Report the exact compiler installed by the materializer's floating nightly.
+"$rustup" run nightly rustc -vV
+"$RUSTC_WRAPPER" --start-server
+server_started=true
+"$rustup" "$@"
