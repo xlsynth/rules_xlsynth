@@ -26,6 +26,20 @@ dslx_lean_equiv_test(
     xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
 )
 
+# Presubmit requires Lean to reject the same proof for identity versus add-one.
+dslx_lean_equiv_test(
+    name = "dslx_add_one_expect_failure_test",
+    allow_native_checks = False,
+    lhs = ":identity_lib",
+    lhs_top = "identity",
+    proof = "Reflexivity.lean",
+    proof_theorem = "Reflexivity.equivalent",
+    rhs = ":reference_lib",
+    rhs_top = "add_one",
+    tags = ["manual"],
+    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
+)
+
 dslx_to_ir(
     name = "identity_ir",
     lib = ":identity_lib",
