@@ -13,7 +13,9 @@ from ir_fn_lean_equiv_runner import run
 
 
 class IrAuditTest(unittest.TestCase):
-    def check_report(self, allow_native_checks, fields, accepted, error="native_checks_replayed"):
+    def check_report(
+        self, allow_native_checks, fields, accepted, error="native_checks_replayed", *, driver_exit_code=0
+    ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "Proof.lean").touch()
@@ -48,18 +50,26 @@ class IrAuditTest(unittest.TestCase):
                 report.update(fields)
                 path = Path(command[command.index("--output-json") + 1])
                 path.write_text(json.dumps(report))
-                return subprocess.CompletedProcess(command, 0, "", "")
+                return subprocess.CompletedProcess(command, driver_exit_code, "", "")
 
             env = {"RUNFILES_DIR": directory, "TEST_UNDECLARED_OUTPUTS_DIR": directory}
             with patch.dict(os.environ, env), patch("subprocess.run", side_effect=driver):
-                if accepted:
-                    self.assertEqual(run(config), 0)
+                if accepted or driver_exit_code != 0:
+                    self.assertEqual(run(config), driver_exit_code)
                 else:
                     with self.assertRaisesRegex(RuntimeError, error):
                         run(config)
             report = json.loads((root / "ir_fn_lean_equiv.json").read_text())
             self.assertEqual(report["status"], "accepted_by_lean" if accepted else "failed")
             return report
+
+    def test_propagates_proof_driver_exit_code(self):
+        self.check_report(
+            allow_native_checks=True,
+            fields={"status": "failed", "audit_performed": False},
+            accepted=False,
+            driver_exit_code=7,
+        )
 
     def test_default_reports_count_and_accepts_older_drivers(self):
         self.assertNotIn("native_checks_replayed", self.check_report(True, {}, True))
