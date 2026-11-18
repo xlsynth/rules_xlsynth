@@ -124,6 +124,16 @@ driver-backed action builds `xlsynth-driver` with
 and the system Bitwuzla libraries. If the nightly toolchain is missing,
 `rules_xlsynth` bootstraps a repo-local `rustup` home before installing the driver.
 
+[CI](.github/workflows/ci.yml) builds the default driver and an older release
+in parallel on floating Rust nightly. Each source build logs the compiler revision
+and sccache statistics. The full presubmit uses the release pair in
+[xlsynth-versions.toml](xlsynth-versions.toml). The older release runs a
+DSLX-to-pipeline smoke test, which you can run locally with Bazel.
+
+```sh
+bazel test -c opt --extra_toolchains=@compat_xls_toolchain//:toolchain //compatibility:older_release_pipeline_test
+```
+
 Each `xls.toolchain(...)` call now exports two public repos:
 
 - `@<name>_runtime` for runtime files, `xlsynth-sys` wiring, tools, and `libxls`
