@@ -118,12 +118,11 @@ download, or compile the driver. Driver materialization is a declared Bazel
 action behind `@<name>_toolchain//:xlsynth-driver` and behind rule actions that
 consume the driver from `@<name>_toolchain//:bundle`.
 
-Download-backed driver actions have one host prerequisite: when `auto` falls
-back to downloading the driver, or when `download_only` is selected and a
-driver-backed action is built, that action installs `xlsynth-driver` with
-`rustup run nightly cargo install`. The execution host must have `rustup`
-available. If the nightly toolchain is missing, `rules_xlsynth` bootstraps a
-repo-local `rustup` home before installing the driver.
+When `auto` falls back to a download or `download_only` is selected, a
+driver-backed action builds `xlsynth-driver` with
+`rustup run nightly cargo install`. The build host needs `rustup`, `protoc`,
+and the system Bitwuzla libraries. If the nightly toolchain is missing,
+`rules_xlsynth` bootstraps a repo-local `rustup` home before installing the driver.
 
 Each `xls.toolchain(...)` call now exports two public repos:
 
@@ -619,6 +618,16 @@ xls.toolchain(
 )
 use_repo(xls, "proof_xls_toolchain")
 ```
+
+This example downloads prebuilt XLS tools and Lean, and builds `xlsynth-driver`
+from source with the `with-bitwuzla-system` feature. Put `rustup` and `protoc`
+on the build host's `PATH`. On Ubuntu, the linker needs `libbitwuzla.so` when
+building the driver, and the dynamic loader needs the matching shared libraries
+when the driver runs. For a custom library directory, set `LIBRARY_PATH` for
+the build and `LD_LIBRARY_PATH` wherever the driver runs. The Ubuntu CI job
+installs the libraries in `/usr/lib` and runs `ldconfig` to register them.
+See the [Ubuntu CI setup](.github/workflows/ci.yml#L21-L48) and its
+[Bitwuzla installer](scripts/install_ci_bitwuzla.py#L23-L52).
 
 Register that toolchain, or set `xls_bundle = "@proof_xls_toolchain//:bundle"`
 on the test to select the proof driver and Lean independently of DSLX lowering.
