@@ -27,6 +27,27 @@ py_test(
     ],
 )
 
+exports_files([
+    "ir_fn_lean_equiv_runner.py",
+    "materialize_lean_installation.py",
+])
+
+py_test(
+    name = "ir_fn_lean_equiv_runner_test",
+    srcs = [
+        "ir_fn_lean_equiv_runner.py",
+        "ir_fn_lean_equiv_runner_test.py",
+    ],
+)
+
+py_test(
+    name = "materialize_lean_installation_test",
+    srcs = [
+        "materialize_lean_installation.py",
+        "materialize_lean_installation_test.py",
+    ],
+)
+
 py_test(
     name = "download_release_test",
     srcs = [

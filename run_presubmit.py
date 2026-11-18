@@ -478,6 +478,28 @@ def run_sample_nonequiv_ir(config: PresubmitConfig):
 
 
 @register
+def run_dslx_lean_equiv_tests(config: PresubmitConfig):
+    """Require the same reflexivity proof to distinguish two different RHS functions."""
+    package = '//testdata/ir_fn_lean_equiv:'
+    bazel_test_opt((package + 'dslx_identity_test',), config)
+
+    failing = package + 'dslx_add_one_expect_failure_test'
+    try:
+        bazel_test_opt((failing,), config, capture_output = True)
+    except subprocess.CalledProcessError as e:
+        if e.returncode != 3:
+            raise ValueError('Expected a Bazel test failure, got stdout: {} stderr: {}'.format(e.stdout, e.stderr))
+    else:
+        raise ValueError('{}: Lean unexpectedly accepted identity versus add-one'.format(failing))
+
+    report = _read_test_json_report(config, failing, 'ir_fn_lean_equiv.json')
+    lean_stdout = report.get('lean', {}).get('stdout', '')
+    diagnostic = r'Reflexivity\.lean:\d+:\d+: error: Tactic `rfl` failed'
+    if report.get('status') != 'failed' or not re.search(diagnostic, lean_stdout):
+        raise ValueError('{}: expected Lean to reject rfl in Reflexivity.lean, got {}'.format(failing, report))
+
+
+@register
 def run_sample_with_formats(config: PresubmitConfig):
     bazel_test_opt(
         ('//sample_with_formats:gate_assert_minimal_sv_test',),
@@ -688,6 +710,8 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
             '//:run_presubmit_test',
             '//:artifact_resolution_test',
             '//:download_release_test',
+            '//:ir_fn_lean_equiv_runner_test',
+            '//:materialize_lean_installation_test',
             '//:external_bundle_exports_test',
             '//:trusted_identity_boundary_test',
             '//:selected_toolchain_test',

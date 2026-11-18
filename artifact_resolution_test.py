@@ -651,6 +651,35 @@ printf 'fallback body\\n'
         self.assertEqual(env["CARGO_HOME"], "/tmp/xls-bundle-repo/_cargo_home/arm64")
         self.assertEqual(env["CARGO_TARGET_DIR"], "/tmp/xls-bundle-repo/_cargo_target/arm64")
 
+    def test_driver_link_search_finds_system_bitwuzla_on_runtime_path(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            solver = root / "solver"
+            solver.mkdir()
+            for platform, runtime_var, suffix in [
+                ("linux", "LD_LIBRARY_PATH", "so"),
+                ("darwin", "DYLD_LIBRARY_PATH", "dylib"),
+            ]:
+                (solver / ("libbitwuzla." + suffix)).touch()
+                for explicit, expected in [
+                    ("", [str(solver)]),
+                    (str(root / "link"), [str(root / "link"), str(solver)]),
+                    (str(solver), [str(solver)]),
+                ]:
+                    with self.subTest(platform = platform, explicit = explicit):
+                        environ = {runtime_var: os.pathsep.join([str(root / "other"), str(solver)])}
+                        if explicit:
+                            environ["LIBRARY_PATH"] = explicit
+                        env = materialize_xls_bundle.build_driver_install_environment(
+                            root,
+                            libxls_path = root / ("libxls." + suffix),
+                            dslx_stdlib_path = root / "stdlib",
+                            environ = environ,
+                            sys_platform = platform,
+                            host_platform = "test",
+                        )
+                        self.assertEqual(env["LIBRARY_PATH"], os.pathsep.join(expected))
+
     def test_driver_install_root_is_version_platform_and_features_scoped(self):
         self.assertEqual(
             materialize_xls_bundle.driver_install_root(
