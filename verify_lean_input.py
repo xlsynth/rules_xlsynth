@@ -35,9 +35,7 @@ def verify_input(source_path, expected_hash, output_path, metadata_path, side, k
                 side.upper(), kind, expected_hash, actual_hash
             )
             if kind == "IR":
-                message += (
-                    "\nThe {} IR changed. Recheck the proof against the new graph before updating {}_ir_sha256."
-                ).format(side.upper(), side)
+                message += "\nInput has changed, regenerate the proof and update {}_ir_sha256".format(side)
             raise ValueError(message)
         os.replace(str(candidate), str(output_path))
     with open(metadata_path, "w") as metadata:
