@@ -3,6 +3,7 @@
 """Checks explicit DSLX roots at their action and interpreter boundaries."""
 
 load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
+load("//:ir_provider.bzl", "IrInfo")
 load(
     "//:rules.bzl",
     "DslxInfo",
@@ -42,12 +43,16 @@ def _action_root_test_impl(ctx):
     if DslxInfo in target:
         asserts.equals(env, ctx.file.root, target[DslxInfo].root)
         asserts.equals(env, _source_paths(ctx.files.sources), _source_paths(target[DslxInfo].transitive_srcs.to_list()))
-    if ctx.attr.command == "dslx2ir":
-        optimizers = [a for a in analysistest.target_actions(env) if "ir2opt" in (a.argv or [])]
+    if ctx.attr.command == "ir_converter_main":
+        optimizers = [a for a in analysistest.target_actions(env) if "opt_main" in (a.argv or [])]
         asserts.equals(env, 1, len(optimizers))
         if len(optimizers) == 1:
-            argv = optimizers[0].argv
-            asserts.equals(env, "__root__main", argv[argv.index("--top") + 1])
+            optimizer = optimizers[0]
+            ir = target[IrInfo]
+            asserts.true(env, ir.ir_file in optimizer.inputs.to_list())
+            asserts.true(env, ir.ir_file.path in optimizer.argv)
+            asserts.equals(env, [ir.opt_ir_file], optimizer.outputs.to_list())
+            asserts.equals(env, [], [arg for arg in optimizer.argv if arg == "--top" or arg.startswith("--top=")])
     return analysistest.end(env)
 
 _action_root_test = analysistest.make(
@@ -168,6 +173,7 @@ def root_selection_test_suite(name):
     tests.append(":singleton_analysis_test")
 
     dslx_to_ir(name = "root_ir", lib = ":root_first", top = "main", **common)
+    dslx_to_ir(name = "root_ir_last", lib = ":root_last", top = "main", **common)
     dslx_stitch_pipeline(name = "root_stitch", lib = ":root_first", top = "root", **common)
     dslx_prove_quickcheck_test(name = "root_proof_test", lib = ":root_first", **common)
     _script_root_test(
@@ -201,11 +207,12 @@ def root_selection_test_suite(name):
         )
         tests.append(":" + suffix + "_ambiguous_test")
 
-    for suffix, command in [("ir", "dslx2ir"), ("stitch", "dslx-stitch-pipeline")]:
+    for suffix, command in [("ir", "ir_converter_main"), ("ir_last", "ir_converter_main"), ("stitch", "dslx-stitch-pipeline")]:
         _action_root_test(
             name = suffix + "_analysis_test",
             target_under_test = ":root_" + suffix,
             command = command,
+            root_flag = "ir_converter_main" if command == "ir_converter_main" else "--dslx_input_file",
             root = "root.x",
             sources = _SOURCES,
         )

@@ -1,0 +1,167 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//:rules.bzl", "dslx_library", "dslx_to_ir")
+load(":conversion_test.bzl", "alternate_conversion_analysis_test", "conversion_test", "default_conversion_analysis_test")
+
+[
+    dslx_library(
+        name = fixture,
+        srcs = [fixture + ".x"],
+    )
+    for fixture in [
+        "arithmetic",
+        "asserting",
+        "accumulator",
+        "workers",
+        "selectable",
+    ]
+]
+
+[
+    dslx_to_ir(
+        name = fixture + "_ir",
+        lib = ":" + library,
+        top = top,
+    )
+    for fixture, library, top in [
+        ("arithmetic", "arithmetic", "main"),
+        ("asserting", "asserting", "main"),
+        ("accumulator", "accumulator", "Accumulator"),
+        ("workers", "workers", "Network"),
+        ("narrow", "selectable", "narrow"),
+        ("wide", "selectable", "wide"),
+    ]
+]
+
+dslx_library(
+    name = "left",
+    srcs = ["import_root_a/conversion_left.x"],
+)
+
+dslx_library(
+    name = "right",
+    srcs = ["import_root_b/conversion_right.x"],
+)
+
+dslx_library(
+    name = "imports",
+    srcs = ["imports.x"],
+    deps = [
+        ":left",
+        ":right",
+    ],
+)
+
+dslx_to_ir(
+    name = "imports_ir",
+    lib = ":imports",
+    top = "main",
+)
+
+[
+    conversion_test(
+        name = fixture + "_test",
+        fixture = fixture,
+        ir = ":" + fixture + "_ir",
+    )
+    for fixture in [
+        "arithmetic",
+        "asserting",
+        "accumulator",
+        "workers",
+        "narrow",
+        "wide",
+        "imports",
+    ]
+]
+
+test_suite(
+    name = "conversion_tests",
+    tests = [":" + fixture + "_test" for fixture in [
+        "arithmetic",
+        "asserting",
+        "accumulator",
+        "workers",
+        "narrow",
+        "wide",
+        "imports",
+    ]],
+)
+
+# Presubmit checks these intentionally failing targets, then retries warning_ir
+# with --//config:disable_warnings=unused_definition.
+dslx_to_ir(
+    name = "missing_top_ir",
+    lib = ":arithmetic",
+    tags = ["manual"],
+    top = "DoesNotExist",
+)
+
+dslx_library(
+    name = "warning",
+    srcs = ["warning.x"],
+    tags = ["manual"],
+)
+
+dslx_to_ir(
+    name = "warning_ir",
+    lib = ":warning",
+    tags = ["manual"],
+    top = "warning_main",
+)
+
+# A library override must not implicitly select the conversion toolchain.
+dslx_library(
+    name = "override_library",
+    srcs = ["arithmetic.x"],
+    tags = ["manual"],
+    xls_bundle = "@workspace_override_xls_toolchain//:bundle",
+)
+
+dslx_to_ir(
+    name = "independent_ir",
+    lib = ":override_library",
+    tags = ["manual"],
+    top = "main",
+)
+
+dslx_to_ir(
+    name = "override_ir",
+    lib = ":arithmetic",
+    tags = ["manual"],
+    top = "main",
+    xls_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
+)
+
+default_conversion_analysis_test(
+    name = "default_analysis_test",
+    expected_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
+    source = "arithmetic.x",
+    target_name = "independent_ir",
+    target_under_test = ":independent_ir",
+)
+
+alternate_conversion_analysis_test(
+    name = "registered_analysis_test",
+    expected_bundle = "@workspace_override_xls_toolchain//:bundle",
+    source = "arithmetic.x",
+    target_name = "arithmetic_ir",
+    target_under_test = ":arithmetic_ir",
+)
+
+alternate_conversion_analysis_test(
+    name = "override_analysis_test",
+    expected_bundle = "@rules_xlsynth_selftest_xls_toolchain//:bundle",
+    source = "arithmetic.x",
+    target_name = "override_ir",
+    target_under_test = ":override_ir",
+)
+
+test_suite(
+    name = "conversion_analysis_tests",
+    tests = [
+        ":default_analysis_test",
+        ":override_analysis_test",
+        ":registered_analysis_test",
+    ],
+)

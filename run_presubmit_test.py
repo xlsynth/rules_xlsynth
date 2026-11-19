@@ -130,6 +130,53 @@ class PresubmitTest(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         self.assertEqual(run.call_args[1]['more_action_env'], {'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition'})
 
+    def test_conversion_failure_accepts_diagnostic_on_stdout_or_stderr(self):
+        diagnostic = 'Definition of `unused` is not used in function `warning_main`'
+        for stream in ('output', 'stderr'):
+            with self.subTest(stream = stream):
+                failure = subprocess.CalledProcessError(1, ['bazel'], **{stream: diagnostic})
+                with mock.patch.object(run_presubmit, 'bazel_build_opt', side_effect = failure):
+                    run_presubmit._expect_dslx_to_ir_failure(self.config, '//dslx_to_ir_tests:warning_ir', diagnostic)
+
+    # Negative test: A target name echoed by --subcommands is not a diagnostic.
+    def test_conversion_failure_rejects_success_wrong_status_and_unrelated_errors(self):
+        diagnostic = 'Entry "DoesNotExist" is not present in DSLX module'
+        for outcome in (
+                None,
+                subprocess.CalledProcessError(1, ['bazel'], stderr = 'missing tool'),
+                subprocess.CalledProcessError(1, ['bazel'], stderr = 'ir_converter_main --top=DoesNotExist'),
+                subprocess.CalledProcessError(2, ['bazel'], stderr = diagnostic),
+                subprocess.CalledProcessError(3, ['bazel'], stderr = diagnostic)):
+            with self.subTest(outcome = outcome):
+                with mock.patch.object(run_presubmit, 'bazel_build_opt', side_effect = [outcome]):
+                    with self.assertRaises(ValueError):
+                        run_presubmit._expect_dslx_to_ir_failure(self.config, '//dslx_to_ir_tests:missing_top_ir', diagnostic)
+
+    def test_conversion_presubmit_runs_both_suites_and_warning_controls(self):
+        missing = subprocess.CalledProcessError(1, ['bazel'], stderr = 'Entry "DoesNotExist" is not present in DSLX module')
+        warning = subprocess.CalledProcessError(1, ['bazel'], stderr = 'is not used in function `warning_main`')
+        with mock.patch.object(run_presubmit, 'bazel_test_opt') as tests:
+            with mock.patch.object(run_presubmit, 'bazel_build_opt', side_effect = [missing, warning, warning, None]) as builds:
+                run_presubmit.run_dslx_to_ir_tests(self.config)
+        tests.assert_called_once_with(
+            ('//dslx_to_ir_tests:conversion_tests', '//dslx_to_ir_tests:conversion_analysis_tests'),
+            self.config,
+            dslx_path = ('dslx_to_ir_tests/import_root_a', 'dslx_to_ir_tests/import_root_b'),
+        )
+        self.assertEqual(builds.call_count, 4)
+        self.assertEqual(builds.call_args_list[2][1]['more_action_env'], {'XLSYNTH_DSLX_ENABLE_WARNINGS': 'unused_definition'})
+        self.assertEqual(builds.call_args_list[3][1]['more_action_env'], {'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition'})
+        self.assertTrue(all(call[1]['dslx_path'] == run_presubmit._CONVERSION_IMPORT_ROOTS for call in builds.call_args_list))
+
+    # Negative test: A failed disabled-warning build must fail presubmit too.
+    def test_conversion_presubmit_requires_disabled_warning_build_to_succeed(self):
+        failure = subprocess.CalledProcessError(1, ['bazel'], stderr = 'missing import')
+        with mock.patch.object(run_presubmit, 'bazel_test_opt'):
+            with mock.patch.object(run_presubmit, '_expect_dslx_to_ir_failure'):
+                with mock.patch.object(run_presubmit, 'bazel_build_opt', side_effect = failure):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        run_presubmit.run_dslx_to_ir_tests(self.config)
+
     # Negative test: Error handling rejects unexpected success and unrelated failures.
     def test_warning_check_rejects_unexpected_success_and_unrelated_failure(self):
         for check in (run_presubmit.run_sample_disabling_warning, run_presubmit.run_sample_dslx_test_warning_policy):

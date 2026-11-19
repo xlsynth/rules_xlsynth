@@ -127,10 +127,12 @@ jobs:
       - *setup_bazel
       - *prepare_cache
       - *restore_cache
-      - name: Build and test the compatibility pipeline
+      - name: Build and test compatibility pipeline and conversion
         run: |
           time bazel test -c opt --sandbox_writable_path="$SCCACHE_DIR" --test_output=errors \
-            --extra_toolchains=@compat_xls_toolchain//:toolchain //compatibility:older_release_pipeline_test
+            --extra_toolchains=@compat_xls_toolchain//:toolchain \
+            --@rules_xlsynth//config:dslx_path=dslx_to_ir_tests/import_root_a:dslx_to_ir_tests/import_root_b \
+            //compatibility:older_release_pipeline_test //dslx_to_ir_tests:conversion_tests
       - *save_cache
 
   dslx_ci:

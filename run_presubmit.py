@@ -234,6 +234,61 @@ def run_sample_bx(config: PresubmitConfig):
     bazel_test_opt(('//sample_bx/...',), config, dslx_path = ('sample_bx/import_shadow',))
 
 
+_CONVERSION_IMPORT_ROOTS = (
+    'dslx_to_ir_tests/import_root_a',
+    'dslx_to_ir_tests/import_root_b',
+)
+
+
+def _expect_dslx_to_ir_failure(
+        config: PresubmitConfig,
+        target: str,
+        diagnostic: str,
+        *,
+        more_action_env: Optional[Dict[str, str]] = None):
+    """Require the intended converter diagnostic, not an unrelated build error."""
+    try:
+        bazel_build_opt(
+            (target,), config,
+            capture_output = True,
+            dslx_path = _CONVERSION_IMPORT_ROOTS,
+            more_action_env = more_action_env,
+        )
+    except subprocess.CalledProcessError as e:
+        output = (e.stdout or '') + (e.stderr or '')
+        if e.returncode != 1 or diagnostic not in output:
+            raise ValueError('Expected conversion to reject {} with {!r}: {}'.format(target, diagnostic, output))
+    else:
+        raise ValueError('Expected conversion to fail: ' + target)
+
+
+@register
+def run_dslx_to_ir_tests(config: PresubmitConfig):
+    """Exercise real function/proc packages and converter warning controls."""
+    bazel_test_opt(
+        ('//dslx_to_ir_tests:conversion_tests', '//dslx_to_ir_tests:conversion_analysis_tests'),
+        config,
+        dslx_path = _CONVERSION_IMPORT_ROOTS,
+    )
+    _expect_dslx_to_ir_failure(
+        config,
+        '//dslx_to_ir_tests:missing_top_ir',
+        'Entry "DoesNotExist" is not present in DSLX module',
+    )
+    warning_target = '//dslx_to_ir_tests:warning_ir'
+    warning = 'is not used in function `warning_main`'
+    _expect_dslx_to_ir_failure(config, warning_target, warning)
+    _expect_dslx_to_ir_failure(
+        config, warning_target, warning,
+        more_action_env = {'XLSYNTH_DSLX_ENABLE_WARNINGS': 'unused_definition'},
+    )
+    bazel_build_opt(
+        (warning_target,), config,
+        dslx_path = _CONVERSION_IMPORT_ROOTS,
+        more_action_env = {'XLSYNTH_DSLX_DISABLE_WARNINGS': 'unused_definition'},
+    )
+
+
 @register
 def run_root_selection_tests(config: PresubmitConfig):
     """Require selected-root execution and typechecking in both source orders."""

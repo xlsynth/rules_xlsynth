@@ -127,11 +127,14 @@ and the system Bitwuzla libraries. If the nightly toolchain is missing,
 [CI](.github/workflows/ci.yml) builds the default driver and an older release
 in parallel on floating Rust nightly. Each source build logs the compiler revision
 and sccache statistics. The full presubmit uses the release pair in
-[xlsynth-versions.toml](xlsynth-versions.toml). The older release runs a
-DSLX-to-pipeline smoke test, which you can run locally with Bazel.
+[xlsynth-versions.toml](xlsynth-versions.toml). The older release runs the same
+function/proc conversion tests and a DSLX-to-pipeline smoke test. Run them locally
+with Bazel:
 
 ```sh
-bazel test -c opt --extra_toolchains=@compat_xls_toolchain//:toolchain //compatibility:older_release_pipeline_test
+bazel test -c opt --extra_toolchains=@compat_xls_toolchain//:toolchain \
+  --@rules_xlsynth//config:dslx_path=dslx_to_ir_tests/import_root_a:dslx_to_ir_tests/import_root_b \
+  //compatibility:older_release_pipeline_test //dslx_to_ir_tests:conversion_tests
 ```
 
 Each `xls.toolchain(...)` call now exports two public repos:
@@ -355,14 +358,15 @@ Older bundles also keep working with the default
 mode only works when the chosen workspace bundle or explicit `xls_bundle`
 advertises support for `--sv_struct_field_ordering`.
 
-### `dslx_to_ir` - convert DSLX to optimized IR
+### `dslx_to_ir` - convert a DSLX function or proc to IR
 
-Given a DSLX library target as a dependency, this rule will generate:
+Given a DSLX library in `lib`, this rule converts the function or proc named by
+`top` in that library's root module. It generates two XLS IR packages:
 
-- an unoptimized IR file (simply IR converted DSLX); i.e. `my_dslx_library_ir.ir`
-- an optimized IR file (optimized IR from the previous step); i.e. `my_dslx_library_ir.opt.ir`
-
-for a given `top` entry point.
+- `<name>.ir`: the converter's unoptimized package, including any elaborated
+  proc network.
+- `<name>.opt.ir`: that package after XLS optimization. Optimization can inline
+  spawned procs and change the package's internal structure.
 
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "dslx_to_ir")
@@ -373,6 +377,24 @@ dslx_to_ir(
     top = "main",
 )
 ```
+
+Use the same rule for a proc, setting `top` to its DSLX name. The converter marks
+the IR entrypoint, and optimization uses that marker; callers do not need to
+know generated IR symbol names. `IrInfo.ir_file` and `IrInfo.opt_ir_file` expose
+the two packages to other rules. Existing function callers retain the same
+attributes, output filenames, and provider fields. Generated IR text is not a
+stable byte-for-byte interface.
+
+Conversion uses native `ir_converter_main` and `opt_main` from its selected
+bundle, with the configured stdlib, import roots, and warning settings. It does
+not require the bundle's driver to be built. The conversion target selects its
+own registered toolchain or explicit `xls_bundle`; it does not inherit the
+bundle override of its `dslx_library` dependency.
+
+Producing proc IR does not add proc support to function-only consumers such as
+`ir_to_gates`, `ir_prove_equiv_test`, or `ir_fn_lean_equiv_test`. Check the
+consumer's input contract before passing a proc package. This rule produces IR;
+it does not simulate proc execution or schedule a proc network into RTL.
 
 ### BX libraries, Block IR, and SystemVerilog
 
