@@ -25,7 +25,7 @@ def quote(value):
     return json.dumps(str(value))
 
 
-def target(name, rhs, rhs_hash, lhs_hash, lhs="@netlists//:lhs.gv", proof="Proof/Body.lean", extra=""):
+def target(name, rhs, rhs_hash, lhs_hash, lhs="@netlists//:lhs.gv", extra=""):
     return """
 netlist_lean_equiv_test(
     name = {name},
@@ -36,10 +36,11 @@ netlist_lean_equiv_test(
     liberty_proto = "cells.textproto",
     lhs_top = "top",
     rhs_top = "top",
-    proof = {proof},
+    proof = "Proof/Decision.lean",
+    proof_theorem = "Decision.equivalent",
 {extra}
 )
-""".format(name=quote(name), lhs=quote(lhs), lhs_hash=quote(lhs_hash), rhs=quote(rhs), rhs_hash=quote(rhs_hash), proof=quote(proof), extra=extra)
+""".format(name=quote(name), lhs=quote(lhs), lhs_hash=quote(lhs_hash), rhs=quote(rhs), rhs_hash=quote(rhs_hash), extra=extra)
 
 
 class NetlistLeanEquivIntegrationTest(unittest.TestCase):
@@ -144,7 +145,7 @@ register_toolchains("@local_xls_toolchain//:all")
             (self.netlists / name).write_bytes(contents)
         shutil.copyfile(str(FIXTURES / "cells.textproto"), str(self.workspace / "cells.textproto"))
         (self.workspace / "Proof").mkdir()
-        shutil.copyfile(str(FIXTURES / "Proof/Body.lean"), str(self.workspace / "Proof/Body.lean"))
+        shutil.copyfile(str(FIXTURES / "Proof/Decision.lean"), str(self.workspace / "Proof/Decision.lean"))
         self.lean_prefix = self.root / "lean"
         self.lean_prefix.mkdir()
         (self.lean_prefix / LEAN_VERSION).symlink_to(self.lean_root, target_is_directory=True)
@@ -193,8 +194,11 @@ register_toolchains("@local_xls_toolchain//:all")
         )
         different_report = self.read_report(self.workspace, "different")
         self.assertEqual(different_report["status"], "failed")
-        self.assertIn("Lean user proof compilation failed", different_report["lean"]["error"])
-        self.assertIn("native_decide", different_report["lean"]["error"])
+        self.assertEqual(different_report["lean"]["status"], "failed")
+        self.assertRegex(
+            different_report["lean"]["stdout"],
+            r"Decision\.lean:\d+:\d+: error: Tactic `native_decide` evaluated that the proposition\n(?s:.+?)\nis false",
+        )
 
     def test_rejects_uncollapsed_registers_and_incomplete_cones(self):
         uncollapsed = self.bazel_command(

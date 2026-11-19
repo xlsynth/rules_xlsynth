@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tests the IR proof driver's audit contract at the Bazel runner boundary."""
+"""Tests the IR and netlist proof audit contract at the Bazel runner boundary."""
 
 import json
 import os
@@ -36,6 +36,9 @@ class RunfilesManifestTest(unittest.TestCase):
 
 
 class IrAuditTest(unittest.TestCase):
+    check_command = "ir-fn-lean-check"
+    output_name = "ir_fn_lean_equiv.json"
+
     def check_report(
         self, allow_native_checks, fields, accepted, error="native_checks_replayed", *, driver_exit_code=0
     ):
@@ -44,22 +47,31 @@ class IrAuditTest(unittest.TestCase):
             (root / "Proof.lean").touch()
             (root / "Helper.lean").touch()
             config = {
+                "check_command": self.check_command,
                 "allow_native_checks": allow_native_checks,
                 "driver": directory,
                 "lean_root": directory,
                 "lean_version": "test",
                 "proof": {"relative": "Proof.lean", "runfile": "Proof.lean"},
                 "proof_srcs": [{"relative": "Lib/Helper.lean", "runfile": "Helper.lean"}],
-                "proof_theorem": "equivalent",
+                "proof_theorem": "Proof.equivalent",
                 "target": directory,
                 "toolchain": directory,
             }
 
+            if self.check_command == "g8r-lean-check":
+                config["extraction"] = {"lhs_top": "m", "rhs_top": "n"}
+                for side, digest in (("lhs", "a" * 64), ("rhs", "b" * 64)):
+                    metadata_file = root / (side + ".json")
+                    metadata_file.write_text(json.dumps({"sha256": digest, "side": side}))
+                    config[side + "_hash"] = digest
+                    config[side + "_hash_metadata"] = metadata_file.name
+
             def driver(command, **kwargs):
                 if "--version" in command:
                     return subprocess.CompletedProcess(command, 0, "test driver", "")
-                self.assertIn("ir-fn-lean-check", command)
-                self.assertEqual(command[command.index("--proof-theorem") + 1], "equivalent")
+                self.assertIn(self.check_command, command)
+                self.assertEqual(command[command.index("--proof-theorem") + 1], "Proof.equivalent")
                 proof_root = Path(command[command.index("--proof-root") + 1])
                 for flag, source, relative in [
                     ("--proof", "Proof.lean", "Proof.lean"),
@@ -82,8 +94,11 @@ class IrAuditTest(unittest.TestCase):
                 else:
                     with self.assertRaisesRegex(RuntimeError, error):
                         run(config)
-            report = json.loads((root / "ir_fn_lean_equiv.json").read_text())
+            report = json.loads((root / self.output_name).read_text())
             self.assertEqual(report["status"], "accepted_by_lean" if accepted else "failed")
+            if self.check_command == "g8r-lean-check":
+                self.assertEqual(report["netlist_sha256"], {"lhs": "a" * 64, "rhs": "b" * 64})
+                self.assertEqual(report["extraction"], config["extraction"])
             return report
 
     def test_propagates_proof_driver_exit_code(self):
@@ -115,6 +130,11 @@ class IrAuditTest(unittest.TestCase):
             for count in (False, -1, "0"):
                 with self.subTest(allow=allow, count=count):
                     self.check_report(allow, {"native_checks_replayed": count}, False)
+
+
+class NetlistAuditTest(IrAuditTest):
+    check_command = "g8r-lean-check"
+    output_name = "netlist_lean_equiv.json"
 
 
 if __name__ == "__main__":

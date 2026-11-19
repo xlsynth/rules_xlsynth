@@ -30,7 +30,7 @@ py_test(
 exports_files([
     "lean_equiv_runner.py",
     "materialize_lean_installation.py",
-    "verify_netlist_input.py",
+    "verify_lean_input.py",
 ])
 
 # Preserve the previously exported runner template label.
@@ -65,10 +65,10 @@ py_test(
 )
 
 py_test(
-    name = "verify_netlist_input_test",
+    name = "verify_lean_input_test",
     srcs = [
-        "verify_netlist_input.py",
-        "verify_netlist_input_test.py",
+        "verify_lean_input.py",
+        "verify_lean_input_test.py",
     ],
 )
 

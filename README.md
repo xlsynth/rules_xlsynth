@@ -615,6 +615,14 @@ IR. The driver selects the package top or sole function on each side.
 Set `lhs_top` or `rhs_top` to select another IR function. The argument and
 result types must match.
 
+Both rules accept optional `lhs_ir_sha256` and `rhs_ir_sha256` attributes.
+Each pins the exact bytes of the entire IR package passed to Lean preparation,
+including comments and source-position metadata. For a DSLX library or an
+`IrInfo` target this is the optimized `.opt.ir` output. For a supplied `.ir`
+file it is that file as written. Set either or both to a 64-digit SHA-256 hex
+digest. A mismatch stops preparation and prints the expected and actual
+digests. The proof report records the verified sides in `ir_sha256`.
+
 Both rules generate the proposition `Target.Equivalent` from the selected
 functions. Supply an ordinary Lean module that imports `Target`, and name
 the theorem that proves the proposition. For the example above, the
@@ -694,7 +702,8 @@ graphs and Lean circuits, then runs a supplied proof of their equivalence.
 Use the same Lean toolchain setup as the DSLX and IR rules above. The
 registered toolchain is the default. Set `xls_bundle` on the test to select
 a different driver and Lean installation for both conversion and checking.
-The driver must provide `gv2g8r`, `g8r-lean-prepare`, and `g8r-lean-check`.
+The driver must support `--proof-theorem` on `g8r-lean-check`. The development
+toolchain in [MODULE.bazel](MODULE.bazel) pins a revision with this support.
 
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")
@@ -710,7 +719,8 @@ netlist_lean_equiv_test(
     rhs_top = "adder",
     logic_cone_sources = ["input_port:a", "input_port:b"],
     logic_cone_sinks = ["output_port:sum"],
-    proof = "proof/Body.lean",
+    proof = "proof/Adder.lean",
+    proof_theorem = "Adder.equivalent",
 )
 ```
 
@@ -754,7 +764,8 @@ netlist_lean_equiv_test(
     rhs = ":optimized_netlist",
     rhs_sha256 = "<64-character SHA-256>",
     liberty_proto = ":cells_liberty_proto",
-    proof = "proof/Body.lean",
+    proof = "proof/Adder.lean",
+    proof_theorem = "Adder.equivalent",
     lhs_logic_cone_sources = ["data=input_port:reference_data"],
     lhs_logic_cone_sinks = ["result=output_port:reference_result"],
     rhs_logic_cone_sources = ["data=input_port:optimized_data"],
@@ -775,26 +786,24 @@ equivalence proposition. Inspect that directory while developing a proof with:
 bazel build //path:adder_equiv_test --output_groups=lean_target
 ```
 
-The `proof` file contains a complete Lean term for `Target.Equivalent`, such as
-a `by` tactic block or a helper theorem name. The runner generates the imports
-and `UserProof.equivalent` theorem declaration. Optional `proof_srcs` supplies
-helper `.lean` files, all of which are imported mechanically. Helpers must be
-under the body's directory; their relative paths are preserved. Lean discovers
-helper dependencies and compiles them in dependency order. The runner invokes
-Lean directly; `bv_decide` uses Lean's bundled solver lookup.
+The `proof` file is a Lean module that defines `proof_theorem`. For example,
+`proof/Adder.lean` can import `Target` and any local modules listed in
+`proof_srcs`, then declare `theorem Adder.equivalent : Target.Equivalent`.
+The verifier replays the compiled proof, checks that the selected theorem
+comes from the entry module and has the generated circuit-equivalence type,
+and audits its transitive dependencies. The default allows replay of closed
+native Boolean checks. Set `allow_native_checks = False` to kernel-check
+the AAG parsing witnesses and require a proof with zero native checks.
 
-Under `bazel test`, the rule writes `netlist_lean_equiv.json` to the undeclared
-test outputs with status, versions, hashes, extraction settings, timing, and
-Lean diagnostics. Extraction settings include the resolved source and sink
-lists for each side. Success means Lean accepted the generated root theorem under
-its ordinary rules. Proof auditing is not performed, and the report records
-`audit_performed: false`.
+Under `bazel test`, `netlist_lean_equiv.json` records the verified netlist
+hashes, resolved cone selections, versions, timing, and Lean diagnostics. A
+successful check records `audit_performed: true` and `native_checks_replayed`.
 
-The checked-in proof targets are:
+The checked-in examples exercise these cases:
 
-- `basic`: plain netlists and [`Proof/Body.lean`](testdata/netlist_lean_equiv/Proof/Body.lean).
-- `equivalent`: the same proof with a generated gzip-compressed RHS netlist and
-  different per-side selectors.
+- `basic` proves the equivalence in strict mode. [Kernel proof](testdata/netlist_lean_equiv/Proof/Kernel.lean)
+- `equivalent` proves the reassociated three-input AND equivalent using a
+  gzip-compressed RHS and per-side selectors. [Native proof](testdata/netlist_lean_equiv/Proof/Decision.lean)
 - `pipeline_registers`: ordinary two-stage DFF pipeline collapsing with
   load-enable feedback collapsing disabled.
 - `pipeline`: selected cone boundaries with pipeline and load-enable feedback
@@ -813,10 +822,9 @@ bazel test \
   //testdata/netlist_lean_equiv:with_helpers
 ```
 
-The fixtures select the same proof toolchain as the DSLX tests, with
-`xlsynth-driver` 0.83.0 and Lean 4.34.1. CI explicitly runs a passing netlist
-proof and checks that Lean rejects the proof for an inequivalent RHS. To run
-both checks locally, use `python3 run_presubmit.py -k netlist_lean_equiv`.
+CI checks the strict and native proofs and requires Lean to reject the proof for
+an inequivalent RHS. These tests use the Git-pinned netlist proof driver and
+Lean 4.34.1. Run them locally with `python3 run_presubmit.py -k run_netlist_lean_equiv_tests`.
 
 Expected rejections and toolchain configuration are separate Bazel `py_test`
 targets:

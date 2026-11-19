@@ -5,7 +5,7 @@ load("//:rules.bzl", "netlist_lean_equiv_test")
 filegroup(
     name = "integration_test_fixtures",
     srcs = [
-        "Proof/Body.lean",
+        "Proof/Decision.lean",
         "cells.textproto",
         "lhs.gv",
         "pipeline_lhs.gv",
@@ -20,17 +20,19 @@ filegroup(
 
 netlist_lean_equiv_test(
     name = "basic",
+    allow_native_checks = False,
     lhs = "lhs.gv",
     lhs_sha256 = "b77aea65603feee7a0dcd157885ab7d64a4513fdd5ff07826f204b9d3649b28a",
     lhs_top = "top",
     liberty_proto = "cells.textproto",
-    proof = "Proof/Body.lean",
+    proof = "Proof/Kernel.lean",
+    proof_theorem = "Kernel.equivalent",
     rhs = "rhs.gv",
     rhs_sha256 = "043a8cad365a0e925aa253f33d0f4ddd0f725ae2e5585be8104899a85ed029f2",
     rhs_top = "top",
     tags = ["manual"],
     visibility = ["//visibility:public"],
-    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
+    xls_bundle = "@rules_xlsynth_netlist_test_xls_toolchain//:bundle",
 )
 
 genrule(
@@ -48,7 +50,8 @@ netlist_lean_equiv_test(
     lhs_sha256 = "b77aea65603feee7a0dcd157885ab7d64a4513fdd5ff07826f204b9d3649b28a",
     lhs_top = "top",
     liberty_proto = "cells.textproto",
-    proof = "Proof/Body.lean",
+    proof = "Proof/Decision.lean",
+    proof_theorem = "Decision.equivalent",
     rhs = ":rhs_gzip",
     rhs_logic_cone_sinks = ["output_port:result"],
     rhs_logic_cone_sources = [
@@ -60,7 +63,7 @@ netlist_lean_equiv_test(
     rhs_top = "top",
     tags = ["manual"],
     visibility = ["//visibility:public"],
-    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
+    xls_bundle = "@rules_xlsynth_netlist_test_xls_toolchain//:bundle",
 )
 
 # rhs_bad.gv inverts c, so a=b=c=1 gives different outputs.
@@ -70,12 +73,13 @@ netlist_lean_equiv_test(
     lhs_sha256 = "b77aea65603feee7a0dcd157885ab7d64a4513fdd5ff07826f204b9d3649b28a",
     lhs_top = "top",
     liberty_proto = "cells.textproto",
-    proof = "Proof/Body.lean",
+    proof = "Proof/Decision.lean",
+    proof_theorem = "Decision.equivalent",
     rhs = "rhs_bad.gv",
     rhs_sha256 = "c46fab965da37aeac11cdf59ce533951b398df31466396fcc0df0f9125053f99",
     rhs_top = "top",
     tags = ["manual"],
-    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
+    xls_bundle = "@rules_xlsynth_netlist_test_xls_toolchain//:bundle",
 )
 
 netlist_lean_equiv_test(
@@ -85,13 +89,14 @@ netlist_lean_equiv_test(
     lhs_sha256 = "8b1d23d22c1edf5bf99c2290ee27138f9e029b90f58e944523d05f2f81c88d34",
     lhs_top = "top",
     liberty_proto = "cells.textproto",
-    proof = "Proof/Body.lean",
+    proof = "Proof/Decision.lean",
+    proof_theorem = "Decision.equivalent",
     rhs = "pipeline_registers_rhs.gv",
     rhs_sha256 = "b99387d040977bf5510df9a525f0f9c9fc176e202edc7ed198ed397eb80e8610",
     rhs_top = "top",
     tags = ["manual"],
     visibility = ["//visibility:public"],
-    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
+    xls_bundle = "@rules_xlsynth_netlist_test_xls_toolchain//:bundle",
 )
 
 netlist_lean_equiv_test(
@@ -110,13 +115,14 @@ netlist_lean_equiv_test(
         "input_port:enable",
         "input_port:clk",
     ],
-    proof = "Proof/Body.lean",
+    proof = "Proof/Decision.lean",
+    proof_theorem = "Decision.equivalent",
     rhs = "pipeline_rhs.gv",
     rhs_sha256 = "6ddea9f16c52cd7f6d7cedb223b74cdcad553d29053a6423227eecf257878436",
     rhs_top = "top",
     tags = ["manual"],
     visibility = ["//visibility:public"],
-    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
+    xls_bundle = "@rules_xlsynth_netlist_test_xls_toolchain//:bundle",
 )
 
 netlist_lean_equiv_test(
@@ -131,10 +137,11 @@ netlist_lean_equiv_test(
         "Proof/Helpers/Proof.lean",
         "Proof/Helpers/Lemmas.lean",
     ],
+    proof_theorem = "WithHelpers.equivalent",
     rhs = "rhs.gv",
     rhs_sha256 = "043a8cad365a0e925aa253f33d0f4ddd0f725ae2e5585be8104899a85ed029f2",
     rhs_top = "top",
     tags = ["manual"],
     visibility = ["//visibility:public"],
-    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
+    xls_bundle = "@rules_xlsynth_netlist_test_xls_toolchain//:bundle",
 )

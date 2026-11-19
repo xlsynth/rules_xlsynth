@@ -2,6 +2,7 @@
 
 from typing import Optional, Tuple, List, Callable, Dict, NamedTuple, Set
 import subprocess
+import hashlib
 import json
 import zipfile
 import optparse
@@ -556,7 +557,28 @@ def _expect_lean_proof_rejection(config: PresubmitConfig, target: str, report_na
 def run_dslx_lean_equiv_tests(config: PresubmitConfig):
     """Require the same reflexivity proof to distinguish two different RHS functions."""
     package = '//testdata/ir_fn_lean_equiv:'
-    bazel_test_opt((package + 'dslx_identity_test',), config)
+    dslx = package + 'dslx_identity_test'
+    raw = package + 'identity_test'
+    bazel_test_opt((dslx, raw), config)
+    dslx_report = _read_test_json_report(config, dslx, 'ir_fn_lean_equiv.json')
+    if set(dslx_report.get('ir_sha256', {})) != {'lhs', 'rhs'}:
+        raise ValueError('{}: expected hashes for both optimized IR files: {}'.format(dslx, dslx_report))
+    reference = config.repo_root / 'testdata/ir_fn_lean_equiv/reference.ir'
+    digest = hashlib.sha256(reference.read_bytes()).hexdigest()
+    raw_report = _read_test_json_report(config, raw, 'ir_fn_lean_equiv.json')
+    if raw_report.get('ir_sha256') != {'rhs': digest}:
+        raise ValueError('{}: expected only the raw RHS IR hash: {}'.format(raw, raw_report))
+
+    mismatch = package + 'ir_hash_mismatch_expect_failure_test'
+    try:
+        bazel_test_opt((mismatch,), config, capture_output = True)
+    except subprocess.CalledProcessError as e:
+        diagnostic = 'RHS IR hash mismatch\nExpected: {}\nActual:   {}'.format('0' * 64, digest)
+        if e.returncode != 1 or diagnostic not in e.stderr:
+            raise ValueError('{}: expected IR hash failure, got {}'.format(mismatch, e.stderr))
+    else:
+        raise ValueError('{}: stale RHS IR hash was accepted'.format(mismatch))
+
     _expect_lean_proof_rejection(
         config, package + 'dslx_add_one_expect_failure_test', 'ir_fn_lean_equiv.json',
         r'Reflexivity\.lean:\d+:\d+: error: Tactic `rfl` failed',
@@ -567,10 +589,10 @@ def run_dslx_lean_equiv_tests(config: PresubmitConfig):
 def run_netlist_lean_equiv_tests(config: PresubmitConfig):
     """Prove the reassociated AND gates equivalent and reject an inverted input."""
     package = '//testdata/netlist_lean_equiv:'
-    bazel_test_opt((package + 'equivalent',), config)
+    bazel_test_opt((package + 'basic', package + 'equivalent'), config)
     _expect_lean_proof_rejection(
         config, package + 'different_expect_failure_test', 'netlist_lean_equiv.json',
-        r'UserProof\.lean:\d+:\d+: error: Tactic `native_decide` evaluated that the proposition\n'
+        r'Decision\.lean:\d+:\d+: error: Tactic `native_decide` evaluated that the proposition\n'
         r'(?s:.+?)\nis false',
     )
 
@@ -789,7 +811,7 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
         '//:download_release_test',
         '//:ir_fn_lean_equiv_runner_test',
         '//:materialize_lean_installation_test',
-        '//:verify_netlist_input_test',
+        '//:verify_lean_input_test',
         '//:trusted_identity_boundary_test',
         '//:selected_toolchain_test',
         '//:selected_toolchain_exports_test',
@@ -986,6 +1008,8 @@ def main():
     parser.add_option('--dslx-path', type = 'string', help = 'Colon-separated extra DSLX import roots for steps that need them')
     parser.add_option('--ci-driver', help = 'Use the driver installed by the CI source-build job for the local_paths example and skip its already-run source-build test')
     parser.add_option('-k', '--keyword', type='string', help='Only run tests whose function name contains this keyword')
+    parser.add_option('--skip', action='append', default=[], metavar='STEP',
+                      help='Skip a named presubmit step already covered by a separate CI job')
     (options, args) = parser.parse_args()
     if args:
         parser.error('Unexpected positional arguments: {}'.format(' '.join(args)))
@@ -999,9 +1023,12 @@ def main():
             parser.error('Expected an executable CI driver at {}'.format(driver))
         config = config._replace(ci_driver = driver)
 
-    to_run = TO_RUN
+    unknown = set(options.skip) - {f.__name__ for f in TO_RUN}
+    if unknown:
+        parser.error('Unknown presubmit steps: {}'.format(', '.join(sorted(unknown))))
+    to_run = [f for f in TO_RUN if f.__name__ not in options.skip]
     if options.keyword:
-        to_run = [f for f in TO_RUN if options.keyword in f.__name__]
+        to_run = [f for f in to_run if options.keyword in f.__name__]
 
     failures: List[Tuple[str, str]] = []
     for f in to_run:

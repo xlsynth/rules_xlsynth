@@ -1,3 +1,5 @@
 -- SPDX-License-Identifier: Apache-2.0
 
-Helpers.Proof.equivalent
+import Helpers.Proof
+
+theorem WithHelpers.equivalent : Target.Equivalent := Helpers.Proof.equivalent

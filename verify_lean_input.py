@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Verifies a netlist content hash and writes the exact bytes to be converted."""
+"""Verifies a proof input hash and writes the exact bytes used for target preparation."""
 
 import argparse
 import gzip
@@ -11,17 +11,17 @@ import tempfile
 from pathlib import Path
 
 
-def verify_netlist(source_path, expected_hash, output_path, metadata_path, side):
+def verify_input(source_path, expected_hash, output_path, metadata_path, side, kind):
     expected_hash = expected_hash.lower()
     if len(expected_hash) != 64 or any(char not in "0123456789abcdef" for char in expected_hash):
         raise ValueError("{} hash must contain exactly 64 hexadecimal characters".format(side))
     source_path = Path(source_path)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    opener = gzip.open if source_path.name.endswith(".gz") else open
+    opener = gzip.open if kind == "netlist" and source_path.name.endswith(".gz") else open
     digest = hashlib.sha256()
-    with tempfile.TemporaryDirectory(prefix="netlist-verify-", dir=str(output_path.parent)) as temporary:
-        candidate = Path(temporary) / "verified.gv"
+    with tempfile.TemporaryDirectory(prefix="proof-input-verify-", dir=str(output_path.parent)) as temporary:
+        candidate = Path(temporary) / "verified"
         with opener(str(source_path), "rb") as source, open(str(candidate), "wb") as output:
             while True:
                 chunk = source.read(1024 * 1024)
@@ -32,8 +32,8 @@ def verify_netlist(source_path, expected_hash, output_path, metadata_path, side)
         actual_hash = digest.hexdigest()
         if actual_hash != expected_hash:
             raise ValueError(
-                "{} netlist hash mismatch\nExpected: {}\nActual:   {}".format(
-                    side.upper(), expected_hash, actual_hash
+                "{} {} hash mismatch\nExpected: {}\nActual:   {}".format(
+                    side.upper(), kind, expected_hash, actual_hash
                 )
             )
         os.replace(str(candidate), str(output_path))
@@ -49,9 +49,10 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--side", choices=("lhs", "rhs"), required=True)
+    parser.add_argument("--kind", choices=("netlist", "IR"), required=True)
     args = parser.parse_args()
     try:
-        verify_netlist(args.input, args.expected_hash, args.output, args.metadata, args.side)
+        verify_input(args.input, args.expected_hash, args.output, args.metadata, args.side, args.kind)
     except (OSError, ValueError, EOFError) as error:
         parser.exit(1, "error: {}\n".format(error))
 
