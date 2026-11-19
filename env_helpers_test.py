@@ -12,6 +12,72 @@ import env_helpers
 
 class EnvHelpersTest(unittest.TestCase):
 
+    def test_native_conversion_forwards_config_and_preserves_arguments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            toolchain = root / "toolchain.toml"
+            toolchain.write_text(
+                '[toolchain]\n'
+                'tool_path = "/tools with spaces"\n'
+                '[toolchain.dslx]\n'
+                'dslx_stdlib_path = "/stdlib with spaces"\n'
+                'dslx_path = ["first root", "second/root"]\n'
+                'enable_warnings = ["unused_definition"]\n'
+                'disable_warnings = ["useless_let_binding", "useless_struct_splat"]\n',
+                encoding = "utf-8",
+            )
+            output = root / "raw output.ir"
+            captured = {}
+
+            def fake_run(cmd, check, env, stdout):
+                captured["cmd"] = cmd
+                captured["env"] = env
+                stdout.write(b"package fixture\n")
+                return mock.Mock(returncode = 17)
+
+            with mock.patch.object(env_helpers.subprocess, "run", side_effect = fake_run):
+                status = env_helpers.main([
+                    "xlsynth_runner", "tool", "--toolchain", str(toolchain),
+                    "--runtime_library_path", "/runtime with spaces",
+                    "--stdout_path", str(output), "ir_converter_main",
+                    "source directory/root.x", "--top", "Accumulator",
+                    "--convert_tests=false",
+                ])
+
+            self.assertEqual(status, 17)
+            self.assertEqual(output.read_bytes(), b"package fixture\n")
+            self.assertEqual(captured["cmd"], [
+                "/tools with spaces/ir_converter_main",
+                "--dslx_stdlib_path=/stdlib with spaces",
+                "--dslx_path=first root:second/root",
+                "--enable_warnings=unused_definition",
+                "--disable_warnings=useless_let_binding,useless_struct_splat",
+                "source directory/root.x", "--top", "Accumulator",
+                "--convert_tests=false",
+            ])
+            runtime_var = env_helpers._runtime_library_env_var(env_helpers.sys.platform)
+            self.assertEqual(captured["env"][runtime_var].split(os.pathsep)[0], "/runtime with spaces")
+
+    def test_native_optimizer_does_not_receive_dslx_flags_or_a_top_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            toolchain = Path(tmp) / "toolchain.toml"
+            toolchain.write_text(
+                '[toolchain]\n'
+                'tool_path = "/tools"\n'
+                '[toolchain.dslx]\n'
+                'dslx_stdlib_path = "/stdlib"\n'
+                'dslx_path = ["first", "second"]\n'
+                'disable_warnings = ["unused_definition"]\n',
+                encoding = "utf-8",
+            )
+            with mock.patch.object(env_helpers.subprocess, "run", return_value = mock.Mock(returncode = 0)) as run:
+                status = env_helpers.main([
+                    "xlsynth_runner", "tool", "--toolchain", str(toolchain),
+                    "opt_main", "raw package.ir",
+                ])
+            self.assertEqual(status, 0)
+            self.assertEqual(run.call_args[0][0], ["/tools/opt_main", "raw package.ir"])
+
     def _invoke_quickcheck(self, returncode = 0, top = "", import_paths = (), passthrough = (), typecheck_returncode = 0, bazel_test = True):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

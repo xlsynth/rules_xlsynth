@@ -19,6 +19,12 @@ from typing import Any, Dict, List, NamedTuple, Optional
 
 
 _TOOL_CONFIG = {
+    "ir_converter_main": {
+        "base_flags": [],
+        "dslx_config": True,
+        "dslx_scalar_settings": [],
+        "needs_dslx_stdlib_flag": True,
+    },
     "dslx_interpreter_main": {
         "base_flags": ["--compare=jit", "--alsologtostderr"],
         "dslx_config": True,

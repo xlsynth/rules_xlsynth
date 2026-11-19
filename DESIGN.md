@@ -135,7 +135,7 @@ behavior overrides, then pass that declared input to the runner. The runner
 exposes two subcommands: `driver` shells out to the configured
 `xlsynth-driver` binary with `--toolchain=<path>`, while `tool` reads the same
 TOML file and derives the extra DSLX flags needed by direct tool invocations
-such as `dslx_interpreter_main` or `typecheck_main`.
+such as `dslx_interpreter_main`, `typecheck_main`, or `ir_converter_main`.
 
 The helper uses the selected `libxls` file path directly and derives the
 runtime library directory from `dirname(libxls_path)`, so users no longer need
@@ -160,8 +160,46 @@ Many Starlark rules load `python_runner_source` and materialize the runner
 inside the action sandbox. Each rule writes the helper script to a temporary
 output, writes a declared TOML file for the configured toolchain, and then
 calls the helper with either the `driver` or `tool` subcommand depending on the
-workflow. For example, `dslx_to_ir.bzl` composes the runner with
-`driver dslx2ir` to build intermediate representations, then calls
-`driver ir2opt` for optimization passes. Artifact selection now comes from the
-module-extension bundle instead of `XLSYNTH_*` action environment variables or
-artifact-path build settings.
+workflow. Artifact selection comes from the module-extension bundle instead of
+`XLSYNTH_*` action environment variables or artifact-path build settings.
+
+## Function and proc conversion
+
+`dslx_to_ir` accepts the DSLX name of a function or proc in the root module of
+its `lib`. The rule invokes two native tools through the shared runner:
+
+```text
+DslxInfo.root + declared transitive sources
+    -> tool ir_converter_main --top=<DSLX top> -> <name>.ir
+    -> tool opt_main                          -> <name>.opt.ir
+```
+
+The converter owns entrypoint selection and marks the top in the emitted
+package. The optimizer consumes that exact package without reconstructing a
+function-style symbol name or overriding its top. This also handles effectful
+functions whose lowering changes their IR calling convention. Proc conversion
+elaborates the selected proc's network; optimization can inline or otherwise
+transform that network.
+
+Both actions select native tools with `get_selected_tools_toolchain` and
+declare their toolchain artifacts through `get_tool_artifact_inputs`. They do
+not depend on driver materialization. The converter declares the library's
+complete transitive source closure, while the optimizer consumes the converter's
+output. The shared runner translates configured stdlib, import roots, and
+warnings for `ir_converter_main` and retains argument boundaries and output
+redirection. Conversion keeps the existing warning and test-conversion policy.
+
+As with other conversion rules, `dslx_to_ir` selects its own registered
+toolchain or explicit `xls_bundle`; a library's bundle override does not flow
+through its `DslxInfo`. Output filenames and `IrInfo` fields remain unchanged.
+The provider carries raw and optimized packages without inferred entity kinds,
+proc counts, or generated symbol names. Consumers that support only functions
+keep that restriction; accepting `IrInfo` alone does not imply proc support.
+
+Regression tests cover action inputs and tool selection as well as real
+conversion and optimization of functions, effectful functions, stateful procs,
+and spawned networks. The executable suite runs against the default and older
+compatibility bundles, including imports from two distinct configured roots.
+This conversion boundary does not introduce a simulation rule or runtime
+harness, nor does it cover proc scheduling, RTL generation, or finite-FIFO
+backpressure semantics.
