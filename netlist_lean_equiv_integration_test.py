@@ -19,7 +19,6 @@ from pathlib import Path
 RULES_ROOT = Path(__file__).resolve().parent
 FIXTURES = RULES_ROOT / "testdata" / "netlist_lean_equiv"
 LEAN_VERSION = "4.34.1"
-BASIC_TARGET = "@rules_xlsynth//testdata/netlist_lean_equiv:basic"
 
 
 def quote(value):
@@ -162,6 +161,7 @@ register_toolchains("@local_xls_toolchain//:all")
     lhs_logic_cone_sinks = ["output_port:result"],"""
         (self.workspace / "BUILD.bazel").write_text(
             'load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")\n' +
+            target("basic", "@netlists//:rhs.gv.gz", rhs_hash, lhs_hash) +
             target("bad_hash", "@netlists//:rhs.gv.gz", "0" * 64, lhs_hash) +
             target("different", "@netlists//:rhs_bad.gv", bad_hash, lhs_hash) +
             target(
@@ -218,10 +218,10 @@ register_toolchains("@local_xls_toolchain//:all")
         )
 
     def test_lean_toolchain_configuration(self):
-        self.bazel_command(self.workspace, ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"])
+        self.bazel_command(self.workspace, ["test", "//:basic", "--test_output=errors", "--nocache_test_results"])
         self.module.write_text(self.module_source(self.netlists, self.lean_prefix, lean_attributes=False))
         self.bazel_command(
-            self.workspace, ["build", BASIC_TARGET], expected_success=False,
+            self.workspace, ["build", "//:basic"], expected_success=False,
             expected_text="requires Lean configuration",
         )
         partial = self.module_source(self.netlists, self.lean_prefix).replace(
@@ -229,24 +229,24 @@ register_toolchains("@local_xls_toolchain//:all")
         )
         self.module.write_text(partial)
         self.bazel_command(
-            self.workspace, ["build", BASIC_TARGET], expected_success=False,
+            self.workspace, ["build", "//:basic"], expected_success=False,
             expected_text="lean_artifact_source=installed_only requires installed_lean_root_prefix",
         )
         self.module.write_text(self.module_source(self.netlists, self.root / "missing-lean"))
         self.bazel_command(
-            self.workspace, ["build", BASIC_TARGET], expected_success=False,
+            self.workspace, ["build", "//:basic"], expected_success=False,
             expected_text="missing required files",
         )
 
         self.module.write_text(self.module_source(self.netlists, None, lean_source="download_only"))
         self.bazel_command(
             self.workspace,
-            ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"],
+            ["test", "//:basic", "--test_output=errors", "--nocache_test_results"],
         )
 
         self.module.write_text(self.module_source(self.netlists, self.root / "missing-lean", lean_source="auto"))
         self.bazel_command(
-            self.workspace, ["test", BASIC_TARGET, "--test_output=errors", "--nocache_test_results"],
+            self.workspace, ["test", "//:basic", "--test_output=errors", "--nocache_test_results"],
         )
 
 

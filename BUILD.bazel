@@ -28,17 +28,23 @@ py_test(
 )
 
 exports_files([
-    "ir_fn_lean_equiv_runner.py",
+    "lean_equiv_runner.py",
     "materialize_lean_installation.py",
-    "netlist_lean_equiv_runner.py",
     "verify_netlist_input.py",
 ])
+
+# Preserve the previously exported runner template label.
+alias(
+    name = "ir_fn_lean_equiv_runner.py",
+    actual = ":lean_equiv_runner.py",
+    visibility = ["//visibility:public"],
+)
 
 py_test(
     name = "ir_fn_lean_equiv_runner_test",
     srcs = [
-        "ir_fn_lean_equiv_runner.py",
         "ir_fn_lean_equiv_runner_test.py",
+        "lean_equiv_runner.py",
     ],
 )
 

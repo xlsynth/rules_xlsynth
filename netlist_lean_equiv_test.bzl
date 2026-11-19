@@ -2,12 +2,8 @@
 """A Bazel test for supplied Lean proofs of mapped-netlist equivalence."""
 
 load(":env_helpers.bzl", "python_runner_source")
-load(":xls_toolchain.bzl", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "require_lean_toolchain")
-
-def _runfile_path(ctx, artifact):
-    if artifact.short_path.startswith("../"):
-        return artifact.short_path[3:]
-    return ctx.workspace_name + "/" + artifact.short_path
+load(":lean_equiv_common.bzl", "lean_proof_test", "lean_runfile_path")
+load(":xls_toolchain.bzl", "XlsArtifactBundleInfo", "declare_xls_toolchain_toml", "get_driver_artifact_inputs", "require_lean_toolchain")
 
 def _validate_hash(value, side):
     normalized = value.lower()
@@ -108,18 +104,6 @@ def _convert_netlist(ctx, side, verified, cone, top, toolchain, toolchain_file, 
     )
     return graph
 
-def _proof_file(ctx, artifact, root, kind):
-    if artifact.is_directory:
-        fail("{} must contain files, not directories: {}".format(kind, artifact.path))
-    runfile = _runfile_path(ctx, artifact)
-    prefix = root + "/"
-    if not runfile.startswith(prefix):
-        fail("{} file {} must be under the proof body's directory".format(kind, artifact.path))
-    relative = runfile[len(prefix):]
-    if kind == "proof_srcs" and not relative.endswith(".lean"):
-        fail("proof_srcs file must have a .lean extension: {}".format(artifact.path))
-    return {"relative": relative, "runfile": runfile}
-
 def _netlist_lean_equiv_test_impl(ctx):
     lhs_hash = _validate_hash(ctx.attr.lhs_sha256, "lhs")
     rhs_hash = _validate_hash(ctx.attr.rhs_sha256, "rhs")
@@ -154,67 +138,23 @@ def _netlist_lean_equiv_test_impl(ctx):
         mnemonic = "XlsynthLeanPrepare",
     )
 
-    proof_runfile = _runfile_path(ctx, ctx.file.proof)
-    proof_root = proof_runfile.rsplit("/", 1)[0]
-    proof = _proof_file(ctx, ctx.file.proof, proof_root, "proof")
-    proof_srcs = [_proof_file(ctx, file, proof_root, "proof_srcs") for file in ctx.files.proof_srcs]
-    seen = {}
-    for item in [proof] + proof_srcs:
-        if item["relative"] in seen:
-            fail("duplicate proof input path: {}".format(item["relative"]))
-        seen[item["relative"]] = True
-
-    config = ctx.actions.declare_file(ctx.label.name + ".test.json")
-    ctx.actions.write(
-        output = config,
-        content = json.encode({
-            "driver": _runfile_path(ctx, toolchain.driver),
-            "extraction": {
-                "collapse_load_enable_feedback": ctx.attr.collapse_load_enable_feedback,
-                "collapse_sequential": ctx.attr.collapse_sequential_cells,
-                "lhs_logic_cone_sources": cones.lhs.sources,
-                "lhs_logic_cone_sinks": cones.lhs.sinks,
-                "lhs_top": ctx.attr.lhs_top,
-                "rhs_logic_cone_sources": cones.rhs.sources,
-                "rhs_logic_cone_sinks": cones.rhs.sinks,
-                "rhs_top": ctx.attr.rhs_top,
-            },
-            "lean_root": _runfile_path(ctx, toolchain.lean.root),
-            "lean_version": toolchain.lean.version,
-            "lhs_hash": lhs_hash,
-            "lhs_hash_metadata": _runfile_path(ctx, lhs.metadata),
-            "proof": proof,
-            "proof_srcs": proof_srcs,
-            "rhs_hash": rhs_hash,
-            "rhs_hash_metadata": _runfile_path(ctx, rhs.metadata),
-            "runtime_library": _runfile_path(ctx, toolchain.libxls) if toolchain.libxls else None,
-            "target": _runfile_path(ctx, target),
-            "toolchain": _runfile_path(ctx, toolchain_file),
-        }) + "\n",
-    )
-    runner = ctx.actions.declare_file(ctx.label.name + "_test.py")
-    ctx.actions.expand_template(
-        template = ctx.file._test_runner,
-        output = runner,
-        substitutions = {"@CONFIG_RUNFILE@": json.encode(_runfile_path(ctx, config))[1:-1]},
-        is_executable = True,
-    )
-    return [
-        DefaultInfo(
-            executable = runner,
-            files = depset([runner]),
-            runfiles = ctx.runfiles(files = [
-                config,
-                target,
-                toolchain_file,
-                toolchain.lean.root,
-                lhs.metadata,
-                rhs.metadata,
-                ctx.file.proof,
-            ] + ctx.files.proof_srcs + get_driver_artifact_inputs(toolchain)),
-        ),
-        OutputGroupInfo(lean_target = depset([target])),
-    ]
+    return lean_proof_test(ctx, toolchain, toolchain_file, target, {
+        "check_command": "g8r-lean-check",
+        "extraction": {
+            "collapse_load_enable_feedback": ctx.attr.collapse_load_enable_feedback,
+            "collapse_sequential": ctx.attr.collapse_sequential_cells,
+            "lhs_logic_cone_sources": cones.lhs.sources,
+            "lhs_logic_cone_sinks": cones.lhs.sinks,
+            "lhs_top": ctx.attr.lhs_top,
+            "rhs_logic_cone_sources": cones.rhs.sources,
+            "rhs_logic_cone_sinks": cones.rhs.sinks,
+            "rhs_top": ctx.attr.rhs_top,
+        },
+        "lhs_hash": lhs_hash,
+        "lhs_hash_metadata": lean_runfile_path(ctx, lhs.metadata),
+        "rhs_hash": rhs_hash,
+        "rhs_hash_metadata": lean_runfile_path(ctx, rhs.metadata),
+    }, extra_runfiles = [lhs.metadata, rhs.metadata])
 
 netlist_lean_equiv_test = rule(
     doc = "Mechanically converts two mapped netlists and checks a supplied Lean proof body. Lean proof auditing is not performed.",
@@ -237,8 +177,9 @@ netlist_lean_equiv_test = rule(
         "collapse_load_enable_feedback": attr.bool(default = False),
         "proof": attr.label(allow_single_file = [".lean"], mandatory = True),
         "proof_srcs": attr.label_list(allow_files = [".lean"]),
+        "xls_bundle": attr.label(providers = [XlsArtifactBundleInfo], doc = "Optional XLS bundle override for netlist conversion, the proof driver, and Lean."),
         "_input_checker": attr.label(default = Label("//:verify_netlist_input.py"), allow_single_file = True),
-        "_test_runner": attr.label(default = Label("//:netlist_lean_equiv_runner.py"), allow_single_file = True),
+        "_test_runner": attr.label(default = Label("//:lean_equiv_runner.py"), allow_single_file = True),
     },
     test = True,
     executable = True,

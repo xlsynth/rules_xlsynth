@@ -59,6 +59,18 @@ class PresubmitTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     run_presubmit._check_ir_equiv_report(self.config, self.target, False)
 
+    def test_netlist_inequivalence_requires_lean_to_run_and_reject_the_proof(self):
+        report = {'status': 'failed', 'lean': {'status': 'failed', 'error': 'could not start Lean'}}
+        for code in (1, 3):
+            with self.subTest(bazel_exit = code):
+                failure = subprocess.CalledProcessError(code, ['bazel'])
+                with mock.patch.object(run_presubmit, 'bazel_test_opt', side_effect = [None, failure]):
+                    with mock.patch.object(run_presubmit, '_read_test_json_report', return_value = report) as read:
+                        with self.assertRaises(ValueError):
+                            run_presubmit.run_netlist_lean_equiv_tests(self.config)
+                        # Bazel can leave an earlier report behind on a build failure.
+                        self.assertEqual(read.called, code == 3)
+
     def test_missing_report_is_not_accepted(self):
         with self.assertRaises(FileNotFoundError):
             run_presubmit._check_ir_equiv_report(self.config, self.target, False)

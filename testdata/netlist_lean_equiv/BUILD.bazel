@@ -28,9 +28,9 @@ netlist_lean_equiv_test(
     rhs = "rhs.gv",
     rhs_sha256 = "043a8cad365a0e925aa253f33d0f4ddd0f725ae2e5585be8104899a85ed029f2",
     rhs_top = "top",
-    # The repository's released self-test driver predates the Lean commands.
     tags = ["manual"],
     visibility = ["//visibility:public"],
+    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
 )
 
 genrule(
@@ -58,9 +58,24 @@ netlist_lean_equiv_test(
     ],
     rhs_sha256 = "043a8cad365a0e925aa253f33d0f4ddd0f725ae2e5585be8104899a85ed029f2",
     rhs_top = "top",
-    # The repository's released self-test driver predates the Lean commands.
     tags = ["manual"],
     visibility = ["//visibility:public"],
+    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
+)
+
+# rhs_bad.gv inverts c, so a=b=c=1 gives different outputs.
+netlist_lean_equiv_test(
+    name = "different_expect_failure_test",
+    lhs = "lhs.gv",
+    lhs_sha256 = "b77aea65603feee7a0dcd157885ab7d64a4513fdd5ff07826f204b9d3649b28a",
+    lhs_top = "top",
+    liberty_proto = "cells.textproto",
+    proof = "Proof/Body.lean",
+    rhs = "rhs_bad.gv",
+    rhs_sha256 = "c46fab965da37aeac11cdf59ce533951b398df31466396fcc0df0f9125053f99",
+    rhs_top = "top",
+    tags = ["manual"],
+    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
 )
 
 netlist_lean_equiv_test(
@@ -74,9 +89,9 @@ netlist_lean_equiv_test(
     rhs = "pipeline_registers_rhs.gv",
     rhs_sha256 = "b99387d040977bf5510df9a525f0f9c9fc176e202edc7ed198ed397eb80e8610",
     rhs_top = "top",
-    # The repository's released self-test driver predates the Lean commands.
     tags = ["manual"],
     visibility = ["//visibility:public"],
+    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
 )
 
 netlist_lean_equiv_test(
@@ -99,9 +114,9 @@ netlist_lean_equiv_test(
     rhs = "pipeline_rhs.gv",
     rhs_sha256 = "6ddea9f16c52cd7f6d7cedb223b74cdcad553d29053a6423227eecf257878436",
     rhs_top = "top",
-    # The repository's released self-test driver predates the Lean commands.
     tags = ["manual"],
     visibility = ["//visibility:public"],
+    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
 )
 
 netlist_lean_equiv_test(
@@ -119,7 +134,7 @@ netlist_lean_equiv_test(
     rhs = "rhs.gv",
     rhs_sha256 = "043a8cad365a0e925aa253f33d0f4ddd0f725ae2e5585be8104899a85ed029f2",
     rhs_top = "top",
-    # The repository's released self-test driver predates the Lean commands.
     tags = ["manual"],
     visibility = ["//visibility:public"],
+    xls_bundle = "@rules_xlsynth_lean_test_xls_toolchain//:bundle",
 )

@@ -691,9 +691,10 @@ Lean functions, build the test with `--output_groups=lean_target`.
 
 Mechanically converts two Liberty-backed mapped Verilog netlists into g8r
 graphs and Lean circuits, then runs a supplied proof of their equivalence.
-The selected `xls.toolchain` must configure Lean as described above,
-and its driver must provide `gv2g8r`, `g8r-lean-prepare`, and
-`g8r-lean-check`.
+Use the same Lean toolchain setup as the DSLX and IR rules above. The
+registered toolchain is the default. Set `xls_bundle` on the test to select
+a different driver and Lean installation for both conversion and checking.
+The driver must provide `gv2g8r`, `g8r-lean-prepare`, and `g8r-lean-check`.
 
 ```starlark
 load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")
@@ -801,8 +802,7 @@ The checked-in proof targets are:
 - `with_helpers`: `Proof/WithHelpers.lean` and two helper modules exercising
   dependency ordering and `bv_decide`.
 
-With a selected toolchain that provides the required driver commands and Lean,
-run them directly:
+These proof targets can be run directly with Bazel.
 
 ```shell
 bazel test \
@@ -813,8 +813,10 @@ bazel test \
   //testdata/netlist_lean_equiv:with_helpers
 ```
 
-These targets are tagged `manual` while the repository's released self-test
-driver predates the Lean commands.
+The fixtures select the same proof toolchain as the DSLX tests, with
+`xlsynth-driver` 0.83.0 and Lean 4.34.1. CI explicitly runs a passing netlist
+proof and checks that Lean rejects the proof for an inequivalent RHS. To run
+both checks locally, use `python3 run_presubmit.py -k netlist_lean_equiv`.
 
 Expected rejections and toolchain configuration are separate Bazel `py_test`
 targets:

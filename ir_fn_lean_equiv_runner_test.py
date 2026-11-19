@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ir_fn_lean_equiv_runner import resolve_runfile, run, stage_proof_file
+from lean_equiv_runner import resolve_runfile, run, stage_proof_file
 
 
 class RunfilesManifestTest(unittest.TestCase):

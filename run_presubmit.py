@@ -533,26 +533,46 @@ def run_sample_nonequiv_ir(config: PresubmitConfig):
         raise ValueError('Expected nonequiv IR to fail')
 
 
+def _expect_lean_proof_rejection(config: PresubmitConfig, target: str, report_name: str, diagnostic: str):
+    """Require a fresh failed test with the expected diagnostic from Lean."""
+    try:
+        bazel_test_opt((target,), config, capture_output = True)
+    except subprocess.CalledProcessError as e:
+        # Only exit code 3 means Bazel ran a failing test. An earlier build
+        # or setup failure may leave stale test outputs in bazel-testlogs.
+        if e.returncode != 3:
+            raise ValueError('Expected a Bazel test failure, got stdout: {} stderr: {}'.format(e.stdout, e.stderr))
+    else:
+        raise ValueError('{}: Lean unexpectedly accepted the proof'.format(target))
+
+    report = _read_test_json_report(config, target, report_name)
+    child = report.get('lean', {})
+    if (report.get('status') != 'failed' or child.get('status') != 'failed' or
+            not re.search(diagnostic, child.get('stdout', ''))):
+        raise ValueError('{}: expected a Lean proof rejection matching {!r}, got {}'.format(target, diagnostic, report))
+
+
 @register
 def run_dslx_lean_equiv_tests(config: PresubmitConfig):
     """Require the same reflexivity proof to distinguish two different RHS functions."""
     package = '//testdata/ir_fn_lean_equiv:'
     bazel_test_opt((package + 'dslx_identity_test',), config)
+    _expect_lean_proof_rejection(
+        config, package + 'dslx_add_one_expect_failure_test', 'ir_fn_lean_equiv.json',
+        r'Reflexivity\.lean:\d+:\d+: error: Tactic `rfl` failed',
+    )
 
-    failing = package + 'dslx_add_one_expect_failure_test'
-    try:
-        bazel_test_opt((failing,), config, capture_output = True)
-    except subprocess.CalledProcessError as e:
-        if e.returncode != 3:
-            raise ValueError('Expected a Bazel test failure, got stdout: {} stderr: {}'.format(e.stdout, e.stderr))
-    else:
-        raise ValueError('{}: Lean unexpectedly accepted identity versus add-one'.format(failing))
 
-    report = _read_test_json_report(config, failing, 'ir_fn_lean_equiv.json')
-    lean_stdout = report.get('lean', {}).get('stdout', '')
-    diagnostic = r'Reflexivity\.lean:\d+:\d+: error: Tactic `rfl` failed'
-    if report.get('status') != 'failed' or not re.search(diagnostic, lean_stdout):
-        raise ValueError('{}: expected Lean to reject rfl in Reflexivity.lean, got {}'.format(failing, report))
+@register
+def run_netlist_lean_equiv_tests(config: PresubmitConfig):
+    """Prove the reassociated AND gates equivalent and reject an inverted input."""
+    package = '//testdata/netlist_lean_equiv:'
+    bazel_test_opt((package + 'equivalent',), config)
+    _expect_lean_proof_rejection(
+        config, package + 'different_expect_failure_test', 'netlist_lean_equiv.json',
+        r'UserProof\.lean:\d+:\d+: error: Tactic `native_decide` evaluated that the proposition\n'
+        r'(?s:.+?)\nis false',
+    )
 
 
 @register

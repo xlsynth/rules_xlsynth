@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Bazel test runner for Lean proofs of XLS IR function equivalence."""
+"""Bazel test runner for Lean proofs of XLS IR function and mapped-netlist equivalence."""
 
 import json
 import os
@@ -45,6 +45,32 @@ def stage_proof_file(item, root):
     return str(path)
 
 
+def verified_netlist_hashes(config):
+    hashes = {}
+    for side in ("lhs", "rhs"):
+        with open(resolve_runfile(config[side + "_hash_metadata"])) as source:
+            metadata = json.load(source)
+        if metadata["sha256"] != config[side + "_hash"]:
+            raise ValueError("{} verified hash metadata is inconsistent".format(side))
+        hashes[side] = metadata["sha256"]
+    return hashes
+
+
+def check_ir_audit(report, accepted, allow_native_checks):
+    """Validate the required function-proof audit, including the strict-mode count."""
+    lean_report = report["lean"]
+    accepted = accepted and report["audit_performed"]
+    if "native_checks_replayed" in lean_report:
+        count = lean_report["native_checks_replayed"]
+        if type(count) is int and count >= 0:
+            report["native_checks_replayed"] = count
+        elif accepted:
+            report["error"] = "expected a nonnegative integer for native_checks_replayed"
+    if accepted and not allow_native_checks and report.get("native_checks_replayed") != 0:
+        report["error"] = "strict Lean audit requires the driver to report native_checks_replayed = 0"
+    return accepted and "error" not in report
+
+
 def run(config):
     started = time.monotonic()
     driver = resolve_runfile(config["driver"])
@@ -57,7 +83,11 @@ def run(config):
         existing = environment.get(variable)
         environment[variable] = runtime_directory + (os.pathsep + existing if existing else "")
 
-    reject_native_checks = not config["allow_native_checks"]
+    check_command = config.get("check_command", "ir-fn-lean-check")
+    if check_command not in ("ir-fn-lean-check", "g8r-lean-check"):
+        raise ValueError("unknown Lean proof command: {}".format(check_command))
+    ir_function = check_command == "ir-fn-lean-check"
+    hashes = None if ir_function else verified_netlist_hashes(config)
 
     version = subprocess.run(
         [driver, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -73,17 +103,18 @@ def run(config):
         command = [
             driver,
             "--toolchain=" + resolve_runfile(config["toolchain"]),
-            "ir-fn-lean-check",
+            check_command,
             "--target-dir", resolve_runfile(config["target"]),
             "--proof-root", str(proof_root),
-            "--proof-theorem", config["proof_theorem"],
             "--proof", stage_proof_file(config["proof"], proof_root),
             "--lean", str(lean_root / "bin" / "lean"),
             "--work-dir", str(temporary / "work"),
             "--output-json", str(child_report_path),
         ]
-        if reject_native_checks:
-            command.append("--reject-native-checks")
+        if ir_function:
+            command.extend(["--proof-theorem", config["proof_theorem"]])
+            if not config["allow_native_checks"]:
+                command.append("--reject-native-checks")
         for item in config["proof_srcs"]:
             command.extend(["--proof-source", stage_proof_file(item, proof_root)])
         result = subprocess.run(
@@ -97,29 +128,26 @@ def run(config):
                 lean_report = json.load(source)
         else:
             lean_report = {"status": "failed", "error": "driver did not write a Lean result report"}
-        audited = lean_report.get("audit_performed") is True
-        accepted = result.returncode == 0 and lean_report.get("status") == "accepted_by_lean" and audited
+        accepted = result.returncode == 0 and lean_report.get("status") == "accepted_by_lean"
         report = {
-            "audit_performed": audited,
+            "audit_performed": ir_function and lean_report.get("audit_performed") is True,
             "driver_version": version.stdout.strip(),
             "elapsed_seconds": time.monotonic() - started,
             "lean": lean_report,
             "lean_version": config["lean_version"],
         }
-        if "native_checks_replayed" in lean_report:
-            count = lean_report["native_checks_replayed"]
-            if type(count) is int and count >= 0:
-                report["native_checks_replayed"] = count
-            elif accepted:
-                report["error"] = "expected a nonnegative integer for native_checks_replayed"
-        if accepted and reject_native_checks and report.get("native_checks_replayed") != 0:
-            report["error"] = "strict Lean audit requires the driver to report native_checks_replayed = 0"
-        accepted = accepted and "error" not in report
+        if ir_function:
+            accepted = check_ir_audit(report, accepted, config["allow_native_checks"])
+            report_name = "ir_fn_lean_equiv.json"
+        else:
+            report["netlist_sha256"] = hashes
+            report["extraction"] = config["extraction"]
+            report_name = "netlist_lean_equiv.json"
         report["status"] = "accepted_by_lean" if accepted else "failed"
         output_directory = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR")
         if output_directory:
             Path(output_directory).mkdir(parents=True, exist_ok=True)
-            with open(os.path.join(output_directory, "ir_fn_lean_equiv.json"), "w") as output:
+            with open(os.path.join(output_directory, report_name), "w") as output:
                 json.dump(report, output, indent=2, sort_keys=True)
                 output.write("\n")
         if result.returncode == 0 and not accepted:
