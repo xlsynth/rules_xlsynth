@@ -42,6 +42,24 @@ class VerifyLeanInputTest(unittest.TestCase):
             self.assertEqual(verified.read_bytes(), contents)
             self.assertEqual(json.loads(metadata.read_text()), {"sha256": digest, "side": "rhs"})
 
+    def test_ir_mismatch_names_the_pin_to_update_after_rechecking_the_proof(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "input.ir"
+            source.write_bytes(b"package example\n")
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            for side in ("lhs", "rhs"):
+                with self.subTest(side=side):
+                    with self.assertRaises(ValueError) as failure:
+                        verify_input(source, "0" * 64, root / "verified.ir", root / "hash.json", side, "IR")
+                    self.assertEqual(
+                        str(failure.exception),
+                        "{0} IR hash mismatch\nExpected: {1}\nActual:   {2}\n"
+                        "The {0} IR changed. Recheck the proof against the new graph before updating {3}_ir_sha256.".format(
+                            side.upper(), "0" * 64, digest, side
+                        ),
+                    )
+
     def test_mismatch_does_not_publish_verified_output(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

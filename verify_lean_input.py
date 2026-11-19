@@ -31,11 +31,14 @@ def verify_input(source_path, expected_hash, output_path, metadata_path, side, k
                 output.write(chunk)
         actual_hash = digest.hexdigest()
         if actual_hash != expected_hash:
-            raise ValueError(
-                "{} {} hash mismatch\nExpected: {}\nActual:   {}".format(
-                    side.upper(), kind, expected_hash, actual_hash
-                )
+            message = "{} {} hash mismatch\nExpected: {}\nActual:   {}".format(
+                side.upper(), kind, expected_hash, actual_hash
             )
+            if kind == "IR":
+                message += (
+                    "\nThe {} IR changed. Recheck the proof against the new graph before updating {}_ir_sha256."
+                ).format(side.upper(), side)
+            raise ValueError(message)
         os.replace(str(candidate), str(output_path))
     with open(metadata_path, "w") as metadata:
         json.dump({"sha256": actual_hash, "side": side}, metadata, sort_keys=True)
