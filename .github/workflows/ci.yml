@@ -135,6 +135,28 @@ jobs:
             //compatibility:older_release_pipeline_test //dslx_to_ir_tests:conversion_tests
       - *save_cache
 
+  netlist_lean:
+    name: Audit netlist equivalence proofs
+    runs-on: ubuntu-24.04
+    container: ubuntu:20.04
+    env: *source_environment
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *focal_setup
+      - uses: actions/checkout@v4
+      - *source_setup
+      - *setup_bazel
+      - *prepare_cache
+      - *restore_cache
+      - name: Build the proof driver and check the netlists
+        run: |
+          bazel --bazelrc=/dev/null build -c opt --sandbox_writable_path="$SCCACHE_DIR" \
+            @rules_xlsynth_netlist_test_xls_toolchain//:xlsynth-driver
+          python3 run_presubmit.py -k run_netlist_lean_equiv_tests
+      - *save_cache
+
   dslx_ci:
     needs: build_driver
     runs-on: ubuntu-24.04
@@ -182,7 +204,7 @@ jobs:
           # Fail if a test falls back to a Rust build instead of using the uploaded driver.
           mkdir -p "$RUNNER_TEMP/no-cargo"
           ln -s /bin/false "$RUNNER_TEMP/no-cargo/rustup"
-          PATH="$RUNNER_TEMP/no-cargo:$PATH" python run_presubmit.py --ci-driver "$driver"
+          PATH="$RUNNER_TEMP/no-cargo:$PATH" python run_presubmit.py --ci-driver "$driver" --skip run_netlist_lean_equiv_tests
 
   dslx_ci_py36:
     needs: build_driver

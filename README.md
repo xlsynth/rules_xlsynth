@@ -615,6 +615,14 @@ IR. The driver selects the package top or sole function on each side.
 Set `lhs_top` or `rhs_top` to select another IR function. The argument and
 result types must match.
 
+Both rules accept optional `lhs_ir_sha256` and `rhs_ir_sha256` attributes.
+Each pins the exact bytes of the entire IR package passed to Lean preparation,
+including comments and source-position metadata. For a DSLX library or an
+`IrInfo` target this is the optimized `.opt.ir` output. For a supplied `.ir`
+file it is that file as written. Set either or both to a 64-digit SHA-256 hex
+digest. A mismatch stops preparation and prints the expected and actual
+digests. The proof report records the verified sides in `ir_sha256`.
+
 Both rules generate the proposition `Target.Equivalent` from the selected
 functions. Supply an ordinary Lean module that imports `Target`, and name
 the theorem that proves the proposition. For the example above, the
@@ -686,6 +694,175 @@ The test writes `ir_fn_lean_equiv.json` to Bazel's undeclared test outputs.
 The report includes the audit result and, for drivers supporting it, the
 `native_checks_replayed` count. To inspect the generated proposition and
 Lean functions, build the test with `--output_groups=lean_target`.
+
+### `netlist_lean_equiv_test` - check a supplied Lean proof of netlist equivalence
+
+Mechanically converts two Liberty-backed mapped Verilog netlists into g8r
+graphs and Lean circuits, then runs a supplied proof of their equivalence.
+Use the same Lean toolchain setup as the DSLX and IR rules above. The
+registered toolchain is the default. Set `xls_bundle` on the test to select
+a different driver and Lean installation for both conversion and checking.
+The driver must support `--proof-theorem` on `g8r-lean-check`. The development
+toolchain in [MODULE.bazel](MODULE.bazel) pins a revision with this support.
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")
+
+netlist_lean_equiv_test(
+    name = "adder_equiv_test",
+    lhs = ":reference_netlist",
+    lhs_sha256 = "<64-character SHA-256>",
+    rhs = ":optimized_netlist",
+    rhs_sha256 = "<64-character SHA-256>",
+    liberty_proto = ":cells_liberty_proto",
+    lhs_top = "adder",
+    rhs_top = "adder",
+    logic_cone_sources = ["input_port:a", "input_port:b"],
+    logic_cone_sinks = ["output_port:sum"],
+    proof = "proof/Adder.lean",
+    proof_theorem = "Adder.equivalent",
+)
+```
+
+`lhs` and `rhs` each provide exactly one netlist file. Workspace files,
+generated outputs, and external-repository files are accepted. The single
+`liberty_proto` is used for both sides. The hash attributes are SHA-256 over
+the exact file contents, decompressed first for `.gz` inputs. Whitespace and
+comments count. A build action verifies each hash before conversion and writes
+the exact verified bytes consumed by `gv2g8r`. A mismatch reports the side,
+expected and actual hashes, and which pin to update after regenerating the proof.
+
+Optional extraction attributes are:
+
+- `lhs_top`, `rhs_top`: module selection; omit when unambiguous.
+- `logic_cone_sources`, `logic_cone_sinks`: shared lists of compact selectors
+  applied to both netlists.
+- `lhs_logic_cone_sources`, `lhs_logic_cone_sinks`, `rhs_logic_cone_sources`,
+  `rhs_logic_cone_sinks`: per-side selector lists for different boundaries.
+- `collapse_sequential_cells`: collapse reached pipeline registers; default `False`.
+- `collapse_load_enable_feedback`: collapse recognized load-enable feedback
+  with zero prior state; default `False` and requires `collapse_sequential_cells`.
+
+Shared and per-side selector modes are mutually exclusive. Empty lists count as
+omitted. With no selectors, both sides use their complete module interfaces; in
+per-side mode, an omitted side uses its complete interface. A non-empty source
+list requires a non-empty sink list for that selection. Selector order is
+preserved when forwarding repeated `--cone_sources` and `--cone_sinks` flags to
+`gv2g8r`.
+
+Selectors use the driver's compact syntax, such as `input_port:data`,
+`cell_output_regex:state_reg_[0-9]+:Q`, and `output_port:result`. Per-side
+selectors can use aliases to produce matching interfaces from different names:
+
+```starlark
+load("@rules_xlsynth//:rules.bzl", "netlist_lean_equiv_test")
+
+netlist_lean_equiv_test(
+    name = "renamed_ports_equiv_test",
+    lhs = ":reference_netlist",
+    lhs_sha256 = "<64-character SHA-256>",
+    rhs = ":optimized_netlist",
+    rhs_sha256 = "<64-character SHA-256>",
+    liberty_proto = ":cells_liberty_proto",
+    proof = "proof/Adder.lean",
+    proof_theorem = "Adder.equivalent",
+    lhs_logic_cone_sources = ["data=input_port:reference_data"],
+    lhs_logic_cone_sinks = ["result=output_port:reference_result"],
+    rhs_logic_cone_sources = ["data=input_port:optimized_data"],
+    rhs_logic_cone_sinks = ["result=output_port:optimized_result"],
+)
+```
+
+The initial rule checks combinational `GateFn` equivalence. Reached residual
+state is rejected. Extracted input and output ports must have matching names
+and widths in the same order.
+
+The build creates the two `.g8r` graphs and a Lean target directory containing
+`Lhs.aag`, `Rhs.aag`, shared support modules, `Target.lean`, and `Check.lean`.
+`Target.lean` embeds both AAG files through the shared loader and defines their
+equivalence proposition. Inspect that directory while developing a proof with:
+
+```shell
+bazel build //path:adder_equiv_test --output_groups=lean_target
+```
+
+The `proof` file is a Lean module that defines `proof_theorem`. For example,
+`proof/Adder.lean` can import `Target` and any local modules listed in
+`proof_srcs`, then declare `theorem Adder.equivalent : Target.Equivalent`.
+The verifier replays the compiled proof, checks that the selected theorem
+comes from the entry module and has the generated circuit-equivalence type,
+and audits its transitive dependencies. The default allows replay of closed
+native Boolean checks. Set `allow_native_checks = False` to kernel-check
+the AAG parsing witnesses and require a proof with zero native checks.
+
+Under `bazel test`, `netlist_lean_equiv.json` records the verified netlist
+hashes in `netlist_sha256` and the SHA-256 digests of the prepared
+`Lhs.aag` and `Rhs.aag` files in `aag_sha256.lhs` and `aag_sha256.rhs`.
+It also records cone selections, versions, timing, and Lean diagnostics. A
+successful check records `audit_performed: true` and `native_checks_replayed`.
+
+The checked-in examples exercise these cases:
+
+- `basic` proves the equivalence in strict mode. [Kernel proof](testdata/netlist_lean_equiv/Proof/Kernel.lean)
+- `equivalent` proves the reassociated three-input AND equivalent using a
+  gzip-compressed RHS and per-side selectors. [Native proof](testdata/netlist_lean_equiv/Proof/Decision.lean)
+- `pipeline_registers`: ordinary two-stage DFF pipeline collapsing with
+  load-enable feedback collapsing disabled.
+- `pipeline`: selected cone boundaries with pipeline and load-enable feedback
+  collapsing enabled.
+- `with_helpers`: `Proof/WithHelpers.lean` and two helper modules exercising
+  dependency ordering and `bv_decide`.
+
+These proof targets can be run directly with Bazel.
+
+```shell
+bazel test \
+  //testdata/netlist_lean_equiv:basic \
+  //testdata/netlist_lean_equiv:equivalent \
+  //testdata/netlist_lean_equiv:pipeline_registers \
+  //testdata/netlist_lean_equiv:pipeline \
+  //testdata/netlist_lean_equiv:with_helpers
+```
+
+CI runs `basic`, `equivalent`, and `pipeline` and requires Lean to reject the
+proof for an inequivalent RHS. These tests use the Git-pinned netlist proof
+driver and Lean 4.34.1. Run them locally with
+`python3 run_presubmit.py -k run_netlist_lean_equiv_tests`.
+
+Expected rejections and toolchain configuration are separate Bazel `py_test`
+targets:
+
+- `netlist_lean_equiv_rejects_sha256_mismatch_and_inequivalent_netlists_test`
+  checks that a wrong digest and an inequivalent RHS are rejected for the
+  expected reasons.
+- `netlist_lean_equiv_rejects_uncollapsed_registers_and_incomplete_cones_test`
+  checks errors for reached uncollapsed registers, disabled load-enable
+  feedback collapsing, an invalid combination of collapse settings, and an
+  omitted source required by a sink.
+- `netlist_lean_equiv_toolchain_configuration_test` uses `basic` to check
+  installed Lean, downloads, `auto` fallback, and missing configuration errors.
+
+These manual local tests invoke Bazel in temporary workspaces and inherit the
+existing local tool-path variables. Run them with:
+
+```shell
+RULES_XLSYNTH_TEST_DRIVER=/path/to/xlsynth-driver \
+RULES_XLSYNTH_TEST_XLS_ROOT=/path/to/xls-release \
+RULES_XLSYNTH_TEST_LEAN_ROOT=/path/to/lean-4.34.1 \
+bazel test --nocache_test_results \
+  //:netlist_lean_equiv_rejects_sha256_mismatch_and_inequivalent_netlists_test \
+  //:netlist_lean_equiv_rejects_uncollapsed_registers_and_incomplete_cones_test \
+  //:netlist_lean_equiv_toolchain_configuration_test
+```
+
+Use `--nocache_test_results` when validating rebuilt binaries at the same local
+paths.
+
+`RULES_XLSYNTH_TEST_BAZEL` and `RULES_XLSYNTH_TEST_BAZEL_STARTUP_OPTIONS` may
+select the nested Bazel executable and startup options. If the required tool
+paths are absent, the tests retain their existing skipped result. The same
+Python file can still run all cases directly with
+`python3 netlist_lean_equiv_integration_test.py` and the same environment.
 
 ### `ir_to_gates` - convert IR to gate-level analysis
 

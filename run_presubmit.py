@@ -2,6 +2,7 @@
 
 from typing import Optional, Tuple, List, Callable, Dict, NamedTuple, Set
 import subprocess
+import hashlib
 import json
 import zipfile
 import optparse
@@ -533,26 +534,67 @@ def run_sample_nonequiv_ir(config: PresubmitConfig):
         raise ValueError('Expected nonequiv IR to fail')
 
 
+def _expect_lean_proof_rejection(config: PresubmitConfig, target: str, report_name: str, diagnostic: str):
+    """Require a fresh failed test with the expected diagnostic from Lean."""
+    try:
+        bazel_test_opt((target,), config, capture_output = True)
+    except subprocess.CalledProcessError as e:
+        # Only exit code 3 means Bazel ran a failing test. An earlier build
+        # or setup failure may leave stale test outputs in bazel-testlogs.
+        if e.returncode != 3:
+            raise ValueError('Expected a Bazel test failure, got stdout: {} stderr: {}'.format(e.stdout, e.stderr))
+    else:
+        raise ValueError('{}: Lean unexpectedly accepted the proof'.format(target))
+
+    report = _read_test_json_report(config, target, report_name)
+    child = report.get('lean', {})
+    if (report.get('status') != 'failed' or child.get('status') != 'failed' or
+            not re.search(diagnostic, child.get('stdout', ''))):
+        raise ValueError('{}: expected a Lean proof rejection matching {!r}, got {}'.format(target, diagnostic, report))
+
+
 @register
 def run_dslx_lean_equiv_tests(config: PresubmitConfig):
     """Require the same reflexivity proof to distinguish two different RHS functions."""
     package = '//testdata/ir_fn_lean_equiv:'
-    bazel_test_opt((package + 'dslx_identity_test',), config)
+    dslx = package + 'dslx_identity_test'
+    raw = package + 'identity_test'
+    bazel_test_opt((dslx, raw), config)
+    dslx_report = _read_test_json_report(config, dslx, 'ir_fn_lean_equiv.json')
+    if set(dslx_report.get('ir_sha256', {})) != {'lhs', 'rhs'}:
+        raise ValueError('{}: expected hashes for both optimized IR files: {}'.format(dslx, dslx_report))
+    reference = config.repo_root / 'testdata/ir_fn_lean_equiv/reference.ir'
+    digest = hashlib.sha256(reference.read_bytes()).hexdigest()
+    raw_report = _read_test_json_report(config, raw, 'ir_fn_lean_equiv.json')
+    if raw_report.get('ir_sha256') != {'rhs': digest}:
+        raise ValueError('{}: expected only the raw RHS IR hash: {}'.format(raw, raw_report))
 
-    failing = package + 'dslx_add_one_expect_failure_test'
+    mismatch = package + 'ir_hash_mismatch_expect_failure_test'
     try:
-        bazel_test_opt((failing,), config, capture_output = True)
+        bazel_test_opt((mismatch,), config, capture_output = True)
     except subprocess.CalledProcessError as e:
-        if e.returncode != 3:
-            raise ValueError('Expected a Bazel test failure, got stdout: {} stderr: {}'.format(e.stdout, e.stderr))
+        diagnostic = 'RHS IR hash mismatch\nExpected: {}\nActual:   {}'.format('0' * 64, digest)
+        if e.returncode != 1 or diagnostic not in e.stderr:
+            raise ValueError('{}: expected IR hash failure, got {}'.format(mismatch, e.stderr))
     else:
-        raise ValueError('{}: Lean unexpectedly accepted identity versus add-one'.format(failing))
+        raise ValueError('{}: stale RHS IR hash was accepted'.format(mismatch))
 
-    report = _read_test_json_report(config, failing, 'ir_fn_lean_equiv.json')
-    lean_stdout = report.get('lean', {}).get('stdout', '')
-    diagnostic = r'Reflexivity\.lean:\d+:\d+: error: Tactic `rfl` failed'
-    if report.get('status') != 'failed' or not re.search(diagnostic, lean_stdout):
-        raise ValueError('{}: expected Lean to reject rfl in Reflexivity.lean, got {}'.format(failing, report))
+    _expect_lean_proof_rejection(
+        config, package + 'dslx_add_one_expect_failure_test', 'ir_fn_lean_equiv.json',
+        r'Reflexivity\.lean:\d+:\d+: error: Tactic `rfl` failed',
+    )
+
+
+@register
+def run_netlist_lean_equiv_tests(config: PresubmitConfig):
+    """Prove the reassociated AND gates equivalent and reject an inverted input."""
+    package = '//testdata/netlist_lean_equiv:'
+    bazel_test_opt((package + 'basic', package + 'equivalent', package + 'pipeline'), config)
+    _expect_lean_proof_rejection(
+        config, package + 'different_expect_failure_test', 'netlist_lean_equiv.json',
+        r'Decision\.lean:\d+:\d+: error: Tactic `native_decide` evaluated that the proposition\n'
+        r'(?s:.+?)\nis false',
+    )
 
 
 @register
@@ -769,6 +811,7 @@ def run_toolchain_helper_tests(config: PresubmitConfig):
         '//:download_release_test',
         '//:ir_fn_lean_equiv_runner_test',
         '//:materialize_lean_installation_test',
+        '//:verify_lean_input_test',
         '//:trusted_identity_boundary_test',
         '//:selected_toolchain_test',
         '//:selected_toolchain_exports_test',
@@ -965,6 +1008,8 @@ def main():
     parser.add_option('--dslx-path', type = 'string', help = 'Colon-separated extra DSLX import roots for steps that need them')
     parser.add_option('--ci-driver', help = 'Use the driver installed by the CI source-build job for the local_paths example and skip its already-run source-build test')
     parser.add_option('-k', '--keyword', type='string', help='Only run tests whose function name contains this keyword')
+    parser.add_option('--skip', action='append', default=[], metavar='STEP',
+                      help='Skip a named presubmit step already covered by a separate CI job')
     (options, args) = parser.parse_args()
     if args:
         parser.error('Unexpected positional arguments: {}'.format(' '.join(args)))
@@ -978,9 +1023,12 @@ def main():
             parser.error('Expected an executable CI driver at {}'.format(driver))
         config = config._replace(ci_driver = driver)
 
-    to_run = TO_RUN
+    unknown = set(options.skip) - {f.__name__ for f in TO_RUN}
+    if unknown:
+        parser.error('Unknown presubmit steps: {}'.format(', '.join(sorted(unknown))))
+    to_run = [f for f in TO_RUN if f.__name__ not in options.skip]
     if options.keyword:
-        to_run = [f for f in TO_RUN if options.keyword in f.__name__]
+        to_run = [f for f in to_run if options.keyword in f.__name__]
 
     failures: List[Tuple[str, str]] = []
     for f in to_run:

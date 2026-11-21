@@ -4,7 +4,7 @@
 load(":dslx_to_ir.bzl", "dslx_to_ir")
 load(":ir_fn_lean_equiv_test.bzl", "ir_fn_lean_equiv_test")
 
-def dslx_lean_equiv_test(name, lhs, lhs_top, rhs, rhs_top, proof, proof_theorem, proof_srcs = [], xls_bundle = None, allow_native_checks = True, **kwargs):
+def dslx_lean_equiv_test(name, lhs, lhs_top, rhs, rhs_top, proof, proof_theorem, proof_srcs = [], xls_bundle = None, allow_native_checks = True, lhs_ir_sha256 = "", rhs_ir_sha256 = "", **kwargs):
     """Lowers two DSLX functions and checks a Lean proof of their equivalence.
 
     Args:
@@ -20,6 +20,8 @@ def dslx_lean_equiv_test(name, lhs, lhs_top, rhs, rhs_top, proof, proof_theorem,
         uses the registered XLS toolchain.
       allow_native_checks: Allow the audit to replay native Boolean checks.
         Set to False to require only the three standard Lean axioms.
+      lhs_ir_sha256: Optional SHA-256 of the optimized left IR file.
+      rhs_ir_sha256: Optional SHA-256 of the optimized right IR file.
       **kwargs: Common Bazel test attributes.
     """
     for side, lib, top in [("lhs", lhs, lhs_top), ("rhs", rhs, rhs_top)]:
@@ -35,7 +37,9 @@ def dslx_lean_equiv_test(name, lhs, lhs_top, rhs, rhs_top, proof, proof_theorem,
     ir_fn_lean_equiv_test(
         name = name,
         lhs = ":" + name + "_lhs_ir",
+        lhs_ir_sha256 = lhs_ir_sha256,
         rhs = ":" + name + "_rhs_ir",
+        rhs_ir_sha256 = rhs_ir_sha256,
         proof = proof,
         proof_theorem = proof_theorem,
         proof_srcs = proof_srcs,
