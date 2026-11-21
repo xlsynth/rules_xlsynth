@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Bazel test runner for Lean proofs of XLS IR function and mapped-netlist equivalence."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -58,6 +59,14 @@ def verified_hashes(config, ir_function):
     return hashes
 
 
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def check_audit(report, accepted, allow_native_checks):
     """Validate the required proof audit, including the strict-mode count."""
     lean_report = report["lean"]
@@ -90,6 +99,12 @@ def run(config):
         raise ValueError("unknown Lean proof command: {}".format(check_command))
     ir_function = check_command == "ir-fn-lean-check"
     hashes = verified_hashes(config, ir_function)
+    target_dir = Path(resolve_runfile(config["target"]))
+    if not ir_function:
+        aag_hashes = {
+            "lhs": sha256_file(target_dir / "Lhs.aag"),
+            "rhs": sha256_file(target_dir / "Rhs.aag"),
+        }
 
     version = subprocess.run(
         [driver, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -106,7 +121,7 @@ def run(config):
             driver,
             "--toolchain=" + resolve_runfile(config["toolchain"]),
             check_command,
-            "--target-dir", resolve_runfile(config["target"]),
+            "--target-dir", str(target_dir),
             "--proof-root", str(proof_root),
             "--proof", stage_proof_file(config["proof"], proof_root),
             "--proof-theorem", config["proof_theorem"],
@@ -144,6 +159,7 @@ def run(config):
             report_name = "ir_fn_lean_equiv.json"
         else:
             report["netlist_sha256"] = hashes
+            report["aag_sha256"] = aag_hashes
             report["extraction"] = config["extraction"]
             report_name = "netlist_lean_equiv.json"
         report["status"] = "accepted_by_lean" if accepted else "failed"

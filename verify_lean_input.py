@@ -34,8 +34,8 @@ def verify_input(source_path, expected_hash, output_path, metadata_path, side, k
             message = "{} {} hash mismatch\nExpected: {}\nActual:   {}".format(
                 side.upper(), kind, expected_hash, actual_hash
             )
-            if kind == "IR":
-                message += "\nInput has changed, regenerate the proof and update {}_ir_sha256".format(side)
+            pin = side + ("_ir_sha256" if kind == "IR" else "_sha256")
+            message += "\nInput has changed, regenerate the proof and update " + pin
             raise ValueError(message)
         os.replace(str(candidate), str(output_path))
     with open(metadata_path, "w") as metadata:

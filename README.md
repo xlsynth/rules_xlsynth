@@ -730,7 +730,7 @@ generated outputs, and external-repository files are accepted. The single
 the exact file contents, decompressed first for `.gz` inputs. Whitespace and
 comments count. A build action verifies each hash before conversion and writes
 the exact verified bytes consumed by `gv2g8r`. A mismatch reports the side,
-expected hash, and actual hash.
+expected and actual hashes, and which pin to update after regenerating the proof.
 
 Optional extraction attributes are:
 
@@ -796,7 +796,9 @@ native Boolean checks. Set `allow_native_checks = False` to kernel-check
 the AAG parsing witnesses and require a proof with zero native checks.
 
 Under `bazel test`, `netlist_lean_equiv.json` records the verified netlist
-hashes, resolved cone selections, versions, timing, and Lean diagnostics. A
+hashes in `netlist_sha256` and the SHA-256 digests of the prepared
+`Lhs.aag` and `Rhs.aag` files in `aag_sha256.lhs` and `aag_sha256.rhs`.
+It also records cone selections, versions, timing, and Lean diagnostics. A
 successful check records `audit_performed: true` and `native_checks_replayed`.
 
 The checked-in examples exercise these cases:
@@ -822,9 +824,10 @@ bazel test \
   //testdata/netlist_lean_equiv:with_helpers
 ```
 
-CI checks the strict and native proofs and requires Lean to reject the proof for
-an inequivalent RHS. These tests use the Git-pinned netlist proof driver and
-Lean 4.34.1. Run them locally with `python3 run_presubmit.py -k run_netlist_lean_equiv_tests`.
+CI runs `basic`, `equivalent`, and `pipeline` and requires Lean to reject the
+proof for an inequivalent RHS. These tests use the Git-pinned netlist proof
+driver and Lean 4.34.1. Run them locally with
+`python3 run_presubmit.py -k run_netlist_lean_equiv_tests`.
 
 Expected rejections and toolchain configuration are separate Bazel `py_test`
 targets:

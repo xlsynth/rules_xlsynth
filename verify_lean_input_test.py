@@ -42,35 +42,32 @@ class VerifyLeanInputTest(unittest.TestCase):
             self.assertEqual(verified.read_bytes(), contents)
             self.assertEqual(json.loads(metadata.read_text()), {"sha256": digest, "side": "rhs"})
 
-    def test_ir_mismatch_names_the_pin_to_update_after_regenerating_the_proof(self):
+    def test_mismatch_names_the_pin_and_does_not_publish_outputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            source = root / "input.ir"
-            source.write_bytes(b"package example\n")
+            source = root / "input"
+            source.write_bytes(b"changed\n")
             digest = hashlib.sha256(source.read_bytes()).hexdigest()
-            for side in ("lhs", "rhs"):
-                with self.subTest(side=side):
+            output = root / "verified"
+            metadata = root / "hash.json"
+            for kind, side, pin in (
+                ("IR", "lhs", "lhs_ir_sha256"),
+                ("IR", "rhs", "rhs_ir_sha256"),
+                ("netlist", "lhs", "lhs_sha256"),
+                ("netlist", "rhs", "rhs_sha256"),
+            ):
+                with self.subTest(kind=kind, side=side):
                     with self.assertRaises(ValueError) as failure:
-                        verify_input(source, "0" * 64, root / "verified.ir", root / "hash.json", side, "IR")
+                        verify_input(source, "0" * 64, output, metadata, side, kind)
                     self.assertEqual(
                         str(failure.exception),
-                        "{0} IR hash mismatch\nExpected: {1}\nActual:   {2}\n"
-                        "Input has changed, regenerate the proof and update {3}_ir_sha256".format(
-                            side.upper(), "0" * 64, digest, side
+                        "{} {} hash mismatch\nExpected: {}\nActual:   {}\n"
+                        "Input has changed, regenerate the proof and update {}".format(
+                            side.upper(), kind, "0" * 64, digest, pin
                         ),
                     )
-
-    def test_mismatch_does_not_publish_verified_output(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            source = root / "design.gv"
-            source.write_text("module changed; endmodule\n")
-            output = root / "verified.gv"
-            metadata = root / "metadata.json"
-            with self.assertRaisesRegex(ValueError, "RHS netlist hash mismatch"):
-                verify_input(source, "0" * 64, output, metadata, "rhs", "netlist")
-            self.assertFalse(output.exists())
-            self.assertFalse(metadata.exists())
+                    self.assertFalse(output.exists())
+                    self.assertFalse(metadata.exists())
 
 
 if __name__ == "__main__":

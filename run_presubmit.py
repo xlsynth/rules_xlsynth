@@ -589,7 +589,7 @@ def run_dslx_lean_equiv_tests(config: PresubmitConfig):
 def run_netlist_lean_equiv_tests(config: PresubmitConfig):
     """Prove the reassociated AND gates equivalent and reject an inverted input."""
     package = '//testdata/netlist_lean_equiv:'
-    bazel_test_opt((package + 'basic', package + 'equivalent'), config)
+    bazel_test_opt((package + 'basic', package + 'equivalent', package + 'pipeline'), config)
     _expect_lean_proof_rejection(
         config, package + 'different_expect_failure_test', 'netlist_lean_equiv.json',
         r'Decision\.lean:\d+:\d+: error: Tactic `native_decide` evaluated that the proposition\n'

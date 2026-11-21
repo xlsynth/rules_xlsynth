@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests the IR and netlist proof audit contract at the Bazel runner boundary."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -61,6 +62,10 @@ class IrAuditTest(unittest.TestCase):
 
             if self.check_command == "g8r-lean-check":
                 config["extraction"] = {"lhs_top": "m", "rhs_top": "n"}
+                lhs_aag = b"aag 1 1 0 1 0\n2\n2\n"
+                rhs_aag = b"aag 1 1 0 1 0\n2\n3\n"
+                (root / "Lhs.aag").write_bytes(lhs_aag)
+                (root / "Rhs.aag").write_bytes(rhs_aag)
                 for side, digest in (("lhs", "a" * 64), ("rhs", "b" * 64)):
                     metadata_file = root / (side + ".json")
                     metadata_file.write_text(json.dumps({"sha256": digest, "side": side}))
@@ -98,6 +103,10 @@ class IrAuditTest(unittest.TestCase):
             self.assertEqual(report["status"], "accepted_by_lean" if accepted else "failed")
             if self.check_command == "g8r-lean-check":
                 self.assertEqual(report["netlist_sha256"], {"lhs": "a" * 64, "rhs": "b" * 64})
+                self.assertEqual(report["aag_sha256"], {
+                    "lhs": hashlib.sha256(lhs_aag).hexdigest(),
+                    "rhs": hashlib.sha256(rhs_aag).hexdigest(),
+                })
                 self.assertEqual(report["extraction"], config["extraction"])
             return report
 
